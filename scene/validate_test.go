@@ -69,6 +69,7 @@ func validScene() scene.Scene {
 			"plaster": {
 				Name:             "plaster",
 				AbsorptionByBand: []float64{0.1, 0.1, 0.15, 0.2, 0.2, 0.25},
+				Scattering:       [scene.NumBands]float64{0.02, 0.02, 0.02, 0.03, 0.03, 0.04},
 				ScatteringByBand: []float64{0.02, 0.02, 0.02, 0.03, 0.03, 0.04},
 			},
 		},
@@ -147,6 +148,31 @@ func TestValidateReportsMaterialBandMismatch(t *testing.T) {
 	sc.Materials["plaster"] = material
 	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "absorption band count") {
 		t.Fatalf("expected band mismatch validation error, got %v", err)
+	}
+}
+
+func TestValidateReportsScatteringOutOfRange(t *testing.T) {
+	sc := validScene()
+	material := sc.Materials["plaster"]
+	material.Scattering[2] = 1.2
+	material.ScatteringByBand = nil
+	sc.Materials["plaster"] = material
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "scattering[2]") {
+		t.Fatalf("expected scattering range validation error, got %v", err)
+	}
+}
+
+func TestValidateAllowsNonMonotonicScattering(t *testing.T) {
+	sc := validScene()
+	material := sc.Materials["plaster"]
+	material.Scattering = [scene.NumBands]float64{0.4, 0.3, 0.5, 0.4, 0.6, 0.5}
+	material.ScatteringByBand = nil
+	sc.Materials["plaster"] = material
+
+	if err := scene.Validate(&sc); err != nil {
+		t.Fatalf("non-monotonic scattering should emit warning only, got %v", err)
 	}
 }
 

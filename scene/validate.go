@@ -3,10 +3,13 @@ package scene
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
 )
+
+var validationWarnf = log.Printf
 
 // ValidationErrors collects all scene validation failures.
 type ValidationErrors []error
@@ -68,6 +71,20 @@ func Validate(s *Scene) error {
 	for name, material := range s.Materials {
 		if len(material.AbsorptionByBand) != bandCount {
 			errs = append(errs, fmt.Errorf("material %q absorption band count = %d, want %d", name, len(material.AbsorptionByBand), bandCount))
+		}
+
+		scattering := material.ScatteringCoefficients(bandCount)
+		for index, coeff := range scattering {
+			if coeff < 0 || coeff > 1 {
+				errs = append(errs, fmt.Errorf("material %q scattering[%d] = %.3f, want within [0, 1]", name, index, coeff))
+			}
+		}
+
+		for index := 1; index < len(scattering); index++ {
+			if scattering[index] < scattering[index-1] {
+				validationWarnf("scene validate warning: material %q scattering is not monotonic non-decreasing at band %d", name, index)
+				break
+			}
 		}
 	}
 

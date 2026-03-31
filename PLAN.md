@@ -814,11 +814,11 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 11.1 Material scattering data model (`scene/`)
 
-- [ ] Extend `Material` struct with per-octave-band scattering coefficients `Scattering [NumBands]float64` (125 Hz – 4 kHz, 6 bands minimum)
-- [ ] Add validation: each `s(f)` in `[0, 1]`, scattering must be monotonically non-decreasing with frequency (warn if not)
-- [ ] Update JSON scene loader to accept optional `"scattering"` array per material
-- [ ] Provide default scattering estimator from structural depth: `s(f) = 1 - exp(-k * (f / f0)^2)` where `f0 = c / (2 * depth)`
-- [ ] Update `material_test.go` with scattering coefficient round-trips
+- [x] Extend `Material` struct with per-octave-band scattering coefficients `Scattering [NumBands]float64` (125 Hz – 4 kHz, 6 bands minimum)
+- [x] Add validation: each `s(f)` in `[0, 1]`, scattering must be monotonically non-decreasing with frequency (warn if not)
+- [x] Update JSON scene loader to accept optional `"scattering"` array per material
+- [x] Provide default scattering estimator from structural depth: `s(f) = 1 - exp(-k * (f / f0)^2)` where `f0 = c / (2 * depth)`
+- [x] Update `material_test.go` with scattering coefficient round-trips
 
 ### 11.2 Material library with scattering data (`scene/`)
 

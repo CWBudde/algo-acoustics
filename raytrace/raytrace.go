@@ -161,7 +161,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				bandEnergy[bandIndex] *= remaining
 			}
 
-			scatterCoeff := averageCoeff(material.ScatteringByBand)
+			scatterCoeff := averageCoeff(material.ScatteringCoefficients(bandCount))
 			nextDir := SelectReflection(scatterCoeff, currentRay.Direction, hitNormal, rng)
 			currentRay = geometry.NewRay(hitPoint.Add(nextDir.Scale(wallEpsilon)), nextDir)
 
