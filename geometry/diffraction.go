@@ -14,15 +14,15 @@ const (
 // DiffractionEdge describes one finite edge that can contribute first-order
 // UTD diffraction.
 type DiffractionEdge struct {
-	Start, End   Vec3
-	Direction    Vec3
-	Length       float64
-	WedgeIndex   float64
-	FaceONormal  Vec3
-	FaceNNormal  Vec3
-	FaceOID      int
-	FaceNID      int
-	LocalBasis   [3]Vec3
+	Start, End  Vec3
+	Direction   Vec3
+	Length      float64
+	WedgeIndex  float64
+	FaceONormal Vec3
+	FaceNNormal Vec3
+	FaceOID     int
+	FaceNID     int
+	LocalBasis  [3]Vec3
 }
 
 type diffractionFaceEdge struct {
@@ -103,12 +103,14 @@ func ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge {
 		}
 
 		start, startOK := vertexByKey[edgeKey.A]
+
 		end, endOK := vertexByKey[edgeKey.B]
 		if !startOK || !endOK {
 			continue
 		}
 
 		direction := end.Sub(start)
+
 		length := direction.Norm()
 		if length <= diffractionAngleEpsilon {
 			continue
@@ -119,12 +121,14 @@ func ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge {
 		faceN := faces[1]
 
 		n0 := faceO.Normal.Normalize()
+
 		n1 := faceN.Normal.Normalize()
 		if n0.Norm() == 0 || n1.Norm() == 0 {
 			continue
 		}
 
 		dot := clampFloat64(n0.Dot(n1), -1, 1)
+
 		theta := math.Acos(dot)
 		if theta <= diffractionAngleEpsilon || math.Abs(math.Pi-theta) <= diffractionAngleEpsilon {
 			continue
@@ -132,12 +136,14 @@ func ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge {
 
 		// Convex edges have the adjacent opposite vertices behind each face plane.
 		d01 := n0.Dot(faceN.Opposite.Sub(faceO.Start))
+
 		d10 := n1.Dot(faceO.Opposite.Sub(faceN.Start))
 		if d01 >= -diffractionAngleEpsilon || d10 >= -diffractionAngleEpsilon {
 			continue
 		}
 
 		exteriorAngle := math.Pi + theta
+
 		basis2 := direction.Cross(n0).Normalize()
 		if basis2.Norm() == 0 {
 			continue
@@ -188,6 +194,7 @@ func mergeDiffractionEdges(edges []DiffractionEdge) []DiffractionEdge {
 		}
 
 		t0 := edge.Start.Dot(dir)
+
 		t1 := edge.End.Dot(dir)
 		if t1 < t0 {
 			t0, t1 = t1, t0
@@ -243,6 +250,7 @@ func mergeDiffractionEdges(edges []DiffractionEdge) []DiffractionEdge {
 			}
 
 			flush()
+
 			current = next
 			currentStart = next.StartT
 			currentEnd = next.EndT
@@ -256,6 +264,7 @@ func mergeDiffractionEdges(edges []DiffractionEdge) []DiffractionEdge {
 
 func makeSortedNormalPair(a, b Vec3) [2]diffractionNormalKey {
 	keyA := normalKeyFrom(a)
+
 	keyB := normalKeyFrom(b)
 	if compareDiffractionNormalKey(keyA, keyB) <= 0 {
 		return [2]diffractionNormalKey{keyA, keyB}

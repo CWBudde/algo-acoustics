@@ -246,7 +246,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 			return demoResult{}, renderErr
 		}
 
-		buffer = hybrid.CombineBuffers(earlyBuffer, lateBuffer, hybrid.HybridConfig{
+		hybridCfg := hybrid.HybridConfig{
 			CrossoverTimeSeconds: normalized.Render.CrossoverTimeSeconds,
 			CrossoverMode:        hybrid.TimeBased,
 			SmoothenCrossover:    true,
@@ -254,7 +254,10 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 				Name:  normalized.Render.CrossoverWindow,
 				Alpha: normalized.Render.CrossoverWindowAlpha,
 			},
-		})
+		}
+
+		lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, hybridCfg)
+		buffer = hybrid.CombineBuffers(earlyBuffer, lateBuffer, hybridCfg)
 		if buffer == nil {
 			return demoResult{}, errors.New("combine hybrid buffers")
 		}

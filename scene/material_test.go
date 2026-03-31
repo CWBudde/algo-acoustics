@@ -95,7 +95,7 @@ func TestMaterialLibraryCoefficientsValid(t *testing.T) {
 		}
 
 		// Check scattering coefficients and monotonicity
-		for i := 0; i < scene.NumBands; i++ {
+		for i := range scene.NumBands {
 			s := material.Scattering[i]
 			if s < 0 || s > 1 {
 				t.Errorf("material %q: Scattering[%d] = %f, want within [0, 1]",

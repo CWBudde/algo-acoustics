@@ -24,6 +24,7 @@ func SpecularReflect(dir, normal geometry.Vec3) geometry.Vec3 {
 // This ensures the pdf is proportional to cos(theta), the standard diffuse reflection model.
 func LambertDirection(normal geometry.Vec3, rng *rand.Rand) geometry.Vec3 {
 	if rng == nil {
+		//nolint:gosec // cryptographic randomness not needed for Monte Carlo sampling
 		rng = rand.New(rand.NewSource(1))
 	}
 
@@ -57,6 +58,7 @@ func LambertDirection(normal geometry.Vec3, rng *rand.Rand) geometry.Vec3 {
 }
 
 // DiffuseReflect returns a cosine-weighted hemisphere sample around normal.
+//
 // Deprecated: use LambertDirection instead for correct cos-weighted sampling.
 func DiffuseReflect(normal geometry.Vec3, rng *rand.Rand) geometry.Vec3 {
 	return LambertDirection(normal, rng)
@@ -73,6 +75,7 @@ func SelectReflection(scatterCoeff float64, dir, normal geometry.Vec3, rng *rand
 	}
 
 	if rng == nil {
+		//nolint:gosec // cryptographic randomness not needed for Monte Carlo sampling
 		rng = rand.New(rand.NewSource(1))
 	}
 

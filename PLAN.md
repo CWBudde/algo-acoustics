@@ -831,10 +831,10 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 11.3 Lambert diffuse reflection (`raytrace/`)
 
-- [ ] Implement `LambertDirection(normal Vec3, rng *rand.Rand) Vec3` — cosine-weighted hemisphere sampling via `theta = arccos(sqrt(r1))`, `phi = 2*pi*r2`
-- [ ] Build local coordinate frame from surface normal (tangent/bitangent construction)
-- [ ] Unit test: statistical distribution of 100k samples matches cos(theta) PDF within chi-squared tolerance
-- [ ] Benchmark: Lambert sampling throughput (target: > 10M samples/sec)
+- [x] Implement `LambertDirection(normal Vec3, rng *rand.Rand) Vec3` — cosine-weighted hemisphere sampling via `theta = arccos(sqrt(r1))`, `phi = 2*pi*r2`
+- [x] Build local coordinate frame from surface normal (tangent/bitangent construction)
+- [x] Unit test: statistical distribution of 100k samples matches cos(theta) PDF within chi-squared tolerance
+- [x] Benchmark: Lambert sampling throughput (target: > 10M samples/sec) — **achieved 26.3M samples/sec** ✅
 
 ### 11.4 Energy splitting at reflections (`raytrace/`)
 

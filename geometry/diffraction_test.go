@@ -96,62 +96,68 @@ func lShapedPrismMesh() *geometry.Mesh {
 
 	faces := []faceDef{
 		{
-			dx: 1,
+			dx:     1,
 			normal: geometry.Vec3{X: 1},
 			quad: func(x, y, z int) [4]geometry.Vec3 {
 				xf := float64(x + 1)
 				yf := float64(y)
 				zf := float64(z)
+
 				return [4]geometry.Vec3{{X: xf, Y: yf, Z: zf}, {X: xf, Y: yf + 1, Z: zf}, {X: xf, Y: yf + 1, Z: zf + 1}, {X: xf, Y: yf, Z: zf + 1}}
 			},
 		},
 		{
-			dx: -1,
+			dx:     -1,
 			normal: geometry.Vec3{X: -1},
 			quad: func(x, y, z int) [4]geometry.Vec3 {
 				xf := float64(x)
 				yf := float64(y)
 				zf := float64(z)
+
 				return [4]geometry.Vec3{{X: xf, Y: yf, Z: zf}, {X: xf, Y: yf, Z: zf + 1}, {X: xf, Y: yf + 1, Z: zf + 1}, {X: xf, Y: yf + 1, Z: zf}}
 			},
 		},
 		{
-			dy: 1,
+			dy:     1,
 			normal: geometry.Vec3{Y: 1},
 			quad: func(x, y, z int) [4]geometry.Vec3 {
 				xf := float64(x)
 				yf := float64(y + 1)
 				zf := float64(z)
+
 				return [4]geometry.Vec3{{X: xf, Y: yf, Z: zf}, {X: xf, Y: yf, Z: zf + 1}, {X: xf + 1, Y: yf, Z: zf + 1}, {X: xf + 1, Y: yf, Z: zf}}
 			},
 		},
 		{
-			dy: -1,
+			dy:     -1,
 			normal: geometry.Vec3{Y: -1},
 			quad: func(x, y, z int) [4]geometry.Vec3 {
 				xf := float64(x)
 				yf := float64(y)
 				zf := float64(z)
+
 				return [4]geometry.Vec3{{X: xf, Y: yf, Z: zf}, {X: xf + 1, Y: yf, Z: zf}, {X: xf + 1, Y: yf, Z: zf + 1}, {X: xf, Y: yf, Z: zf + 1}}
 			},
 		},
 		{
-			dz: 1,
+			dz:     1,
 			normal: geometry.Vec3{Z: 1},
 			quad: func(x, y, z int) [4]geometry.Vec3 {
 				xf := float64(x)
 				yf := float64(y)
 				zf := float64(z + 1)
+
 				return [4]geometry.Vec3{{X: xf, Y: yf, Z: zf}, {X: xf + 1, Y: yf, Z: zf}, {X: xf + 1, Y: yf + 1, Z: zf}, {X: xf, Y: yf + 1, Z: zf}}
 			},
 		},
 		{
-			dz: -1,
+			dz:     -1,
 			normal: geometry.Vec3{Z: -1},
 			quad: func(x, y, z int) [4]geometry.Vec3 {
 				xf := float64(x)
 				yf := float64(y)
 				zf := float64(z)
+
 				return [4]geometry.Vec3{{X: xf, Y: yf, Z: zf}, {X: xf, Y: yf + 1, Z: zf}, {X: xf + 1, Y: yf + 1, Z: zf}, {X: xf + 1, Y: yf, Z: zf}}
 			},
 		},
