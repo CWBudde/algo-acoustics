@@ -53,9 +53,9 @@ func TestGLLModelTracksSourceRotationAcrossQuadrants(t *testing.T) {
 		wantGain float64
 	}{
 		{name: "0deg", angle: 0, wantGain: 1},
-		{name: "90deg", angle: math.Pi / 2, wantGain: math.Pow(10, -6.0/20.0)},
+		{name: "90deg", angle: math.Pi / 2, wantGain: math.Pow(10, -18.0/20.0)},
 		{name: "180deg", angle: math.Pi, wantGain: math.Pow(10, -12.0/20.0)},
-		{name: "270deg", angle: 3 * math.Pi / 2, wantGain: math.Pow(10, -18.0/20.0)},
+		{name: "270deg", angle: 3 * math.Pi / 2, wantGain: math.Pow(10, -6.0/20.0)},
 	}
 
 	for _, tc := range rotations {

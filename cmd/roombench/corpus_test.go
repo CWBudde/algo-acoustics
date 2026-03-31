@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -13,10 +14,10 @@ func TestBenchmarkCorpusSmoke(t *testing.T) {
 	t.Parallel()
 
 	corpus := []string{
-		filepath.Join("..", "..", "testdata", "rooms", "tiny_room.json"),
-		filepath.Join("..", "..", "testdata", "rooms", "control_room.json"),
-		filepath.Join("..", "..", "testdata", "rooms", "lecture_room.json"),
-		filepath.Join("..", "..", "testdata", "rooms", "pa_room.json"),
+		roomFixturePath("tiny_room.json"),
+		roomFixturePath("control_room.json"),
+		roomFixturePath("lecture_room.json"),
+		roomFixturePath("pa_room.json"),
 	}
 
 	for _, path := range corpus {
@@ -53,4 +54,24 @@ func TestBenchmarkCorpusSmoke(t *testing.T) {
 			}
 		})
 	}
+}
+
+func roomFixturePath(name string) string {
+	candidates := []string{
+		filepath.Join("testdata", "rooms", name),
+		filepath.Join("..", "..", "testdata", "rooms", name),
+	}
+
+	for _, candidate := range candidates {
+		absCandidate, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+
+		if _, err := os.Stat(absCandidate); err == nil {
+			return absCandidate
+		}
+	}
+
+	return candidates[0]
 }
