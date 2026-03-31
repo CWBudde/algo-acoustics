@@ -47,3 +47,33 @@ func TestApplyFade(t *testing.T) {
 		t.Fatalf("expected fade in endpoints to be 0 -> 1, got %#v", fadeIn.Samples)
 	}
 }
+
+func TestApplyFadeWithWindowUsesSelectedShape(t *testing.T) {
+	t.Parallel()
+
+	buf := &ir.Buffer{SampleRate: 1000, Samples: make([]float64, 12)}
+	for i := range buf.Samples {
+		buf.Samples[i] = 1
+	}
+
+	hann := ApplyFadeWithWindow(buf, 1, 10, true, FadeWindowConfig{Name: "hann"})
+	blackman := ApplyFadeWithWindow(buf, 1, 10, true, FadeWindowConfig{Name: "blackman"})
+	if math.Abs(hann.Samples[2]-blackman.Samples[2]) < 1e-6 {
+		t.Fatalf("expected different fade shapes, got hann=%#v blackman=%#v", hann.Samples, blackman.Samples)
+	}
+	if blackman.Samples[1] != 0 || blackman.Samples[9] != 1 {
+		t.Fatalf("expected normalized blackman fade endpoints 0 -> 1, got %#v", blackman.Samples)
+	}
+
+	defaultTukey := ApplyFadeWithWindow(buf, 1, 10, true, FadeWindowConfig{Name: "tukey"})
+	narrowTukey := ApplyFadeWithWindow(buf, 1, 10, true, FadeWindowConfig{Name: "tukey", Alpha: 0.25})
+	if math.Abs(defaultTukey.Samples[3]-narrowTukey.Samples[3]) < 1e-6 {
+		t.Fatalf("expected tukey alpha to affect fade shape, got default=%#v narrow=%#v", defaultTukey.Samples, narrowTukey.Samples)
+	}
+
+	for i := 1; i < 10; i++ {
+		if math.Abs(hann.Samples[i]+ApplyFadeWithWindow(buf, 1, 10, false, FadeWindowConfig{Name: "hann"}).Samples[i]-1) > 1e-12 {
+			t.Fatalf("expected complementary fade weights at sample %d", i)
+		}
+	}
+}

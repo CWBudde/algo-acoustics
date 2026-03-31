@@ -3,6 +3,7 @@ module github.com/cwbudde/algo-acoustics
 go 1.25.0
 
 require (
+	github.com/cwbudde/algo-dsp v0.0.0
 	github.com/cwbudde/gll-tools v0.0.0
 	github.com/cwbudde/wav v0.0.0
 	github.com/go-audio/audio v1.0.0
@@ -47,6 +48,7 @@ require (
 	github.com/chavacava/garif v0.1.0 // indirect
 	github.com/ckaznocha/intrange v0.3.0 // indirect
 	github.com/curioswitch/go-reassign v0.3.0 // indirect
+	github.com/cwbudde/algo-vecmath v0.1.0 // indirect
 	github.com/daixiang0/gci v0.13.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
@@ -197,6 +199,8 @@ require (
 )
 
 replace github.com/cwbudde/algo-dsp => ../algo-dsp
+
+replace github.com/cwbudde/algo-vecmath => ../algo-vecmath
 
 replace github.com/cwbudde/algo-pde => ../algo-pde
 

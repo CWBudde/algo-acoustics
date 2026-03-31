@@ -24,6 +24,7 @@ type HybridConfig struct {
 	CrossoverOrder       int
 	CrossoverMode        CrossoverMode
 	SmoothenCrossover    bool
+	CrossoverWindow      FadeWindowConfig
 }
 
 // Combine merges early and late sparse events into a single ordered event list.
@@ -91,8 +92,8 @@ func CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer {
 	earlyOut := cloneBuffer(early)
 	lateIn := cloneBuffer(late)
 	if cfg.SmoothenCrossover {
-		earlyOut = ApplyFade(earlyOut, start, end, false)
-		lateIn = ApplyFade(lateIn, start, end, true)
+		earlyOut = ApplyFadeWithWindow(earlyOut, start, end, false, cfg.CrossoverWindow)
+		lateIn = ApplyFadeWithWindow(lateIn, start, end, true, cfg.CrossoverWindow)
 	} else {
 		span := maxInt(1, end-start-1)
 		for i := start; i < end && i < len(earlyOut.Samples) && i < len(lateIn.Samples); i++ {
