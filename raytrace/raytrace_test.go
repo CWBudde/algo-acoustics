@@ -288,7 +288,7 @@ func maxAbsDifference(a, b []float64) float64 {
 		return 1
 	}
 
-	var max float64
+	var maxDelta float64
 
 	for i := range a {
 		delta := a[i] - b[i]
@@ -296,12 +296,12 @@ func maxAbsDifference(a, b []float64) float64 {
 			delta = -delta
 		}
 
-		if delta > max {
-			max = delta
+		if delta > maxDelta {
+			maxDelta = delta
 		}
 	}
 
-	return max
+	return maxDelta
 }
 
 func boxContainsWithin(bounds geometry.Box, point geometry.Vec3, tolerance float64) bool {
@@ -310,15 +310,15 @@ func boxContainsWithin(bounds geometry.Box, point geometry.Vec3, tolerance float
 		point.Z >= bounds.Min.Z-tolerance && point.Z <= bounds.Max.Z+tolerance
 }
 
-func cubeMesh(min, max geometry.Vec3) *geometry.Mesh {
-	v000 := geometry.Vec3{X: min.X, Y: min.Y, Z: min.Z}
-	v001 := geometry.Vec3{X: min.X, Y: min.Y, Z: max.Z}
-	v010 := geometry.Vec3{X: min.X, Y: max.Y, Z: min.Z}
-	v011 := geometry.Vec3{X: min.X, Y: max.Y, Z: max.Z}
-	v100 := geometry.Vec3{X: max.X, Y: min.Y, Z: min.Z}
-	v101 := geometry.Vec3{X: max.X, Y: min.Y, Z: max.Z}
-	v110 := geometry.Vec3{X: max.X, Y: max.Y, Z: min.Z}
-	v111 := geometry.Vec3{X: max.X, Y: max.Y, Z: max.Z}
+func cubeMesh(minCorner, maxCorner geometry.Vec3) *geometry.Mesh {
+	v000 := geometry.Vec3{X: minCorner.X, Y: minCorner.Y, Z: minCorner.Z}
+	v001 := geometry.Vec3{X: minCorner.X, Y: minCorner.Y, Z: maxCorner.Z}
+	v010 := geometry.Vec3{X: minCorner.X, Y: maxCorner.Y, Z: minCorner.Z}
+	v011 := geometry.Vec3{X: minCorner.X, Y: maxCorner.Y, Z: maxCorner.Z}
+	v100 := geometry.Vec3{X: maxCorner.X, Y: minCorner.Y, Z: minCorner.Z}
+	v101 := geometry.Vec3{X: maxCorner.X, Y: minCorner.Y, Z: maxCorner.Z}
+	v110 := geometry.Vec3{X: maxCorner.X, Y: maxCorner.Y, Z: minCorner.Z}
+	v111 := geometry.Vec3{X: maxCorner.X, Y: maxCorner.Y, Z: maxCorner.Z}
 
 	return &geometry.Mesh{Triangles: []geometry.Triangle{
 		{V0: v000, V1: v010, V2: v001},

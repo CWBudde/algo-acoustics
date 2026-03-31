@@ -696,9 +696,13 @@ function applySceneTheme() {
   sceneView.fillLight.color.set(palette.fill);
   sceneView.fillLight.intensity = palette.fillIntensity;
 
-  const [major, minor] = sceneView.grid.material;
-  major.color.set(palette.gridMajor);
-  minor.color.set(palette.gridMinor);
+  const mat = sceneView.grid.material;
+  if (Array.isArray(mat)) {
+    mat[0].color.set(palette.gridMajor);
+    mat[1].color.set(palette.gridMinor);
+  } else {
+    mat.color.set(palette.gridMajor);
+  }
 }
 
 function createSceneView(canvas) {

@@ -214,23 +214,23 @@ func bvhCentroidBounds(mesh *Mesh, indices []int) Box {
 }
 
 func bvhTriangleBounds(tri Triangle) Box {
-	min := tri.V0
+	minCorner := tri.V0
 
-	max := tri.V0
+	maxCorner := tri.V0
 	for _, vertex := range []Vec3{tri.V1, tri.V2} {
-		min = Vec3{
-			X: min64(min.X, vertex.X),
-			Y: min64(min.Y, vertex.Y),
-			Z: min64(min.Z, vertex.Z),
+		minCorner = Vec3{
+			X: min64(minCorner.X, vertex.X),
+			Y: min64(minCorner.Y, vertex.Y),
+			Z: min64(minCorner.Z, vertex.Z),
 		}
-		max = Vec3{
-			X: max64(max.X, vertex.X),
-			Y: max64(max.Y, vertex.Y),
-			Z: max64(max.Z, vertex.Z),
+		maxCorner = Vec3{
+			X: max64(maxCorner.X, vertex.X),
+			Y: max64(maxCorner.Y, vertex.Y),
+			Z: max64(maxCorner.Z, vertex.Z),
 		}
 	}
 
-	return Box{Min: min, Max: max}
+	return Box{Min: minCorner, Max: maxCorner}
 }
 
 func bvhUnionBox(a, b Box) Box {

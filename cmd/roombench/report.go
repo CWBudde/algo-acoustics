@@ -47,7 +47,7 @@ func newReportCommand() *cobra.Command {
 		Use:   "report",
 		Short: "Render the benchmark corpus report.",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			rows, err := buildCorpusReport(fixtureDir, maxOrder)
 			if err != nil {
 				return err

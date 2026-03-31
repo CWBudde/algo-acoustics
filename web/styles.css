@@ -203,10 +203,7 @@ audio {
   pointer-events: none;
 }
 
-.hero,
-.studio-header,
-.viewport-card,
-.response-card {
+.panel {
   padding: 24px;
 }
 
@@ -217,7 +214,7 @@ audio {
 
 .hero h1,
 .hero .lede {
-  max-width: 54ch;
+  max-width: none;
 }
 
 .hero h1,

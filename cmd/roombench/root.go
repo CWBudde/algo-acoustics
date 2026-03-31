@@ -12,7 +12,7 @@ func newRootCommand() *cobra.Command {
 		Short:         "Run regression fixtures and compare room-acoustics metrics.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}

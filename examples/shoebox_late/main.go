@@ -53,7 +53,7 @@ func run() error {
 		return err
 	}
 
-	fmt.Println("time_seconds,energy")
+	fmt.Fprintln(os.Stdout, "time_seconds,energy")
 
 	for _, bin := range hist.Bins {
 		var total float64
@@ -61,7 +61,7 @@ func run() error {
 			total += bandEnergy
 		}
 
-		fmt.Printf("%.3f,%.6f\n", bin.TimeSeconds, total)
+		fmt.Fprintf(os.Stdout, "%.3f,%.6f\n", bin.TimeSeconds, total)
 	}
 
 	return nil

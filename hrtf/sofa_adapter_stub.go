@@ -6,6 +6,6 @@ import "errors"
 type SOFAAdapter struct{}
 
 // LoadSOFA returns an error unless the sofa build tag is enabled.
-func LoadSOFA(path string) (*SOFAAdapter, error) {
+func LoadSOFA(_ string) (*SOFAAdapter, error) {
 	return nil, errors.New("SOFA support requires the sofa build tag")
 }

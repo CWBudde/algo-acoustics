@@ -105,18 +105,18 @@ func boundaryType(name string) poisson.BCType {
 }
 
 func minPositive(values ...float64) float64 {
-	min := math.Inf(1)
+	minValue := math.Inf(1)
 	for _, value := range values {
-		if value > 0 && value < min {
-			min = value
+		if value > 0 && value < minValue {
+			minValue = value
 		}
 	}
 
-	if math.IsInf(min, 1) {
+	if math.IsInf(minValue, 1) {
 		return 1
 	}
 
-	return min
+	return minValue
 }
 
 func maxInt(a, b int) int {

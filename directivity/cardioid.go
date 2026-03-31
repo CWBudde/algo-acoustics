@@ -13,7 +13,7 @@ type CardioidModel struct {
 }
 
 // GainLinear returns ((1 + cos(theta)) / 2)^N for the supplied direction.
-func (m CardioidModel) GainLinear(freqHz float64, dir geometry.Vec3) float64 {
+func (m CardioidModel) GainLinear(_ float64, dir geometry.Vec3) float64 {
 	axis := m.Axis.Normalize()
 	if axis == geometry.Vec3Zero {
 		return 0

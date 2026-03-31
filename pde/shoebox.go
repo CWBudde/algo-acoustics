@@ -169,7 +169,7 @@ func (e PDELowFreqEngine) CrossoverHz() float64 {
 }
 
 // Transfer generates a low-frequency transfer function for the first source/receiver pair.
-func (e PDELowFreqEngine) Transfer(sc *scene.Scene, cfg ir.RenderConfig) (*TransferFunction, error) {
+func (e PDELowFreqEngine) Transfer(sc *scene.Scene, _ ir.RenderConfig) (*TransferFunction, error) {
 	if sc == nil {
 		return nil, errors.New("scene is nil")
 	}

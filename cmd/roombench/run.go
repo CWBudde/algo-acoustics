@@ -26,7 +26,7 @@ func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run regression fixtures and compare them against baselines.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			fixtures, err := filepath.Glob(filepath.Join(fixtureDir, "shoebox_*.json"))
 			if err != nil {
 				return fmt.Errorf("list fixtures: %w", err)

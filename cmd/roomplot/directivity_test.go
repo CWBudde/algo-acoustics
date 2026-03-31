@@ -13,7 +13,7 @@ type constantDirectivityModel struct {
 	gain float64
 }
 
-func (m constantDirectivityModel) GainLinear(freqHz float64, dir geometry.Vec3) float64 {
+func (m constantDirectivityModel) GainLinear(_ float64, _ geometry.Vec3) float64 {
 	return m.gain
 }
 

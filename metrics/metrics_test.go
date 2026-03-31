@@ -3,6 +3,7 @@ package metrics
 import (
 	"bytes"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/ir"
@@ -19,7 +20,7 @@ func TestCompareMetricAndReport(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	PrintReport([]MetricResult{result}, buffer)
 
-	if got := buffer.String(); !bytes.Contains([]byte(got), []byte("T60")) {
+	if got := buffer.String(); !strings.Contains(got, "T60") {
 		t.Fatalf("PrintReport() output = %q, want metric name", got)
 	}
 

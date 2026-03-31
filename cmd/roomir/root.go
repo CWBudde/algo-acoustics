@@ -13,7 +13,7 @@ func newRootCommand() *cobra.Command {
 		Short:         "Validate and render room acoustics scenes.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
