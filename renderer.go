@@ -2,6 +2,7 @@ package algoacoustics
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
@@ -47,14 +48,14 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 	if r.Early != nil {
 		earlyEvents, err = r.Early.Generate(sc, cfg)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("generate early events: %w", err)
 		}
 	}
 
 	if r.Late != nil {
 		lateEvents, err = r.Late.Generate(sc, cfg)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("generate late events: %w", err)
 		}
 	}
 
@@ -62,14 +63,14 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 
 	buffer, err := ir.RenderMono(combined, cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("render mono buffer: %w", err)
 	}
 
 	if r.LowFreq != nil {
 		if provider, ok := r.LowFreq.(interface{ CrossoverHz() float64 }); ok {
 			transfer, err := r.LowFreq.Transfer(sc, cfg)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("generate low-frequency transfer: %w", err)
 			}
 
 			if transfer != nil {
@@ -97,7 +98,7 @@ func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, righ
 	if r.Early != nil {
 		earlyEvents, err = r.Early.Generate(sc, cfg)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("generate early events: %w", err)
 		}
 	}
 
@@ -105,7 +106,7 @@ func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, righ
 	if r.Late != nil {
 		lateEvents, err = r.Late.Generate(sc, cfg)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("generate late events: %w", err)
 		}
 	}
 
@@ -113,7 +114,7 @@ func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, righ
 
 	leftBuf, rightBuf, err := ir.RenderBinaural(combined, receiver.HRTF, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("render binaural buffer: %w", err)
 	}
 
 	return append([]float64(nil), leftBuf.Samples...), append([]float64(nil), rightBuf.Samples...), nil

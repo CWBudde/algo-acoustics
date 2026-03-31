@@ -50,7 +50,7 @@ func run() error {
 
 	hist, err := tracer.Trace()
 	if err != nil {
-		return err
+		return fmt.Errorf("trace room response: %w", err)
 	}
 
 	fmt.Fprintln(os.Stdout, "time_seconds,energy")

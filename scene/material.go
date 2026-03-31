@@ -2,6 +2,7 @@ package scene
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
@@ -37,7 +38,12 @@ func (m Material) MarshalJSON() ([]byte, error) {
 		payload.Scattering = append([]float64(nil), m.Scattering[:]...)
 	}
 
-	return json.Marshal(payload)
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal material %q: %w", m.Name, err)
+	}
+
+	return encoded, nil
 }
 
 // UnmarshalJSON supports both the new "scattering" field and legacy
@@ -47,7 +53,7 @@ func (m *Material) UnmarshalJSON(data []byte) error {
 
 	err := json.Unmarshal(data, &payload)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshal material: %w", err)
 	}
 
 	m.Name = payload.Name

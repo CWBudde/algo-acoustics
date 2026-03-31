@@ -2,6 +2,7 @@ package raytrace
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/scene"
@@ -24,7 +25,7 @@ func NewMeshTracer(mesh *geometry.Mesh, materials []*scene.Material) (MeshTracer
 	if err != nil {
 		var issues *geometry.MeshValidationIssues
 		if !errors.As(err, &issues) || issues.HasProblems() {
-			return MeshTracer{}, err
+			return MeshTracer{}, fmt.Errorf("validate mesh: %w", err)
 		}
 	}
 

@@ -39,6 +39,8 @@ func TestShoeboxModesMatchLocalSweepPeaksAcrossRepresentativeRooms(t *testing.T)
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			modes := uniqueModesUpToFreq(ShoeboxModes(&tc.room, 20), 300)
 			if len(modes) == 0 {
 				t.Fatal("ShoeboxModes returned no modes under 300 Hz")

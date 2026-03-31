@@ -11,27 +11,28 @@ import (
 const (
 	decayRangeUpperDB     = 0
 	decayRangeLowerDB     = -60
+	decayTimeTargetDB     = -60
 	decayToleranceEpsilon = 1e-12
 )
 
 // T60FromDecaySlope estimates the reverberation time from a linear regression over the decay curve.
 func T60FromDecaySlope(buf *ir.Buffer) (float64, error) {
-	return estimateDecayTime(buf, decayRangeUpperDB, decayRangeLowerDB, -60)
+	return estimateDecayTime(buf, decayRangeUpperDB, decayRangeLowerDB)
 }
 
 // EDT estimates the early decay time from 0 to -10 dB.
 func EDT(buf *ir.Buffer) (float64, error) {
-	return estimateDecayTime(buf, 0, -10, -60)
+	return estimateDecayTime(buf, 0, -10)
 }
 
 // T20 estimates the reverberation time from -5 to -25 dB.
 func T20(buf *ir.Buffer) (float64, error) {
-	return estimateDecayTime(buf, -5, -25, -60)
+	return estimateDecayTime(buf, -5, -25)
 }
 
 // T30 estimates the reverberation time from -5 to -35 dB.
 func T30(buf *ir.Buffer) (float64, error) {
-	return estimateDecayTime(buf, -5, -35, -60)
+	return estimateDecayTime(buf, -5, -35)
 }
 
 // C50 returns the clarity index over the first 50 ms.
@@ -64,7 +65,7 @@ type decayPoint struct {
 	decayDB     float64
 }
 
-func estimateDecayTime(buf *ir.Buffer, upperDB, lowerDB, targetDB float64) (float64, error) {
+func estimateDecayTime(buf *ir.Buffer, upperDB, lowerDB float64) (float64, error) {
 	points, err := decayPoints(buf)
 	if err != nil {
 		return 0, err
@@ -86,7 +87,7 @@ func estimateDecayTime(buf *ir.Buffer, upperDB, lowerDB, targetDB float64) (floa
 		return 0, errors.New("decay slope must be negative")
 	}
 
-	return (targetDB - intercept) / slope, nil
+	return (decayTimeTargetDB - intercept) / slope, nil
 }
 
 func decayPoints(buf *ir.Buffer) ([]decayPoint, error) {

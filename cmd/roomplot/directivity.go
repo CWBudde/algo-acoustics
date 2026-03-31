@@ -49,7 +49,7 @@ func newSourceDirectivityCommand() *cobra.Command {
 
 			rows := buildSourceDirectivityRows(model, freqHz, elevationDeg, stepDeg)
 
-			writer := io.Writer(cmd.OutOrStdout())
+			writer := cmd.OutOrStdout()
 
 			var file *os.File
 			if outputPath != "" {

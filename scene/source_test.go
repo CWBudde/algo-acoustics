@@ -33,6 +33,8 @@ func TestSourceDirectionToRotatedOrientation(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			source := Source{
 				Position:    geometry.Vec3Zero,
 				Orientation: geometry.QuatFromAxisAngle(geometry.Vec3{X: 0, Y: 0, Z: 1}, tc.angle),

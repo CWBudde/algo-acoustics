@@ -2,6 +2,7 @@ package pde
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
@@ -61,7 +62,7 @@ func solveAtFrequency(room *scene.Shoebox, src, rcv geometry.Vec3, freqHz float6
 
 	plan, err := poisson.NewHelmholtzPlan(3, []int{nx, ny, nz}, []float64{hx, hy, hz}, []poisson.BCType{bc, bc, bc}, alpha)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("create Helmholtz plan: %w", err)
 	}
 
 	rhs := make([]float64, nx*ny*nz)
@@ -72,7 +73,7 @@ func solveAtFrequency(room *scene.Shoebox, src, rcv geometry.Vec3, freqHz float6
 
 	err = plan.Solve(solution, rhs)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("solve Helmholtz system: %w", err)
 	}
 
 	rx, ry, rz := nearestCell(rcv, nx, ny, nz, hx, hy, hz)

@@ -80,13 +80,18 @@ func (r Receiver) MarshalJSON() ([]byte, error) {
 	if r.HRTF != nil {
 		hrtfValue, err := hrtfJSONFromDataset(r.HRTF)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("encode HRTF dataset: %w", err)
 		}
 
 		encoded.HRTF = hrtfValue
 	}
 
-	return json.Marshal(encoded)
+	data, err := json.Marshal(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("marshal receiver: %w", err)
+	}
+
+	return data, nil
 }
 
 // UnmarshalJSON restores the interface-backed HRTF field.
@@ -95,7 +100,7 @@ func (r *Receiver) UnmarshalJSON(data []byte) error {
 
 	err := json.Unmarshal(data, &decoded)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshal receiver: %w", err)
 	}
 
 	r.Position = decoded.Position
@@ -106,7 +111,7 @@ func (r *Receiver) UnmarshalJSON(data []byte) error {
 	if decoded.HRTF != nil {
 		dataset, err := decoded.HRTF.toDataset()
 		if err != nil {
-			return err
+			return fmt.Errorf("decode HRTF dataset: %w", err)
 		}
 
 		r.HRTF = dataset

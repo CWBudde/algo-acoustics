@@ -22,6 +22,8 @@ func TestBenchmarkCorpusSmoke(t *testing.T) {
 
 	for _, path := range corpus {
 		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
+
 			sc, err := scene.LoadSceneFile(path)
 			if err != nil {
 				t.Fatalf("LoadSceneFile() error = %v", err)

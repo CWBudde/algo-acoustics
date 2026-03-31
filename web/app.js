@@ -956,6 +956,7 @@ function drawWaveform(samples = null) {
 
   const pad = 12;
   const mid = height / 2;
+  const dynRange = 60; // dB range shown
 
   // zero-line
   context.strokeStyle = palette.grid;
@@ -965,13 +966,18 @@ function drawWaveform(samples = null) {
   context.lineTo(width, mid);
   context.stroke();
 
-  // waveform trace using ~90% of vertical range
+  // dB-scaled waveform: sign preserved, magnitude in dB
   context.strokeStyle = palette.trace;
   context.lineWidth = 1.5;
   context.beginPath();
   downsampled.forEach((sample, index) => {
     const x = (index / Math.max(1, downsampled.length - 1)) * width;
-    const y = mid - (sample / maxAmplitude) * (mid - pad);
+    const abs = Math.abs(sample);
+    const dB = abs > 0 ? 20 * Math.log10(abs / maxAmplitude) : -dynRange;
+    const clampedDB = Math.max(dB, -dynRange);
+    const magnitude = 1 + clampedDB / dynRange; // 0..1
+    const sign = sample >= 0 ? 1 : -1;
+    const y = mid - sign * magnitude * (mid - pad);
     if (index === 0) {
       context.moveTo(x, y);
     } else {

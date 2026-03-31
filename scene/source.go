@@ -72,13 +72,18 @@ func (s Source) MarshalJSON() ([]byte, error) {
 	if s.Directivity != nil {
 		directivityValue, err := directivityJSONFromModel(s.Directivity)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("encode directivity model: %w", err)
 		}
 
 		encoded.Directivity = directivityValue
 	}
 
-	return json.Marshal(encoded)
+	data, err := json.Marshal(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("marshal source: %w", err)
+	}
+
+	return data, nil
 }
 
 // UnmarshalJSON restores the interface-backed directivity field.
@@ -87,7 +92,7 @@ func (s *Source) UnmarshalJSON(data []byte) error {
 
 	err := json.Unmarshal(data, &decoded)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshal source: %w", err)
 	}
 
 	s.Position = decoded.Position
@@ -98,7 +103,7 @@ func (s *Source) UnmarshalJSON(data []byte) error {
 	if decoded.Directivity != nil {
 		model, err := decoded.Directivity.toModel()
 		if err != nil {
-			return err
+			return fmt.Errorf("decode directivity model: %w", err)
 		}
 
 		s.Directivity = model

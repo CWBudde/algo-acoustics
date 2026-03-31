@@ -91,7 +91,7 @@ func normalizeExampleOptions(opts exampleOptions) (exampleOptions, error) {
 
 	err := hybrid.ValidateFadeWindowConfig(opts.CrossoverWindow)
 	if err != nil {
-		return exampleOptions{}, err
+		return exampleOptions{}, fmt.Errorf("validate crossover window: %w", err)
 	}
 
 	return opts, nil
@@ -182,7 +182,7 @@ func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3,
 
 	err := scene.Validate(sc)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validate scene: %w", err)
 	}
 
 	earlyEvents, err := ism.ISMSolver{}.Solve(sc, ism.ISMConfig{

@@ -138,7 +138,7 @@ func (m *Mesh) Validate() error {
 func LoadOBJ(path string) (*Mesh, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open OBJ %q: %w", path, err)
 	}
 	defer file.Close()
 
@@ -181,7 +181,7 @@ func LoadOBJ(path string) (*Mesh, error) {
 
 	err = scanner.Err()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan OBJ %q: %w", path, err)
 	}
 
 	mesh := &Mesh{Triangles: triangles}

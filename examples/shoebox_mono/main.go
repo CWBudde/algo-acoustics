@@ -33,7 +33,7 @@ func run(outputPath string) error {
 
 	err := scene.Validate(sc)
 	if err != nil {
-		return err
+		return fmt.Errorf("validate scene: %w", err)
 	}
 
 	solver := ism.ISMSolver{}
@@ -44,7 +44,7 @@ func run(outputPath string) error {
 		BandSpec:     sc.BandSpec,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("solve scene: %w", err)
 	}
 
 	buffer, err := ir.RenderMono(events, ir.RenderConfig{
@@ -53,12 +53,12 @@ func run(outputPath string) error {
 		BandSpec:        sc.BandSpec,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("render mono impulse response: %w", err)
 	}
 
 	err = export.WriteMonoWAV(outputPath, buffer)
 	if err != nil {
-		return err
+		return fmt.Errorf("write mono wav %q: %w", outputPath, err)
 	}
 
 	return nil

@@ -60,6 +60,8 @@ func TestGLLModelTracksSourceRotationAcrossQuadrants(t *testing.T) {
 
 	for _, tc := range rotations {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			direction := geometry.Vec3{X: math.Cos(tc.angle), Y: math.Sin(tc.angle), Z: 0}
 
 			got := model.GainLinear(1000, direction)

@@ -34,7 +34,7 @@ func (ISMSolver) Solve(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 
 	err := scene.Validate(sc)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validate scene: %w", err)
 	}
 
 	if sc.Room.Kind != scene.RoomKindShoebox || sc.Room.Shoebox == nil {

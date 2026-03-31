@@ -22,7 +22,7 @@ func loadScene(r io.Reader, baseDir string) (*Scene, error) {
 
 	err := decoder.Decode(&sc)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode scene JSON: %w", err)
 	}
 
 	err = resolveRoomMesh(&sc, baseDir)
@@ -37,7 +37,7 @@ func loadScene(r io.Reader, baseDir string) (*Scene, error) {
 func LoadSceneFile(path string) (*Scene, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open scene file %q: %w", path, err)
 	}
 	defer file.Close()
 
