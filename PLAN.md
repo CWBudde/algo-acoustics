@@ -1120,13 +1120,13 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 - [ ] Expose quality level setting: Draft / Preview / Final
 - [ ] Map to concrete parameters:
 
-| Parameter       | Draft  | Preview  | Final    |
-| --------------- | ------ | -------- | -------- |
-| ISM order       | 2      | 4        | 8+       |
-| Ray count       | 1,000  | 10,000   | 100,000+ |
-| Frequency bands | 3      | 6        | 8        |
-| Max IR length   | 100 ms | 500 ms   | full T60 |
-| Scattering      | off    | mid-band | per-band |
+| Parameter         | Draft   | Preview  | Final     |
+| ----------------- | ------- | -------- | --------- |
+| ISM order         | 2       | 4        | 8+        |
+| Ray count         | 1,000   | 10,000   | 100,000+  |
+| Frequency bands   | 3       | 6        | 8         |
+| Max IR length     | 100 ms  | 500 ms   | full T60  |
+| Scattering        | off     | mid-band | per-band  |
 
 - [ ] Allow manual override of each parameter for advanced users
 
@@ -1218,20 +1218,20 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ## Milestone Summary
 
-| Milestone                        | Phases  | Deliverable                              |
-| -------------------------------- | ------- | ---------------------------------------- |
-| **A — First audible result**     | 0, 1, 2 | Mono WAV IR from shoebox scene           |
-| **B — Useful room simulator**    | 3, 4, 5 | Hybrid mono IR + metrics + regression    |
-| **C — Loudspeaker-aware**        | 6       | GLL directivity source model             |
-| **D — Binaural simulator**       | 7       | Stereo BRIR WAV export                   |
-| **E — Physics-enhanced low end** | 8       | `algo-pde` crossover hybrid IR           |
-| **F — Geometry expansion**       | 9, 10   | Mesh scenes + validation corpus          |
-| **G — Accurate scattering**      | 11      | Per-band scattering + air absorption     |
-| **H — Diffraction**              | 12      | UTD edge diffraction in ISM + ray tracer |
-| **I — Convex room wave solver**  | 13      | IBM-FDTD for non-rectangular rooms       |
-| **J — GPU acceleration**         | 14      | GPU-offloaded FDTD + ray tracing         |
-| **K — Interactive preview**      | 15      | Sub-second parameter feedback            |
-| **L — Browser demo**             | 16      | WASM + Three.js + Web Audio demo         |
+| Milestone                         | Phases  | Deliverable                            |
+| --------------------------------- | ------- | -------------------------------------- |
+| **A — First audible result**      | 0, 1, 2 | Mono WAV IR from shoebox scene         |
+| **B — Useful room simulator**     | 3, 4, 5 | Hybrid mono IR + metrics + regression  |
+| **C — Loudspeaker-aware**         | 6       | GLL directivity source model           |
+| **D — Binaural simulator**        | 7       | Stereo BRIR WAV export                 |
+| **E — Physics-enhanced low end**  | 8       | `algo-pde` crossover hybrid IR         |
+| **F — Geometry expansion**        | 9, 10   | Mesh scenes + validation corpus        |
+| **G — Accurate scattering**       | 11      | Per-band scattering + air absorption   |
+| **H — Diffraction**               | 12      | UTD edge diffraction in ISM + ray tracer |
+| **I — Convex room wave solver**   | 13      | IBM-FDTD for non-rectangular rooms     |
+| **J — GPU acceleration**          | 14      | GPU-offloaded FDTD + ray tracing       |
+| **K — Interactive preview**       | 15      | Sub-second parameter feedback           |
+| **L — Browser demo**              | 16      | WASM + Three.js + Web Audio demo       |
 
 ---
 
