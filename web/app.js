@@ -147,7 +147,9 @@ const refs = {
   renderCrossover: document.getElementById("render-crossover"),
   renderCrossoverValue: document.getElementById("render-crossover-value"),
   renderWindow: document.getElementById("render-window"),
-  renderModeButtons: Array.from(document.querySelectorAll("#render-mode-switch .mode-button")),
+  renderModeButtons: Array.from(
+    document.querySelectorAll("#render-mode-switch .mode-button"),
+  ),
   renderScene: document.getElementById("render-scene"),
   downloadWav: document.getElementById("download-wav"),
   metricFirstArrival: document.getElementById("metric-first-arrival"),
@@ -155,7 +157,9 @@ const refs = {
   metricEvents: document.getElementById("metric-events"),
   metricRenderTime: document.getElementById("metric-render-time"),
   waveformCanvas: document.getElementById("waveform-canvas"),
-  irViewButtons: Array.from(document.querySelectorAll("#ir-view-switch .mode-button")),
+  irViewButtons: Array.from(
+    document.querySelectorAll("#ir-view-switch .mode-button"),
+  ),
   sceneCanvas: document.getElementById("scene-canvas"),
   audioPlayer: document.getElementById("audio-player"),
   renderLog: document.getElementById("render-log"),
@@ -905,7 +909,6 @@ function createDirectPathLine(palette) {
   );
 }
 
-
 function createDirectivityCone(palette) {
   const cone = new THREE.Mesh(
     new THREE.ConeGeometry(0.16, 0.42, 24, 1, true),
@@ -965,10 +968,8 @@ function drawWaveform(samples = null) {
   }
 
   const downsampled = downsampleForCanvas(samples, width);
-  const maxAmplitude = Math.max(
-    ...downsampled.map((value) => Math.abs(value)),
-    1e-6,
-  );
+  // Use a robust peak estimate so strong early reflections do not visually flatten the late tail.
+  const maxAmplitude = robustPeakAmplitude(downsampled);
 
   const pad = 12;
 
@@ -1073,6 +1074,23 @@ function downsampleForCanvas(samples, targetWidth) {
     output.push(peak);
   }
   return output;
+}
+
+function robustPeakAmplitude(samples) {
+  if (!samples || samples.length === 0) {
+    return 1e-6;
+  }
+
+  const magnitudes = samples
+    .map((value) => Math.abs(value))
+    .sort((left, right) => left - right);
+
+  const index = Math.floor((magnitudes.length - 1) * 0.995);
+  const percentile = magnitudes[Math.max(0, index)] || 0;
+  const absoluteMax = magnitudes[magnitudes.length - 1] || 0;
+
+  // Keep enough headroom to avoid over-clipping while still revealing lower-level tails.
+  return Math.max(percentile, absoluteMax * 0.2, 1e-6);
 }
 
 function bindRange(input, output, formatter) {

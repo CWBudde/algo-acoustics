@@ -65,20 +65,20 @@ func newRenderStereoCommand() *cobra.Command {
 				return err
 			}
 
+			hybridCfg := hybrid.HybridConfig{
+				CrossoverTimeSeconds: crossoverTimeSeconds,
+				CrossoverMode:        hybrid.TimeBased,
+				SmoothenCrossover:    true,
+			}
+
+			lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, hybridCfg)
+
 			lateLeft := cloneStereoBuffer(lateBuffer)
 			lateRight := cloneStereoBuffer(lateBuffer)
 
-			left := hybrid.CombineBuffers(earlyLeft, lateLeft, hybrid.HybridConfig{
-				CrossoverTimeSeconds: crossoverTimeSeconds,
-				CrossoverMode:        hybrid.TimeBased,
-				SmoothenCrossover:    true,
-			})
+			left := hybrid.CombineBuffers(earlyLeft, lateLeft, hybridCfg)
 
-			right := hybrid.CombineBuffers(earlyRight, lateRight, hybrid.HybridConfig{
-				CrossoverTimeSeconds: crossoverTimeSeconds,
-				CrossoverMode:        hybrid.TimeBased,
-				SmoothenCrossover:    true,
-			})
+			right := hybrid.CombineBuffers(earlyRight, lateRight, hybridCfg)
 			if left == nil || right == nil {
 				return errors.New("combine stereo hybrid buffers")
 			}
