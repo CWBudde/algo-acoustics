@@ -102,6 +102,7 @@ func loadEventsJSON(path string) ([]ir.Event, error) {
 	}
 
 	var events []ir.Event
+
 	err = json.Unmarshal(data, &events)
 	if err != nil {
 		return nil, err

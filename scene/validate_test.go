@@ -246,7 +246,8 @@ func TestSceneJSONRoundTrip(t *testing.T) {
 	}
 
 	var decoded scene.Scene
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
+	err = json.Unmarshal(encoded, &decoded)
+	if err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 
@@ -263,7 +264,8 @@ func TestLoadSceneFile(t *testing.T) {
 		t.Fatalf("LoadSceneFile() failed: %v", err)
 	}
 
-	if err := scene.Validate(sc); err != nil {
+	err = scene.Validate(sc)
+	if err != nil {
 		t.Fatalf("loaded scene should validate: %v", err)
 	}
 }
@@ -288,7 +290,8 @@ func TestLoadSceneFileLoadsMeshOBJ(t *testing.T) {
 		t.Fatalf("loaded mesh triangle count = %d, want 12", len(sc.Room.Mesh.Triangles))
 	}
 
-	if err := scene.Validate(sc); err != nil {
+	err = scene.Validate(sc)
+	if err != nil {
 		t.Fatalf("loaded mesh scene should validate: %v", err)
 	}
 }

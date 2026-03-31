@@ -348,10 +348,11 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 		request.Render.CrossoverWindow = defaults.Render.CrossoverWindow
 	}
 
-	if err := hybrid.ValidateFadeWindowConfig(hybrid.FadeWindowConfig{
+	err = hybrid.ValidateFadeWindowConfig(hybrid.FadeWindowConfig{
 		Name:  request.Render.CrossoverWindow,
 		Alpha: request.Render.CrossoverWindowAlpha,
-	}); err != nil {
+	})
+	if err != nil {
 		return demoRequest{}, fmt.Errorf("invalid crossover window: %w", err)
 	}
 

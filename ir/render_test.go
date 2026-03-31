@@ -137,7 +137,8 @@ func TestRenderMonoRejectsInvalidInput(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := RenderMono(tc.events, tc.cfg); err == nil {
+			_, err := RenderMono(tc.events, tc.cfg)
+			if err == nil {
 				t.Fatal("RenderMono() error = nil, want non-nil")
 			}
 		})

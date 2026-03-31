@@ -30,6 +30,7 @@ func run(outputPath string) error {
 	}
 
 	sc := shoeboxScene()
+
 	err := scene.Validate(sc)
 	if err != nil {
 		return err

@@ -36,7 +36,8 @@ func TestNewMeshTracerRejectsDegenerateMesh(t *testing.T) {
 		V2: geometry.Vec3{X: 2, Y: 0, Z: 1},
 	}}}
 
-	if _, err := NewMeshTracer(mesh, nil); err == nil {
+	_, err := NewMeshTracer(mesh, nil)
+	if err == nil {
 		t.Fatal("NewMeshTracer() error = nil, want validation failure")
 	}
 }

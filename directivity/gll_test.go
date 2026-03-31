@@ -26,6 +26,7 @@ func TestLoadGLLMissingFile(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "missing.gll")
+
 	_, err := LoadGLL(path, "")
 	if err == nil {
 		t.Fatal("LoadGLL() succeeded for missing file")

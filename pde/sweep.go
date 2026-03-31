@@ -69,7 +69,8 @@ func solveAtFrequency(room *scene.Shoebox, src, rcv geometry.Vec3, freqHz float6
 	rhs[cellIndex(ix, iy, iz, ny, nz)] = 1
 
 	solution := make([]float64, nx*ny*nz)
-	if err := plan.Solve(solution, rhs); err != nil {
+	err = plan.Solve(solution, rhs)
+	if err != nil {
 		return 0, err
 	}
 

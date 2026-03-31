@@ -43,45 +43,59 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 		buf.Samples[index] = math.Exp(-k * timeSeconds)
 	}
 
-	if got, err := T60FromDecaySlope(buf); err != nil {
+	got, err := T60FromDecaySlope(buf)
+	if err != nil {
 		t.Fatalf("T60FromDecaySlope() error = %v", err)
-	} else if math.Abs(got-targetT60) > 0.05 {
+	}
+	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("T60FromDecaySlope() = %v, want %v", got, targetT60)
 	}
 
-	if got, err := EDT(buf); err != nil {
+	got, err = EDT(buf)
+	if err != nil {
 		t.Fatalf("EDT() error = %v", err)
-	} else if math.Abs(got-targetT60) > 0.05 {
+	}
+	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("EDT() = %v, want %v", got, targetT60)
 	}
 
-	if got, err := T20(buf); err != nil {
+	got, err = T20(buf)
+	if err != nil {
 		t.Fatalf("T20() error = %v", err)
-	} else if math.Abs(got-targetT60) > 0.05 {
+	}
+	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("T20() = %v, want %v", got, targetT60)
 	}
 
-	if got, err := T30(buf); err != nil {
+	got, err = T30(buf)
+	if err != nil {
 		t.Fatalf("T30() error = %v", err)
-	} else if math.Abs(got-targetT60) > 0.05 {
+	}
+	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("T30() = %v, want %v", got, targetT60)
 	}
 
-	if got, err := D50(buf); err != nil {
+	got, err = D50(buf)
+	if err != nil {
 		t.Fatalf("D50() error = %v", err)
-	} else if got <= 0 || got >= 1 {
+	}
+	if got <= 0 || got >= 1 {
 		t.Fatalf("D50() = %v, want between 0 and 1", got)
 	}
 
-	if got, err := C50(buf); err != nil {
+	got, err = C50(buf)
+	if err != nil {
 		t.Fatalf("C50() error = %v", err)
-	} else if !math.IsInf(got, 1) && got <= 0 {
+	}
+	if !math.IsInf(got, 1) && got <= 0 {
 		t.Fatalf("C50() = %v, want positive or +Inf", got)
 	}
 
-	if got, err := C80(buf); err != nil {
+	got, err = C80(buf)
+	if err != nil {
 		t.Fatalf("C80() error = %v", err)
-	} else if !math.IsInf(got, 1) && got <= 0 {
+	}
+	if !math.IsInf(got, 1) && got <= 0 {
 		t.Fatalf("C80() = %v, want positive or +Inf", got)
 	}
 }

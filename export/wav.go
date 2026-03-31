@@ -96,6 +96,7 @@ func writeWAV(path string, sampleRate int, numChans int, data []float32) (err er
 	}()
 
 	encoder := wav.NewEncoder(file, sampleRate, 16, numChans, 1)
+
 	err = encoder.Write(&audio.Float32Buffer{
 		Format: &audio.Format{
 			NumChannels: numChans,

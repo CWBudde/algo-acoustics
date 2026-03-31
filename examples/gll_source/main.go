@@ -179,6 +179,7 @@ func compareToOmni(model directivity.Model, receiver geometry.Vec3, opts example
 
 func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3, opts exampleOptions) (*ir.Buffer, error) {
 	sc := shoeboxScene(sourceDirectivity, receiver)
+
 	err := scene.Validate(sc)
 	if err != nil {
 		return nil, err

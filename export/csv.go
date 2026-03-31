@@ -20,6 +20,7 @@ func WriteEventsCSV(path string, events []ir.Event) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
+
 	err = writer.Write([]string{"index", "timeSeconds", "amplitude", "directionX", "directionY", "directionZ", "distanceMeters", "bandGain", "phaseRadians", "kind"})
 	if err != nil {
 		return fmt.Errorf("write csv header: %w", err)
@@ -69,6 +70,7 @@ func WriteMetricsCSV(path string, results []metrics.MetricResult) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
+
 	err = writer.Write([]string{"name", "expected", "actual", "tolerance", "pass"})
 	if err != nil {
 		return fmt.Errorf("write csv header: %w", err)

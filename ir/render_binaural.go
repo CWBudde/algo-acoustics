@@ -15,7 +15,8 @@ func RenderBinaural(events []Event, hrtfDataset hrtf.Dataset, cfg RenderConfig) 
 		return nil, nil, errors.New("hrtf dataset must not be nil")
 	}
 
-	if err := validateRenderConfig(cfg); err != nil {
+	err = validateRenderConfig(cfg)
+	if err != nil {
 		return nil, nil, err
 	}
 

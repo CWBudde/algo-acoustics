@@ -179,7 +179,8 @@ func LoadOBJ(path string) (*Mesh, error) {
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
+	err = scanner.Err()
+	if err != nil {
 		return nil, err
 	}
 

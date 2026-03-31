@@ -61,7 +61,8 @@ func loadRegressionScene(t *testing.T, path string) *scene.Scene {
 		t.Fatalf("LoadSceneFile(%s) error = %v", path, err)
 	}
 
-	if err := scene.Validate(loaded); err != nil {
+	err = scene.Validate(loaded)
+	if err != nil {
 		t.Fatalf("Validate(%s) error = %v", path, err)
 	}
 
@@ -104,7 +105,8 @@ func loadRegressionEvents(t *testing.T, path string) []ir.Event {
 	}
 
 	var events []ir.Event
-	if err := json.Unmarshal(data, &events); err != nil {
+	err = json.Unmarshal(data, &events)
+	if err != nil {
 		t.Fatalf("json.Unmarshal(%s) error = %v", path, err)
 	}
 

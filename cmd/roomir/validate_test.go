@@ -42,6 +42,7 @@ func TestValidateCommandReportsInvalidScene(t *testing.T) {
 	}
 
 	var sc scene.Scene
+
 	err = json.Unmarshal(fixtureBytes, &sc)
 	if err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
@@ -55,6 +56,7 @@ func TestValidateCommandReportsInvalidScene(t *testing.T) {
 	}
 
 	invalidPath := filepath.Join(t.TempDir(), "invalid-scene.json")
+
 	err = os.WriteFile(invalidPath, invalidBytes, 0o600)
 	if err != nil {
 		t.Fatalf("WriteFile() failed: %v", err)

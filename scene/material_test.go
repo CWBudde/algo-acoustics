@@ -45,7 +45,8 @@ func TestMaterialScatteringRoundTrip(t *testing.T) {
 	}
 
 	var decoded scene.Material
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
+	err = json.Unmarshal(encoded, &decoded)
+	if err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 

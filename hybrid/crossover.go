@@ -40,11 +40,13 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 	}
 
 	lowFreq, geoFreq := make([]complex128, fftSize), make([]complex128, fftSize)
-	if err := plan.Forward(lowFreq, lowSpec); err != nil {
+	err = plan.Forward(lowFreq, lowSpec)
+	if err != nil {
 		return nil
 	}
 
-	if err := plan.Forward(geoFreq, geoSpec); err != nil {
+	err = plan.Forward(geoFreq, geoSpec)
+	if err != nil {
 		return nil
 	}
 
@@ -62,7 +64,8 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 	}
 
 	combinedTime := make([]complex128, fftSize)
-	if err := plan.Inverse(combinedTime, combinedFreq); err != nil {
+	err = plan.Inverse(combinedTime, combinedFreq)
+	if err != nil {
 		return nil
 	}
 
