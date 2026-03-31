@@ -24,8 +24,9 @@ func (t Triangle) Area() float64 {
 }
 
 // RayTriangle tests for intersection between ray r and triangle t using the
-// Möller–Trumbore algorithm. Returns the ray parameter t and whether a
-// front-face hit occurred (t > 0). Back-face hits are excluded.
+// Möller–Trumbore algorithm. Returns the ray parameter t and whether a hit
+// occurred for t > 0. The test is double-sided, so front- and back-face hits
+// are both accepted.
 func RayTriangle(r Ray, tri Triangle) (t float64, hit bool) {
 	const eps = 1e-9
 

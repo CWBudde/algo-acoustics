@@ -27,9 +27,6 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	if r.Scene == nil {
 		return nil, errors.New("scene is nil")
 	}
-	if r.Scene.Room.Kind != scene.RoomKindShoebox || r.Scene.Room.Shoebox == nil {
-		return nil, errors.New("raytrace currently supports shoebox rooms only")
-	}
 	if len(r.Scene.Sources) == 0 {
 		return nil, errors.New("scene has no sources")
 	}
@@ -59,7 +56,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	}
 	hist := NewEnergyHistogram(r.Config.MaxTimeSeconds, binDuration, bandCount)
 
-	tracer, err := NewShoeboxTracer(r.Scene.Room.Shoebox)
+	tracer, err := r.sceneTracer()
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +170,29 @@ func (r *RayTracer) sceneMaterialForWall(wallIdx int) scene.Material {
 	}
 
 	return scene.MaterialFullyReflective()
+}
+
+func (r *RayTracer) sceneTracer() (Tracer, error) {
+	if r == nil || r.Scene == nil {
+		return nil, errors.New("scene is nil")
+	}
+
+	switch r.Scene.Room.Kind {
+	case scene.RoomKindShoebox:
+		if r.Scene.Room.Shoebox == nil {
+			return nil, errors.New("shoebox room is nil")
+		}
+
+		return NewShoeboxTracer(r.Scene.Room.Shoebox)
+	case scene.RoomKindMesh:
+		if r.Scene.Room.Mesh == nil {
+			return nil, errors.New("mesh room is nil")
+		}
+
+		return NewMeshTracer(r.Scene.Room.Mesh, nil)
+	default:
+		return nil, errors.New("raytrace requires a shoebox or mesh room")
+	}
 }
 
 func totalEnergy(values []float64) float64 {

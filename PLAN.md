@@ -763,32 +763,32 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 10.1 Triangle mesh ingestion (`geometry/`)
 
-- [ ] Complete `triangle.go`
-  - [ ] `Triangle.Centroid() Vec3`
-  - [ ] `Triangle.Area() float64`
-  - [ ] `RayTriangle(r Ray, tri Triangle) (t float64, hit bool)` — Möller–Trumbore algorithm
-- [ ] Complete `mesh.go`
-  - [ ] `Mesh.BoundingBox() Box`
-  - [ ] `Mesh.Validate() error` — checks for degenerate triangles, non-watertight warnings
-  - [ ] `LoadOBJ(path string) (*Mesh, error)` — minimal OBJ loader (vertices + faces only)
+- [x] Complete `triangle.go`
+  - [x] `Triangle.Centroid() Vec3`
+  - [x] `Triangle.Area() float64`
+  - [x] `RayTriangle(r Ray, tri Triangle) (t float64, hit bool)` — Möller–Trumbore algorithm
+- [x] Complete `mesh.go`
+  - [x] `Mesh.BoundingBox() Box`
+  - [x] `Mesh.Validate() error` — checks for degenerate triangles, non-watertight warnings
+  - [x] `LoadOBJ(path string) (*Mesh, error)` — minimal OBJ loader (vertices + faces only)
 
 > **Insight:** The Möller–Trumbore algorithm is the standard for ray-triangle intersection. It avoids computing the plane equation separately and is efficient for batch processing.
 
 ### 10.2 BVH acceleration structure (`geometry/`)
 
-- [ ] Add `bvh.go`
-  - [ ] `BVHNode` struct: `AABB Box`, `Left, Right *BVHNode`, `Triangles []int`
-  - [ ] `BuildBVH(mesh *Mesh) *BVHNode` — surface area heuristic (SAH) or midpoint split
-  - [ ] `BVHNode.Intersect(r Ray) (t float64, triIdx int, hit bool)`
-- [ ] Unit test: BVH on 1000 random triangles — all ray hits match brute force
-- [ ] Benchmark: BVH vs. brute force on 10k triangle mesh
+- [x] Add `bvh.go`
+  - [x] `BVHNode` struct: `AABB Box`, `Left, Right *BVHNode`, `Triangles []int`
+  - [x] `BuildBVH(mesh *Mesh) *BVHNode` — surface area heuristic (SAH) or midpoint split
+  - [x] `BVHNode.Intersect(r Ray) (t float64, triIdx int, hit bool)`
+- [x] Unit test: BVH on 1000 random triangles — all ray hits match brute force
+- [x] Benchmark: BVH vs. brute force on 10k triangle mesh
 
 ### 10.3 Mesh-capable ray tracer (`raytrace/`)
 
-- [ ] Add `mesh_tracer.go`
-  - [ ] `MeshTracer` struct: `Mesh *geometry.Mesh`, `BVH *geometry.BVHNode`, `Materials []*scene.Material`
-  - [ ] Implements `Tracer` interface
-  - [ ] `MeshTracer.NextHit(r Ray) (hitPoint, normal Vec3, wallIdx int, ok bool)`
+- [x] Add `mesh_tracer.go`
+  - [x] `MeshTracer` struct: `Mesh *geometry.Mesh`, `BVH *geometry.BVHNode`, `Materials []*scene.Material`
+  - [x] Implements `Tracer` interface
+  - [x] `MeshTracer.NextHit(r Ray) (hitPoint, normal Vec3, wallIdx int, ok bool)`
 
 ### 10.4 Scene mesh support (`scene/`)
 
