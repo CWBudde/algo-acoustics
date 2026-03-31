@@ -64,15 +64,15 @@ func validateRenderConfig(cfg RenderConfig) error {
 }
 
 func monoEventGain(event Event, bandCount int) (float64, error) {
-	bandSum, err := sumBandGain(event.BandGain, bandCount)
+	bandGain, err := aggregateBandGain(event.BandGain, bandCount)
 	if err != nil {
 		return 0, err
 	}
 
-	return event.Amplitude * bandSum * math.Cos(event.PhaseRadians), nil
+	return event.Amplitude * bandGain * math.Cos(event.PhaseRadians), nil
 }
 
-func sumBandGain(bandGain []float64, bandCount int) (float64, error) {
+func aggregateBandGain(bandGain []float64, bandCount int) (float64, error) {
 	if len(bandGain) == 0 {
 		return 1, nil
 	}
@@ -81,10 +81,14 @@ func sumBandGain(bandGain []float64, bandCount int) (float64, error) {
 		return 0, fmt.Errorf("band gain length %d does not match band count %d", len(bandGain), bandCount)
 	}
 
-	sum := 0.0
+	energySum := 0.0
 	for _, value := range bandGain {
-		sum += value
+		energySum += value * value
 	}
 
-	return sum, nil
+	if energySum <= 0 {
+		return 0, nil
+	}
+
+	return math.Sqrt(energySum / float64(len(bandGain))), nil
 }

@@ -87,7 +87,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 		return hist, nil
 	}
 
-	launchEnergy := math.Pow(10, source.GainDB/10) / float64(len(rays))
+	launchEnergy := calibratedRayLaunchEnergy(source.GainDB, source.Position, receiverData.Position, receiverRadius, len(rays))
 	maxPathLength := r.Config.MaxTimeSeconds * r.Config.SpeedOfSound
 
 	for _, ray := range rays {
@@ -129,11 +129,8 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				if arrivalTime <= r.Config.MaxTimeSeconds {
 					hitEnergy := make([]float64, bandCount)
 					capture := receiver.AngularWeight(currentRay.Direction)
-					distanceScale := 1 / math.Max(1, pathLength+tHit)
-
-					distanceScale *= distanceScale
 					for bandIndex := range hitEnergy {
-						hitEnergy[bandIndex] = bandEnergy[bandIndex] * capture * distanceScale
+						hitEnergy[bandIndex] = bandEnergy[bandIndex] * capture
 					}
 
 					hist.Add(arrivalTime, hitEnergy)
@@ -222,4 +219,33 @@ func totalEnergy(values []float64) float64 {
 	}
 
 	return sum
+}
+
+func calibratedRayLaunchEnergy(sourceGainDB float64, sourcePosition, receiverPosition geometry.Vec3, receiverRadius float64, rayCount int) float64 {
+	if rayCount <= 0 || receiverRadius <= 0 {
+		return 0
+	}
+
+	sourceIntensity := math.Pow(10, sourceGainDB/10)
+	distance := sourcePosition.Distance(receiverPosition)
+	if distance <= receiverRadius {
+		return sourceIntensity / float64(rayCount)
+	}
+
+	ratio := receiverRadius / distance
+	if ratio < 0 {
+		ratio = 0
+	}
+
+	if ratio > 1 {
+		ratio = 1
+	}
+
+	cosGamma := math.Sqrt(1 - ratio*ratio)
+	denominator := 2 * math.Pi * distance * distance * float64(rayCount) * (1 - cosGamma)
+	if denominator <= 0 {
+		return sourceIntensity / float64(rayCount)
+	}
+
+	return sourceIntensity / denominator
 }

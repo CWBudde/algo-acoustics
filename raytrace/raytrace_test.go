@@ -1,6 +1,7 @@
 package raytrace
 
 import (
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -8,6 +9,32 @@ import (
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
+
+func TestCalibratedRayLaunchEnergyMatchesDirectIntensity(t *testing.T) {
+	t.Parallel()
+
+	source := geometry.Vec3{X: 1, Y: 1, Z: 1}
+	receiver := geometry.Vec3{X: 4, Y: 2.5, Z: 1.5}
+	radius := 0.25
+	rays := 4096
+	sourceGainDB := 0.0
+
+	er := calibratedRayLaunchEnergy(sourceGainDB, source, receiver, radius, rays)
+	if er <= 0 || math.IsNaN(er) || math.IsInf(er, 0) {
+		t.Fatalf("calibratedRayLaunchEnergy() = %v, want positive finite", er)
+	}
+
+	distance := source.Distance(receiver)
+	gamma := math.Asin(math.Min(1, radius/distance))
+	intersectionFraction := (1 - math.Cos(gamma)) / 2
+
+	rayTracerDirect := float64(rays) * er * intersectionFraction
+	imageSourceDirect := math.Pow(10, sourceGainDB/10) / (4 * math.Pi * distance * distance)
+
+	if diff := math.Abs(rayTracerDirect - imageSourceDirect); diff > 1e-12 {
+		t.Fatalf("direct intensity mismatch: ray=%v image=%v diff=%v", rayTracerDirect, imageSourceDirect, diff)
+	}
+}
 
 func TestRayTracerTraceProducesLateEnergy(t *testing.T) {
 	t.Parallel()
