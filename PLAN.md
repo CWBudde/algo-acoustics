@@ -444,63 +444,63 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 5.1 Hybrid combine (`hybrid/`)
 
-- [ ] Add `combine.go`
-  - [ ] `HybridConfig` struct:
-    - [ ] `CrossoverTimeSeconds float64`
-    - [ ] `CrossoverOrder int` (for order-based cutoff)
-    - [ ] `CrossoverMode CrossoverMode` enum: `TimeBased`, `OrderBased`, `EnergyBased`
-    - [ ] `SmoothenCrossover bool`
-  - [ ] `Combine(early, late []ir.Event, cfg HybridConfig) []ir.Event`
-    - [ ] Strip from `late` any events with time < crossover time (anti-double-counting)
-    - [ ] Merge and sort by time
-  - [ ] `CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer`
-    - [ ] Fade early out and late in around crossover region
+- [x] Add `combine.go`
+  - [x] `HybridConfig` struct:
+    - [x] `CrossoverTimeSeconds float64`
+    - [x] `CrossoverOrder int` (for order-based cutoff)
+    - [x] `CrossoverMode CrossoverMode` enum: `TimeBased`, `OrderBased`, `EnergyBased`
+    - [x] `SmoothenCrossover bool`
+  - [x] `Combine(early, late []ir.Event, cfg HybridConfig) []ir.Event`
+    - [x] Strip from `late` any events with time < crossover time (anti-double-counting)
+    - [x] Merge and sort by time
+  - [x] `CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer`
+    - [x] Fade early out and late in around crossover region
 
 ### 5.2 Crossover alignment (`hybrid/`)
 
-- [ ] Add `align.go`
-  - [ ] `AlignLateTail(late *ir.Buffer, earlyEvents []ir.Event, cfg HybridConfig) *ir.Buffer`
-    - Energy-match late tail amplitude at crossover point to early tail
-- [ ] Unit test: combined energy is continuous at crossover
+- [x] Add `align.go`
+  - [x] `AlignLateTail(late *ir.Buffer, earlyEvents []ir.Event, cfg HybridConfig) *ir.Buffer`
+    - [x] Energy-match late tail amplitude at crossover point to early tail
+- [x] Unit test: combined energy is continuous at crossover
 
 ### 5.3 Crossover weighting (`hybrid/`)
 
-- [ ] Add `weighting.go`
-  - [ ] `LinearFade(start, end int, n int) []float64` — fade window
-  - [ ] `HannFade(n int) []float64` — smoother Hann window for crossover
-  - [ ] `ApplyFade(buf *ir.Buffer, startSample, endSample int, fadeIn bool) *ir.Buffer`
+- [x] Add `weighting.go`
+  - [x] `LinearFade(start, end int, n int) []float64` — fade window
+  - [x] `HannFade(n int) []float64` — smoother Hann window for crossover
+  - [x] `ApplyFade(buf *ir.Buffer, startSample, endSample int, fadeIn bool) *ir.Buffer`
 
 ### 5.4 Band-wise hybrid rendering (`ir/`)
 
-- [ ] Extend `bandrender.go`
-  - [ ] `RenderHybridBand(earlyEvents, lateEvents []ir.Event, bandIndex int, cfg ir.RenderConfig) (*ir.Buffer, error)`
-  - [ ] `SumBandsWeighted(bands []*ir.Buffer, weights []float64) *ir.Buffer`
+- [x] Extend `bandrender.go`
+  - [x] `RenderHybridBand(earlyEvents, lateEvents []ir.Event, bandIndex int, cfg ir.RenderConfig) (*ir.Buffer, error)`
+  - [x] `SumBandsWeighted(bands []*ir.Buffer, weights []float64) *ir.Buffer`
 
 ### 5.5 High-level renderer API
 
-- [ ] Add `renderer.go` at root package or `acoustics/renderer.go`
-  - [ ] `Renderer` struct: `Early EarlyEngine`, `Late LateEngine`, `LowFreq LowFreqEngine`, `Hybrid hybrid.HybridConfig`
-  - [ ] Define engine interfaces:
-    - [ ] `EarlyEngine` interface: `Generate(sc *scene.Scene, cfg RenderConfig) ([]ir.Event, error)`
-    - [ ] `LateEngine` interface: `Generate(sc *scene.Scene, cfg RenderConfig) ([]ir.Event, error)`
-    - [ ] `LowFreqEngine` interface: `Transfer(sc *scene.Scene, cfg RenderConfig) (*TransferFunction, error)`
-  - [ ] `Renderer.RenderMono(sc *scene.Scene, cfg RenderConfig) ([]float64, error)`
-  - [ ] `Renderer.RenderStereo(sc *scene.Scene, cfg RenderConfig) (left, right []float64, err error)` (stub for Phase 7)
+- [x] Add `renderer.go` at root package or `acoustics/renderer.go`
+  - [x] `Renderer` struct: `Early EarlyEngine`, `Late LateEngine`, `LowFreq LowFreqEngine`, `Hybrid hybrid.HybridConfig`
+  - [x] Define engine interfaces:
+    - [x] `EarlyEngine` interface: `Generate(sc *scene.Scene, cfg RenderConfig) ([]ir.Event, error)`
+    - [x] `LateEngine` interface: `Generate(sc *scene.Scene, cfg RenderConfig) ([]ir.Event, error)`
+    - [x] `LowFreqEngine` interface: `Transfer(sc *scene.Scene, cfg RenderConfig) (*TransferFunction, error)`
+  - [x] `Renderer.RenderMono(sc *scene.Scene, cfg RenderConfig) ([]float64, error)`
+  - [x] `Renderer.RenderStereo(sc *scene.Scene, cfg RenderConfig) (left, right []float64, err error)` (stub for Phase 7)
 
 ### 5.6 CLI: `roomir render` (full hybrid)
 
-- [ ] Extend existing `render` sub-command:
-  - [ ] `--mode early|late|hybrid` flag
-  - [ ] `--crossover-time` flag (seconds)
-  - [ ] `--num-rays` flag
-  - [ ] Progress reporting to stderr
+- [x] Extend existing `render` sub-command:
+  - [x] `--mode early|late|hybrid` flag
+  - [x] `--crossover-time` flag (seconds)
+  - [x] `--num-rays` flag
+  - [x] Progress reporting to stderr
 
 ### 5.7 Regression tests for hybrid
 
-- [ ] Test: hybrid IR length matches requested duration
-- [ ] Test: energy in 0–100 ms window dominated by early engine output
-- [ ] Test: energy in 500 ms+ window dominated by late engine output
-- [ ] Test: no energy discontinuity at crossover (< 3 dB jump in 10 ms window)
+- [x] Test: hybrid IR length matches requested duration
+- [x] Test: energy in 0–100 ms window dominated by early engine output
+- [x] Test: energy in 500 ms+ window dominated by late engine output
+- [x] Test: no energy discontinuity at crossover (< 3 dB jump in 10 ms window)
 
 ---
 

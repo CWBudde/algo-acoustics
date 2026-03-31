@@ -71,6 +71,46 @@ func SumBands(bands []*Buffer) *Buffer {
 	return out
 }
 
+// RenderHybridBand renders early and late events for one band and sums them.
+func RenderHybridBand(earlyEvents, lateEvents []Event, bandIndex int, cfg RenderConfig) (*Buffer, error) {
+	early, err := RenderBand(earlyEvents, bandIndex, cfg)
+	if err != nil {
+		return nil, err
+	}
+	late, err := RenderBand(lateEvents, bandIndex, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return SumBands([]*Buffer{early, late}), nil
+}
+
+// SumBandsWeighted sums aligned band buffers after applying scalar weights.
+func SumBandsWeighted(bands []*Buffer, weights []float64) *Buffer {
+	var out *Buffer
+
+	for index, band := range bands {
+		if band == nil {
+			continue
+		}
+		weight := 1.0
+		if index < len(weights) {
+			weight = weights[index]
+		}
+		if out == nil {
+			out = &Buffer{SampleRate: band.SampleRate, Samples: make([]float64, len(band.Samples))}
+		}
+		if band.SampleRate != out.SampleRate || len(band.Samples) != len(out.Samples) {
+			return nil
+		}
+		for sampleIndex, sample := range band.Samples {
+			out.Samples[sampleIndex] += sample * weight
+		}
+	}
+
+	return out
+}
+
 func bandEventGain(event Event, bandIndex, bandCount int) (float64, error) {
 	bandGain, err := bandGainAt(event.BandGain, bandIndex, bandCount)
 	if err != nil {
