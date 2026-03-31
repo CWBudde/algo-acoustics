@@ -5,11 +5,12 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
+	"github.com/cwbudde/algo-acoustics/pde"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-// TransferFunction is a placeholder for future low-frequency transfer results.
-type TransferFunction struct{}
+// TransferFunction carries a low-frequency transfer function.
+type TransferFunction = pde.TransferFunction
 
 // EarlyEngine generates the early sparse event stream for a scene.
 type EarlyEngine interface {
@@ -60,6 +61,20 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 	buffer, err := ir.RenderMono(combined, cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	if r.LowFreq != nil {
+		if provider, ok := r.LowFreq.(interface{ CrossoverHz() float64 }); ok {
+			transfer, err := r.LowFreq.Transfer(sc, cfg)
+			if err != nil {
+				return nil, err
+			}
+
+			if transfer != nil {
+				lowIR := transfer.ToTimeDomain(cfg.SampleRate, len(buffer.Samples))
+				buffer = hybrid.BlendLowFreq(lowIR, buffer, provider.CrossoverHz(), cfg.SampleRate)
+			}
+		}
 	}
 
 	return append([]float64(nil), buffer.Samples...), nil

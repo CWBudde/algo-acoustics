@@ -571,66 +571,66 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 7.1 Nearest-neighbor HRTF lookup (`hrtf/`)
 
-- [ ] Add `lookup.go`
-  - [ ] `MeasurementGrid` struct: list of measurement directions + associated HRIRs
-  - [ ] `NearestNeighbor(grid *MeasurementGrid, dir geometry.Vec3) int` — returns index of closest measurement
-  - [ ] `LookupNearest(grid *MeasurementGrid, dir geometry.Vec3) (left, right []float64, delay float64)`
-- [ ] Unit test: frontal direction → returns measurement closest to (1,0,0)
+- [x] Add `lookup.go`
+  - [x] `MeasurementGrid` struct: list of measurement directions + associated HRIRs
+  - [x] `NearestNeighbor(grid *MeasurementGrid, dir geometry.Vec3) int` — returns index of closest measurement
+  - [x] `LookupNearest(grid *MeasurementGrid, dir geometry.Vec3) (left, right []float64, delay float64)`
+- [x] Unit test: frontal direction → returns measurement closest to (1,0,0)
 
 ### 7.2 Spherical interpolation (`hrtf/`)
 
-- [ ] Add `interpolate.go`
-  - [ ] `BarycentricWeights(p geometry.Vec3, tri [3]geometry.Vec3) [3]float64`
-  - [ ] `InterpolateHRIR(grid *MeasurementGrid, dir geometry.Vec3) (left, right []float64, delay float64)`
-    - [ ] Find enclosing triangle on measurement sphere
-    - [ ] Barycentric blend of three HRIRs
-- [ ] Unit test: interpolated result at a measurement position equals the measurement itself
+- [x] Add `interpolate.go`
+  - [x] `BarycentricWeights(p geometry.Vec3, tri [3]geometry.Vec3) [3]float64`
+  - [x] `InterpolateHRIR(grid *MeasurementGrid, dir geometry.Vec3) (left, right []float64, delay float64)`
+    - [x] Find enclosing triangle on measurement sphere
+    - [x] Barycentric blend of three HRIRs
+- [x] Unit test: interpolated result at a measurement position equals the measurement itself
 
 ### 7.3 SOFA adapter (`hrtf/`)
 
 (see ../go-sofa/)
 
-- [ ] Add `sofa_adapter.go`
-  - [ ] `SOFAAdapter` struct implementing `Dataset` interface
-  - [ ] `LoadSOFA(path string) (*SOFAAdapter, error)` — wraps `go-sofa` loader behind interface
-  - [ ] Guard with build tag or optional import so `go-sofa` is not required for non-binaural builds
-- [ ] Add `hrtf/noop.go`
-  - [ ] `NoopDataset` struct implementing `Dataset` that returns identity (Dirac delta, no delay)
-  - [ ] Useful for testing the binaural rendering pipeline without a real SOFA file
+- [x] Add `sofa_adapter.go`
+  - [x] `SOFAAdapter` struct implementing `Dataset` interface
+  - [x] `LoadSOFA(path string) (*SOFAAdapter, error)` — wraps `go-sofa` loader behind interface
+  - [x] Guard with build tag or optional import so `go-sofa` is not required for non-binaural builds
+- [x] Add `hrtf/noop.go`
+  - [x] `NoopDataset` struct implementing `Dataset` that returns identity (Dirac delta, no delay)
+  - [x] Useful for testing the binaural rendering pipeline without a real SOFA file
 
 ### 7.4 Binaural IR renderer (`ir/`)
 
-- [ ] Add `render_binaural.go`
-  - [ ] `RenderBinaural(events []ir.Event, hrtf hrtf.Dataset, cfg RenderConfig) (left, right *ir.Buffer, err error)`
-    - [ ] For each event:
-      - [ ] Look up HRIR pair for event direction
-      - [ ] Convolve event amplitude with HRIR (via `algo-dsp` convolution)
-      - [ ] Add delay offset from HRTF
-      - [ ] Accumulate to left/right buffers
-- [ ] Unit test with `NoopDataset`: binaural output = 2× mono output (both channels identical)
-- [ ] Unit test with synthetic asymmetric HRTF: left/right differ for lateral source
+- [x] Add `render_binaural.go`
+  - [x] `RenderBinaural(events []ir.Event, hrtf hrtf.Dataset, cfg RenderConfig) (left, right *ir.Buffer, err error)`
+    - [x] For each event:
+      - [x] Look up HRIR pair for event direction
+      - [x] Convolve event amplitude with HRIR (via `algo-dsp` convolution)
+      - [x] Add delay offset from HRTF
+      - [x] Accumulate to left/right buffers
+- [x] Unit test with `NoopDataset`: binaural output = 2× mono output (both channels identical)
+- [x] Unit test with synthetic asymmetric HRTF: left/right differ for lateral source
 
 ### 7.5 Head orientation support
 
-- [ ] In `scene/receiver.go`:
-  - [ ] `Receiver.WorldToHeadDir(worldDir geometry.Vec3) geometry.Vec3` using `Orientation` quaternion
-- [ ] Apply head orientation transform before HRTF lookup in `render_binaural.go`
-- [ ] Unit test: 90° head rotation correctly rotates incoming direction
+- [x] In `scene/receiver.go`:
+  - [x] `Receiver.WorldToHeadDir(worldDir geometry.Vec3) geometry.Vec3` using `Orientation` quaternion
+- [x] Apply head orientation transform before HRTF lookup in `render_binaural.go`
+- [x] Unit test: 90° head rotation correctly rotates incoming direction
 
 ### 7.6 CLI: `roomir render-stereo`
 
-- [ ] Add sub-command `render-stereo <scene.json> -o output_stereo.wav`
-  - [ ] Validates that scene has binaural receiver(s)
-  - [ ] Runs ISM + late ray + hybrid pipeline
-  - [ ] Renders BRIR per receiver
-  - [ ] Exports stereo WAV
+- [x] Add sub-command `render-stereo <scene.json> -o output_stereo.wav`
+  - [x] Validates that scene has binaural receiver(s)
+  - [x] Runs ISM + late ray + hybrid pipeline
+  - [x] Renders BRIR per receiver
+  - [x] Exports stereo WAV
 
 ### 7.7 Example: `shoebox_binaural`
 
-- [ ] Add `examples/shoebox_binaural/main.go`
-  - [ ] Uses `NoopDataset` if no SOFA file present (graceful degradation)
-  - [ ] Writes stereo WAV
-  - [ ] Prints binaural result stats (L/R peak, delay difference)
+- [x] Add `examples/shoebox_binaural/main.go`
+  - [x] Uses `NoopDataset` if no SOFA file present (graceful degradation)
+  - [x] Writes stereo WAV
+  - [x] Prints binaural result stats (L/R peak, delay difference)
 
 ---
 
@@ -638,7 +638,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone E: physics-enhanced low end
 
-> Add a mode-accurate low-frequency engine using `algo-pde` Helmholtz solves.
+> Add a mode-accurate low-frequency engine using `algo-pde` Helmholtz solves (see ../algo-pde/).
 
 ### 8.1 Transfer function type (`pde/`)
 

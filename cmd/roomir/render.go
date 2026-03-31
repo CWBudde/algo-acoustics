@@ -9,6 +9,7 @@ import (
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/ism"
+	"github.com/cwbudde/algo-acoustics/pde"
 	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
 	"github.com/spf13/cobra"
@@ -31,6 +32,12 @@ func newRenderCommand() *cobra.Command {
 	var crossoverWindowName string
 	var crossoverWindowAlpha float64
 	var numRays int
+	var enableLowFreq bool
+	var lowFreqMin float64
+	var lowFreqMax float64
+	var lowFreqPoints int
+	var lowFreqCrossoverHz float64
+	var lowFreqBoundary string
 
 	cmd := &cobra.Command{
 		Use:   "render <scene.json>",
@@ -115,6 +122,31 @@ func newRenderCommand() *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered hybrid mode with %d early events and %d rays in %.3fs to %s\n", len(earlyEvents), numRays, durationSeconds, outputPath)
 			}
 
+			if enableLowFreq {
+				engine := pde.PDELowFreqEngine{
+					Sweep: pde.SweepConfig{
+						FreqMin:           lowFreqMin,
+						FreqMax:           lowFreqMax,
+						NumPoints:         lowFreqPoints,
+						BoundaryCondition: lowFreqBoundary,
+					},
+					CrossoverFreqHz: lowFreqCrossoverHz,
+				}
+				transfer, err := engine.Transfer(sc, renderCfg)
+				if err != nil {
+					return fmt.Errorf("render low-frequency transfer: %w", err)
+				}
+				if transfer == nil {
+					return fmt.Errorf("render low-frequency transfer: nil transfer")
+				}
+				lowIR := transfer.ToTimeDomain(sc.SampleRate, len(buffer.Samples))
+				buffer = hybrid.BlendLowFreq(lowIR, buffer, engine.CrossoverHz(), sc.SampleRate)
+				if buffer == nil {
+					return fmt.Errorf("blend low-frequency output")
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "applied low-frequency blend at %.1f Hz\n", engine.CrossoverHz())
+			}
+
 			if err := export.WriteMonoWAV(outputPath, buffer); err != nil {
 				return fmt.Errorf("write WAV: %w", err)
 			}
@@ -131,6 +163,12 @@ func newRenderCommand() *cobra.Command {
 	cmd.Flags().StringVar(&crossoverWindowName, "crossover-window", defaultRenderWindowName, fmt.Sprintf("hybrid crossover window (%s)", strings.Join(hybrid.SupportedFadeWindows(), ", ")))
 	cmd.Flags().Float64Var(&crossoverWindowAlpha, "crossover-window-alpha", 0, "shape parameter for parametric hybrid crossover windows")
 	cmd.Flags().IntVar(&numRays, "num-rays", defaultRenderNumRays, "number of rays for late-field rendering")
+	cmd.Flags().BoolVar(&enableLowFreq, "enable-lowfreq", false, "enable low-frequency PDE blending")
+	cmd.Flags().Float64Var(&lowFreqMin, "lowfreq-min", 20, "minimum low-frequency sweep value in Hz")
+	cmd.Flags().Float64Var(&lowFreqMax, "lowfreq-max", 300, "maximum low-frequency sweep value in Hz")
+	cmd.Flags().IntVar(&lowFreqPoints, "lowfreq-points", 32, "number of low-frequency sweep points")
+	cmd.Flags().Float64Var(&lowFreqCrossoverHz, "lowfreq-crossover", 200, "low-frequency blend crossover in Hz")
+	cmd.Flags().StringVar(&lowFreqBoundary, "lowfreq-boundary", "neumann", "PDE boundary condition: neumann, dirichlet, or periodic")
 
 	return cmd
 }

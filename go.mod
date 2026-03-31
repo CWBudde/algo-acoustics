@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	github.com/cwbudde/algo-dsp v0.0.0
+	github.com/cwbudde/algo-fft v0.6.10
+	github.com/cwbudde/algo-pde v0.0.0-00010101000000-000000000000
 	github.com/cwbudde/gll-tools v0.0.0
 	github.com/cwbudde/wav v0.0.0
 	github.com/go-audio/audio v1.0.0
@@ -199,6 +201,8 @@ require (
 )
 
 replace github.com/cwbudde/algo-dsp => ../algo-dsp
+
+replace github.com/cwbudde/algo-fft => ../algo-fft
 
 replace github.com/cwbudde/algo-vecmath => ../algo-vecmath
 
