@@ -3,11 +3,11 @@ module github.com/cwbudde/algo-acoustics
 go 1.25.0
 
 require (
+	github.com/cwbudde/gll-tools v0.0.0
 	github.com/cwbudde/wav v0.0.0
-	github.com/golangci/golangci-lint v1.64.8
-	github.com/spf13/cobra v1.9.1
 	github.com/go-audio/audio v1.0.0
-	github.com/go-audio/riff v1.0.0
+	github.com/golangci/golangci-lint v1.64.8
+	github.com/spf13/cobra v1.10.2
 	honnef.co/go/tools v0.6.1
 )
 
@@ -57,6 +57,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fzipp/gocyclo v0.6.0 // indirect
 	github.com/ghostiam/protogetter v0.3.9 // indirect
+	github.com/go-audio/riff v1.0.0 // indirect
 	github.com/go-critic/go-critic v0.12.0 // indirect
 	github.com/go-toolsmith/astcast v1.1.0 // indirect
 	github.com/go-toolsmith/astcopy v1.1.0 // indirect

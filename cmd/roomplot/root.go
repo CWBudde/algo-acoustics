@@ -1,0 +1,33 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+)
+
+func newRootCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "roomplot",
+		Short:         "Inspect room-acoustics diagnostics and plots.",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+
+	cmd.AddCommand(newSourceDirectivityCommand())
+
+	return cmd
+}
+
+func run(cmd *cobra.Command) int {
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), err)
+
+		return 1
+	}
+
+	return 0
+}

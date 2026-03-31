@@ -512,37 +512,37 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 6.1 GLL adapter (`directivity/`)
 
-- [ ] Add `gll.go`
-  - [ ] `GLLModel` struct: holds loaded `gll-tools` directivity data
-  - [ ] `LoadGLL(path, preset string) (*GLLModel, error)` wrapping `gll-tools` loader
-  - [ ] `GLLModel.GainLinear(freqHz float64, dir geometry.Vec3) float64`
-    - [ ] Convert `dir` to azimuth/elevation
-    - [ ] Look up nearest frequency band in balloon data
-    - [ ] Bilinear interpolation over angle grid
-- [ ] Unit test: on-axis (θ=0) gain ≥ off-axis gain for a cardioid-like GLL preset
-- [ ] Unit test: `LoadGLL` returns error on missing file
+- [x] Add `gll.go`
+  - [x] `GLLModel` struct: holds loaded `gll-tools` directivity data
+  - [x] `LoadGLL(path, preset string) (*GLLModel, error)` wrapping `gll-tools` loader
+  - [x] `GLLModel.GainLinear(freqHz float64, dir geometry.Vec3) float64`
+    - [x] Convert `dir` to azimuth/elevation
+    - [x] Look up nearest frequency band in balloon data
+    - [x] Bilinear interpolation over angle grid
+- [x] Unit test: on-axis (θ=0) gain ≥ off-axis gain for a cardioid-like GLL preset
+- [x] Unit test: `LoadGLL` returns error on missing file
 
 ### 6.2 Coordinate frame transform
 
-- [ ] In `scene/source.go` extend `Source.DirectionTo`:
-  - [ ] Transform world-space direction into source-local frame using `Source.Orientation`
-  - [ ] Unit test: source looking along +X, target at +X from source → local dir = (1,0,0)
-  - [ ] Unit test: 90° rotation yields perpendicular local direction
+- [x] In `scene/source.go` extend `Source.DirectionTo`:
+  - [x] Transform world-space direction into source-local frame using `Source.Orientation`
+  - [x] Unit test: source looking along +X, target at +X from source → local dir = (1,0,0)
+  - [x] Unit test: 90° rotation yields perpendicular local direction
 
 ### 6.3 Directivity application in ISM
 
-- [ ] In `ism/solver.go` apply source directivity:
-  - [ ] At direct path: look up gain for direction from source to receiver
-  - [ ] At each reflection path: look up gain for direction from source to first image-source reflection point
-  - [ ] Multiply into `Event.Amplitude` and `Event.BandGain`
-- [ ] Unit test: rotating source 180° changes event amplitudes for non-omnidirectional model
+- [x] In `ism/solver.go` apply source directivity:
+  - [x] At direct path: look up gain for direction from source to receiver
+  - [x] At each reflection path: look up gain for direction from source to first image-source reflection point
+  - [x] Multiply into `Event.Amplitude` and `Event.BandGain`
+- [x] Unit test: rotating source 180° changes event amplitudes for non-omnidirectional model
 
 ### 6.4 Directivity application in ray tracer
 
-- [ ] In `raytrace/launch.go` apply directivity to initial ray power:
-  - [ ] For each launched ray direction, multiply initial power by `source.Directivity.GainLinear(...)`
-  - [ ] Store initial band powers in ray state
-- [ ] Unit test: directional source → rays behind source have near-zero power
+- [x] In `raytrace/launch.go` apply directivity to initial ray power:
+  - [x] For each launched ray direction, multiply initial power by `source.Directivity.GainLinear(...)`
+  - [x] Store initial band powers in ray state
+- [x] Unit test: directional source → rays behind source have near-zero power
 
 ### 6.5 Example: `gll_source`
 
@@ -555,10 +555,10 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 6.6 Diagnostic CLI: `roomplot source-directivity`
 
-- [ ] Add `cmd/roomplot/main.go` skeleton
-- [ ] Add `cmd/roomplot/directivity.go`
-  - [ ] Sub-command `source-directivity <gll-file> --freq 1000 --format csv`
-  - [ ] Prints azimuth vs. gain table to stdout or file
+- [x] Add `cmd/roomplot/main.go` skeleton
+- [x] Add `cmd/roomplot/directivity.go`
+  - [x] Sub-command `source-directivity <gll-file> --freq 1000 --format csv`
+  - [x] Prints azimuth vs. gain table to stdout or file
 
 ---
 
