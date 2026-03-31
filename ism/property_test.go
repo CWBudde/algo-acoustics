@@ -41,6 +41,11 @@ func TestISMSolverSolveDirectAmplitudeHalvesWhenDistanceDoubles(t *testing.T) {
 	if math.Abs(farDirect.Amplitude-nearDirect.Amplitude/2) > 1e-12 {
 		t.Fatalf("far amplitude = %v, want half of near amplitude %v", farDirect.Amplitude, nearDirect.Amplitude)
 	}
+
+	attenuationDB := 20 * math.Log10(farDirect.Amplitude/nearDirect.Amplitude)
+	if math.Abs(attenuationDB+6.020599913279624) > 1e-9 {
+		t.Fatalf("attenuation = %v dB, want approximately -6.02 dB", attenuationDB)
+	}
 }
 
 func TestISMSolverSolveMonotonicDecayStrengthensWithAbsorption(t *testing.T) {

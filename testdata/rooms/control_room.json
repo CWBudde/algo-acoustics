@@ -1,0 +1,52 @@
+{
+  "room": {
+    "kind": "shoebox",
+    "shoebox": {
+      "width": 5,
+      "depth": 4,
+      "height": 2.5,
+      "wallMaterials": [
+        "studio",
+        "studio",
+        "studio",
+        "studio",
+        "studio",
+        "studio"
+      ]
+    }
+  },
+  "materials": {
+    "studio": {
+      "name": "studio",
+      "absorptionByBand": [0.18, 0.2, 0.22, 0.25, 0.28, 0.3],
+      "scatteringByBand": [0.02, 0.02, 0.02, 0.03, 0.03, 0.04]
+    }
+  },
+  "sources": [
+    {
+      "position": { "X": 1, "Y": 1.1, "Z": 0.8 },
+      "orientation": { "W": 1, "X": 0, "Y": 0, "Z": 0 },
+      "gainDb": 0,
+      "directivity": { "type": "omni" }
+    }
+  ],
+  "receivers": [
+    {
+      "position": { "X": 3.8, "Y": 2.9, "Z": 1.7 },
+      "orientation": { "W": 1, "X": 0, "Y": 0, "Z": 0 },
+      "type": "omni"
+    }
+  ],
+  "bandSpec": {
+    "CenterFreqs": [125, 250, 500, 1000, 2000, 4000],
+    "LowerEdges": [
+      88.38834764831843, 176.7766952966369, 353.5533905932738,
+      707.1067811865476, 1414.213562373095, 2828.42712474619
+    ],
+    "UpperEdges": [
+      176.7766952966369, 353.5533905932738, 707.1067811865476,
+      1414.213562373095, 2828.42712474619, 5656.85424949238
+    ]
+  },
+  "sampleRate": 48000
+}

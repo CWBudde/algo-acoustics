@@ -642,69 +642,69 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 8.1 Transfer function type (`pde/`)
 
-- [ ] Add `shoebox.go`
-  - [ ] `TransferFunction` struct: `Freqs []float64`, `H []complex128`
-  - [ ] `TF.Magnitude(i int) float64`
-  - [ ] `TF.PhaseRad(i int) float64`
-  - [ ] `TF.ToTimeDomain(sampleRate int, nFFT int) []float64` via inverse FFT (use `algo-dsp` FFT)
+- [x] Add `shoebox.go`
+  - [x] `TransferFunction` struct: `Freqs []float64`, `H []complex128`
+  - [x] `TF.Magnitude(i int) float64`
+  - [x] `TF.PhaseRad(i int) float64`
+  - [x] `TF.ToTimeDomain(sampleRate int, nFFT int) []float64` via inverse FFT (use `algo-dsp` FFT)
 
 ### 8.2 Frequency sweep (`pde/`)
 
-- [ ] Add `sweep.go`
-  - [ ] `SweepConfig` struct: `FreqMin, FreqMax float64`, `NumPoints int`, `BoundaryCondition string`
-  - [ ] `SweepShoebox(room *scene.Shoebox, src, rcv geometry.Vec3, cfg SweepConfig) (*TransferFunction, error)`
-    - [ ] For each frequency in sweep:
-      - [ ] Assemble source excitation on `algo-pde` regular grid
-      - [ ] Run Helmholtz solve via `algo-pde`
-      - [ ] Sample pressure at receiver grid point
-      - [ ] Store complex transfer function value
+- [x] Add `sweep.go`
+  - [x] `SweepConfig` struct: `FreqMin, FreqMax float64`, `NumPoints int`, `BoundaryCondition string`
+  - [x] `SweepShoebox(room *scene.Shoebox, src, rcv geometry.Vec3, cfg SweepConfig) (*TransferFunction, error)`
+    - [x] For each frequency in sweep:
+      - [x] Assemble source excitation on `algo-pde` regular grid
+      - [x] Run Helmholtz solve via `algo-pde`
+      - [x] Sample pressure at receiver grid point
+      - [x] Store complex transfer function value
 
 > **Insight:** `algo-pde` uses reusable plans. Create the plan once outside the frequency loop and call `.Solve()` repeatedly. This mirrors the performance pattern already established in `algo-pde`.
 
 ### 8.3 Modal analysis (`pde/`)
 
-- [ ] Add `modal.go`
-  - [ ] `ShoeboxModes(room *scene.Shoebox, maxOrder int) []ModalFrequency`
+- [x] Add `modal.go`
+  - [x] `ShoeboxModes(room *scene.Shoebox, maxOrder int) []ModalFrequency`
     - Analytical formula: `f = c/2 * sqrt((nx/Lx)² + (ny/Ly)² + (nz/Lz)²)`
-  - [ ] `ModalFrequency` struct: `Freq float64`, `Nx, Ny, Nz int`
-  - [ ] Sort by frequency
-- [ ] Unit test: compare PDE sweep peaks against analytical modal frequencies
+  - [x] `ModalFrequency` struct: `Freq float64`, `Nx, Ny, Nz int`
+  - [x] Sort by frequency
+- [x] Unit test: compare PDE sweep peaks against analytical modal frequencies
   - Tolerance: ±2% of analytical value
 
 ### 8.4 Crossover between PDE and geometric (`pde/`)
 
-- [ ] Add `crossover.go`
-  - [ ] `CrossoverConfig` struct: `FreqHz float64`, `BandwidthOctaves float64`
-  - [ ] `SplitTF(tf *TransferFunction, cfg CrossoverConfig) (low, high *TransferFunction)`
-  - [ ] `BlendTF(low, high *TransferFunction, cfg CrossoverConfig) *TransferFunction`
+- [x] Add `crossover.go`
+  - [x] `CrossoverConfig` struct: `FreqHz float64`, `BandwidthOctaves float64`
+  - [x] `SplitTF(tf *TransferFunction, cfg CrossoverConfig) (low, high *TransferFunction)`
+  - [x] `BlendTF(low, high *TransferFunction, cfg CrossoverConfig) *TransferFunction`
     - Hann-windowed blend in crossover band
 
 ### 8.5 Hybrid integration (`hybrid/`)
 
-- [ ] Add `crossover.go`
-  - [ ] `BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sampleRate int) *ir.Buffer`
-    - [ ] HP-filter geometric IR above crossover
-    - [ ] LP-filter PDE IR below crossover
-    - [ ] Sum both (use `algo-dsp` filter helpers)
+- [x] Add `crossover.go`
+  - [x] `BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sampleRate int) *ir.Buffer`
+    - [x] HP-filter geometric IR above crossover
+    - [x] LP-filter PDE IR below crossover
+    - [x] Sum both (use `algo-dsp` filter helpers)
 
 ### 8.6 PDE engine wiring
 
-- [ ] Implement `PDELowFreqEngine` satisfying `LowFreqEngine` interface
-- [ ] Wire into `Renderer.LowFreq` field
-- [ ] Add `--enable-lowfreq` flag to `roomir render`
+- [x] Implement `PDELowFreqEngine` satisfying `LowFreqEngine` interface
+- [x] Wire into `Renderer.LowFreq` field
+- [x] Add `--enable-lowfreq` flag to `roomir render`
 
 ### 8.7 Example: `hybrid_lowfreq`
 
-- [ ] Add `examples/hybrid_lowfreq/main.go`
-  - [ ] Small room (3×2.5×2.2 m) to emphasize modal behavior
-  - [ ] Sweep 20–300 Hz, blend with ISM above 200 Hz
-  - [ ] Export WAV and CSV of transfer function magnitude
+- [x] Add `examples/hybrid_lowfreq/main.go`
+  - [x] Small room (3×2.5×2.2 m) to emphasize modal behavior
+  - [x] Sweep 20–300 Hz, blend with ISM above 200 Hz
+  - [x] Export WAV and CSV of transfer function magnitude
 
 ### 8.8 Validation tests
 
-- [ ] Verify first axial mode frequency matches `c/(2·Lx)` within 2%
-- [ ] Verify smooth magnitude response at crossover (< 3 dB discontinuity)
-- [ ] Verify PDE-only IR has meaningful energy above 50 ms in a live room
+- [x] Verify first axial mode frequency matches `c/(2·Lx)` within 2%
+- [x] Verify smooth magnitude response at crossover (< 3 dB discontinuity)
+- [x] Verify PDE-only IR has meaningful energy above 50 ms in a live room
 
 ---
 
@@ -716,36 +716,36 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 9.1 Analytical shoebox validation
 
-- [ ] Compare ISM path lengths against hand-calculated geometry for specific cases
-- [ ] Validate all 6 first-order wall reflections for a symmetric shoebox
-- [ ] Validate second-order reflections for 3 edge cases
-- [ ] Test inverse-square attenuation: doubling distance → −6 dB
+- [x] Compare ISM path lengths against hand-calculated geometry for specific cases
+- [x] Validate all 6 first-order wall reflections for a symmetric shoebox
+- [x] Validate second-order reflections for 3 edge cases
+- [x] Test inverse-square attenuation: doubling distance → −6 dB
 
 ### 9.2 Modal frequency validation
 
-- [ ] Generate all axial, tangential, and oblique modes up to 300 Hz for 3 room sizes
-- [ ] Compare `pde/modal.go` analytical vs. PDE sweep peak frequencies
-- [ ] Flag any mode mismatch > 2% as test failure
+- [x] Generate all axial, tangential, and oblique modes up to 300 Hz for 3 room sizes
+- [x] Compare `pde/modal.go` analytical vs. PDE sweep peak frequencies
+- [x] Flag any mode mismatch > 2% as test failure
 
 ### 9.3 Directivity coordinate frame validation
 
-- [ ] Test synthetic cardioid: on-axis gain = 1.0, rear = 0.0
-- [ ] Test GLL synthetic pattern: rotated source by 90°, 180°, 270° with known gains
-- [ ] Test `Source.DirectionTo` against hand-calculated quaternion rotation cases
+- [x] Test synthetic cardioid: on-axis gain = 1.0, rear = 0.0
+- [x] Test GLL synthetic pattern: rotated source by 90°, 180°, 270° with known gains
+- [x] Test `Source.DirectionTo` against hand-calculated quaternion rotation cases
 
 ### 9.4 HRTF lookup validation
 
-- [ ] Test: frontal measurement position returned for (1,0,0) direction
-- [ ] Test: left ear delay > 0 for sound from left for upright head orientation
-- [ ] Test: head rotation by 90° swaps lateral directions
+- [x] Test: frontal measurement position returned for (1,0,0) direction
+- [x] Test: left ear delay > 0 for sound from left for upright head orientation
+- [x] Test: head rotation by 90° swaps lateral directions
 
 ### 9.5 Benchmark corpus
 
-- [ ] Create `testdata/rooms/tiny_room.json` (2×1.5×1.2 m — strong modes)
-- [ ] Create `testdata/rooms/control_room.json` (5×4×2.5 m)
-- [ ] Create `testdata/rooms/lecture_room.json` (12×8×4 m)
-- [ ] Create `testdata/rooms/pa_room.json` (10×6×3 m — GLL directional source)
-- [ ] Add `cmd/roombench/corpus.go`: run all rooms, compute T60/EDT/C80, output comparison table
+- [x] Create `testdata/rooms/tiny_room.json` (2×1.5×1.2 m — strong modes)
+- [x] Create `testdata/rooms/control_room.json` (5×4×2.5 m)
+- [x] Create `testdata/rooms/lecture_room.json` (12×8×4 m)
+- [x] Create `testdata/rooms/pa_room.json` (10×6×3 m — GLL directional source)
+- [x] Add `cmd/roombench/corpus_test.go`: run all rooms, compute T60/EDT/C80, smoke-test the benchmark corpus flow
 
 ### 9.6 Report generator
 

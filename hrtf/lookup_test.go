@@ -54,3 +54,22 @@ func TestNearestNeighborFrontDirection(t *testing.T) {
 		t.Fatalf("LookupNearest() = (%v, %v, %v), want first measurement", left, right, delay)
 	}
 }
+
+func TestLookupNearestReturnsPositiveDelayForLeftDirection(t *testing.T) {
+	t.Parallel()
+
+	grid := &MeasurementGrid{
+		Directions: []geometry.Vec3{{X: 1, Y: 0, Z: 0}, {X: -1, Y: 0, Z: 0}},
+		LeftHRIRs:  [][]float64{{1}, {1}},
+		RightHRIRs: [][]float64{{1}, {1}},
+		Delays:     []float64{0, 0.015},
+	}
+
+	left, right, delay := LookupNearest(grid, geometry.Vec3{X: -1, Y: 0, Z: 0})
+	if len(left) != 1 || len(right) != 1 {
+		t.Fatalf("LookupNearest() = (%v, %v, %v), want unit HRIRs", left, right, delay)
+	}
+	if delay <= 0 {
+		t.Fatalf("LookupNearest() delay = %v, want positive delay for sound from the left", delay)
+	}
+}
