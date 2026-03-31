@@ -1,0 +1,44 @@
+# treefmt configuration for algo-acoustics
+
+[global]
+excludes = [
+  "**/.gitignore",
+  "**/.git/**",
+  "go.sum",
+  "go.mod",
+  "**/*.txt",
+  "CHANGELOG.md",
+  "LICENSE",
+  "**/*.wav",
+  "**/*.pdf",
+  "**/*.png",
+  "**/*.jpg",
+  "**/*.sofa",
+  "**/*.gll",
+  "bin/**",
+  "dist/**",
+  "coverage.out",
+  "coverage.html",
+  "testdata/**",
+]
+
+[formatter.gofumpt]
+command = "gofumpt"
+options = ["-w"]
+includes = ["*.go"]
+
+[formatter.gci]
+command = "gci"
+options = ["write"]
+includes = ["*.go"]
+priority = 1
+
+[formatter.prettier]
+command = "prettier"
+options = ["-w"]
+includes = [
+  "*.md",
+  "*.yaml",
+  "*.yml",
+  "*.json",
+]
