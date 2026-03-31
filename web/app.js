@@ -72,6 +72,7 @@ const DEFAULT_STATE = {
     crossoverTimeSeconds: 0.22,
     crossoverWindow: "hann",
   },
+  irView: "linear",
 };
 
 const POSITION_MARGIN = 0.15;
@@ -146,7 +147,7 @@ const refs = {
   renderCrossover: document.getElementById("render-crossover"),
   renderCrossoverValue: document.getElementById("render-crossover-value"),
   renderWindow: document.getElementById("render-window"),
-  renderModeButtons: Array.from(document.querySelectorAll(".mode-button")),
+  renderModeButtons: Array.from(document.querySelectorAll("#render-mode-switch .mode-button")),
   renderScene: document.getElementById("render-scene"),
   downloadWav: document.getElementById("download-wav"),
   metricFirstArrival: document.getElementById("metric-first-arrival"),
@@ -154,6 +155,7 @@ const refs = {
   metricEvents: document.getElementById("metric-events"),
   metricRenderTime: document.getElementById("metric-render-time"),
   waveformCanvas: document.getElementById("waveform-canvas"),
+  irViewButtons: Array.from(document.querySelectorAll("#ir-view-switch .mode-button")),
   sceneCanvas: document.getElementById("scene-canvas"),
   audioPlayer: document.getElementById("audio-player"),
   renderLog: document.getElementById("render-log"),
@@ -344,6 +346,14 @@ function bindEvents() {
     });
   });
 
+  refs.irViewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.irView = button.dataset.view;
+      syncIrViewButtons();
+      drawWaveform(lastRender?.samples ?? null);
+    });
+  });
+
   refs.renderScene.addEventListener("click", runRender);
   refs.downloadWav.addEventListener("click", () => {
     if (!lastRender?.wavBytes) {
@@ -433,6 +443,12 @@ function syncModeButtons() {
       "is-active",
       button.dataset.mode === state.render.mode,
     );
+  });
+}
+
+function syncIrViewButtons() {
+  refs.irViewButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.view === state.irView);
   });
 }
 
@@ -955,36 +971,54 @@ function drawWaveform(samples = null) {
   );
 
   const pad = 12;
-  const mid = height / 2;
-  const dynRange = 60; // dB range shown
 
-  // zero-line
-  context.strokeStyle = palette.grid;
-  context.lineWidth = 1.5;
-  context.beginPath();
-  context.moveTo(0, mid);
-  context.lineTo(width, mid);
-  context.stroke();
+  if (state.irView === "dB") {
+    const dynRange = 60;
 
-  // dB-scaled waveform: sign preserved, magnitude in dB
-  context.strokeStyle = palette.trace;
-  context.lineWidth = 1.5;
-  context.beginPath();
-  downsampled.forEach((sample, index) => {
-    const x = (index / Math.max(1, downsampled.length - 1)) * width;
-    const abs = Math.abs(sample);
-    const dB = abs > 0 ? 20 * Math.log10(abs / maxAmplitude) : -dynRange;
-    const clampedDB = Math.max(dB, -dynRange);
-    const magnitude = 1 + clampedDB / dynRange; // 0..1
-    const sign = sample >= 0 ? 1 : -1;
-    const y = mid - sign * magnitude * (mid - pad);
-    if (index === 0) {
-      context.moveTo(x, y);
-    } else {
-      context.lineTo(x, y);
-    }
-  });
-  context.stroke();
+    // dB view: positive-only, 0 dB at top, -60 dB at bottom
+    context.strokeStyle = palette.trace;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    downsampled.forEach((sample, index) => {
+      const x = (index / Math.max(1, downsampled.length - 1)) * width;
+      const abs = Math.abs(sample);
+      const dB = abs > 0 ? 20 * Math.log10(abs / maxAmplitude) : -dynRange;
+      const clampedDB = Math.max(dB, -dynRange);
+      const normalized = 1 + clampedDB / dynRange; // 1 = 0dB (top), 0 = -60dB (bottom)
+      const y = pad + (1 - normalized) * (height - 2 * pad);
+      if (index === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+    });
+    context.stroke();
+  } else {
+    const mid = height / 2;
+
+    // zero-line
+    context.strokeStyle = palette.grid;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    context.moveTo(0, mid);
+    context.lineTo(width, mid);
+    context.stroke();
+
+    // linear waveform
+    context.strokeStyle = palette.trace;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    downsampled.forEach((sample, index) => {
+      const x = (index / Math.max(1, downsampled.length - 1)) * width;
+      const y = mid - (sample / maxAmplitude) * (mid - pad);
+      if (index === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+    });
+    context.stroke();
+  }
 
   if (state.render.mode === "hybrid") {
     const x =

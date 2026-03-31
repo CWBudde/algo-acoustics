@@ -822,12 +822,12 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 11.2 Material library with scattering data (`scene/`)
 
-- [ ] Create `materials_library.go` with published absorption + scattering data for common surfaces:
+- [x] Create `materials_library.go` with published absorption + scattering data for common surfaces:
   - Painted concrete, exposed brick, plasterboard, glass, carpet, wooden floor
   - Audience seating (occupied/unoccupied), stage curtain
   - QRD diffuser, bookshelf
-- [ ] Source data from ISO 17497 measurements, Cox & D'Antonio (2017), Vorländer (2020)
-- [ ] Unit test: all library materials have valid coefficient ranges
+- [x] Source data from ISO 17497 measurements, Cox & D'Antonio (2017), Vorländer (2020)
+- [x] Unit test: all library materials have valid coefficient ranges
 
 ### 11.3 Lambert diffuse reflection (`raytrace/`)
 
@@ -869,7 +869,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 12.1 Diffracting edge extraction (`geometry/`)
 
-- [ ] Add `diffraction.go` with `DiffractionEdge` struct:
+- [x] Add `diffraction.go` with `DiffractionEdge` struct:
   - `Start, End Vec3` — edge endpoints
   - `Direction Vec3` — unit vector along edge
   - `Length float64`
@@ -877,14 +877,14 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
   - `FaceONormal, FaceNNormal Vec3` — normals of the two adjacent faces
   - `FaceOID, FaceNID int`
   - `LocalBasis [3]Vec3` — edge-local coordinate frame for angle computation
-- [ ] Implement `ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge`:
+- [x] Implement `ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge`:
   - Build edge-adjacency map from triangle mesh (half-edge or edge-face lookup)
   - Compute dihedral angle between adjacent face normals
   - Classify: convex edges (exterior angle > π) are diffracting; concave and coplanar are skipped
   - Merge adjacent colinear diffracting edges sharing the same two planes
-- [ ] Compute edge-local coordinate system: edge direction as one axis, reference face normal defines `phi = 0`
-- [ ] Unit test: cube mesh produces 12 edges, all with `n = 1.5` (270° exterior = 1.5π)
-- [ ] Unit test: L-shaped room produces correct convex and concave edge classification
+- [x] Compute edge-local coordinate system: edge direction as one axis, reference face normal defines `phi = 0`
+- [x] Unit test: cube mesh produces 12 edges, all with `n = 1.5` (270° exterior = 1.5π)
+- [x] Unit test: L-shaped room produces correct convex and concave edge classification
 
 ### 12.2 Fresnel transition function (`geometry/`)
 

@@ -8,6 +8,30 @@ import (
 	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
+// chiSquaredTest performs a chi-squared goodness-of-fit test.
+// Returns the chi-squared statistic and the DoF.
+func chiSquaredTest(observed, expected []float64) (float64, int) {
+	var chi2 float64
+	for i := range observed {
+		diff := observed[i] - expected[i]
+		chi2 += (diff * diff) / expected[i]
+	}
+	return chi2, len(observed) - 1
+}
+
+// criticalChiSquared returns the approximate critical value for chi-squared test.
+// For DoF > 0, uses Choi's approximation valid for p=0.05 significance level.
+// See: "The median of the chi-squared distribution" by Choi (2008).
+func criticalChiSquared(dof int) float64 {
+	if dof <= 0 {
+		return 0
+	}
+	// Approximation for p=0.05: chi2_crit ≈ dof * (1 - 2/(9*dof) + 1.96*sqrt(2/(9*dof)))^3
+	x := 1.0 - 2.0/(9.0*float64(dof)) + 1.96*math.Sqrt(2.0/(9.0*float64(dof)))
+	return float64(dof) * x * x * x
+}
+
+
 func TestSpecularReflect(t *testing.T) {
 	t.Parallel()
 

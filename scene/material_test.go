@@ -76,3 +76,78 @@ func TestEstimateScatteringFromDepthMonotonic(t *testing.T) {
 		}
 	}
 }
+
+func TestMaterialLibraryCoefficientsValid(t *testing.T) {
+	for name, material := range scene.MaterialLibrary {
+		// Check absorption coefficients
+		if len(material.AbsorptionByBand) != scene.NumBands {
+			t.Errorf("material %q: AbsorptionByBand has %d bands, want %d",
+				name, len(material.AbsorptionByBand), scene.NumBands)
+
+			continue
+		}
+
+		for i, alpha := range material.AbsorptionByBand {
+			if alpha < 0 || alpha > 1 {
+				t.Errorf("material %q: AbsorptionByBand[%d] = %f, want within [0, 1]",
+					name, i, alpha)
+			}
+		}
+
+		// Check scattering coefficients and monotonicity
+		for i := 0; i < scene.NumBands; i++ {
+			s := material.Scattering[i]
+			if s < 0 || s > 1 {
+				t.Errorf("material %q: Scattering[%d] = %f, want within [0, 1]",
+					name, i, s)
+			}
+
+			// Scattering should be monotonically non-decreasing with frequency
+			if i > 0 && s < material.Scattering[i-1] {
+				t.Errorf("material %q: Scattering[%d] = %f is less than Scattering[%d] = %f (should be non-decreasing)",
+					name, i, s, i-1, material.Scattering[i-1])
+			}
+		}
+	}
+}
+
+func TestMaterialLibraryRetrievable(t *testing.T) {
+	tests := []string{
+		"glass",
+		"painted_concrete",
+		"exposed_brick",
+		"carpet_on_concrete",
+		"stage_curtain",
+		"audience_seated",
+		"qrd_diffuser",
+		"bookshelf_dense",
+	}
+
+	for _, name := range tests {
+		mat := scene.Material{}
+
+		retrieved, ok := mat.FromLibrary(name)
+		if !ok {
+			t.Errorf("FromLibrary(%q) returned false, want true", name)
+
+			continue
+		}
+
+		if retrieved.Name != name {
+			t.Errorf("FromLibrary(%q).Name = %q, want %q", name, retrieved.Name, name)
+		}
+
+		// Verify absorption data is present
+		if len(retrieved.AbsorptionByBand) == 0 {
+			t.Errorf("FromLibrary(%q): AbsorptionByBand is empty", name)
+		}
+	}
+
+	// Test retrieval of non-existent material
+	mat := scene.Material{}
+
+	_, ok := mat.FromLibrary("nonexistent_material")
+	if ok {
+		t.Errorf("FromLibrary(\"nonexistent_material\") returned true, want false")
+	}
+}
