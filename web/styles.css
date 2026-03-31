@@ -173,6 +173,10 @@ audio {
   padding-bottom: 16px;
 }
 
+.shell > .hero {
+  grid-column: 1 / -1;
+}
+
 .rail,
 .studio {
   display: flex;
@@ -208,6 +212,12 @@ audio {
 
 .hero {
   isolation: isolate;
+  max-width: none;
+}
+
+.hero h1,
+.hero .lede {
+  max-width: 54ch;
 }
 
 .hero h1,

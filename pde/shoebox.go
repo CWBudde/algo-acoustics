@@ -72,6 +72,7 @@ func (tf *TransferFunction) ToTimeDomain(sampleRate int, nFFT int) []float64 {
 	}
 
 	out := make([]complex128, nFFT)
+
 	err = plan.Inverse(out, spectrum)
 	if err != nil {
 		return nil

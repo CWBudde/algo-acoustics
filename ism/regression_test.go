@@ -105,6 +105,7 @@ func loadRegressionEvents(t *testing.T, path string) []ir.Event {
 	}
 
 	var events []ir.Event
+
 	err = json.Unmarshal(data, &events)
 	if err != nil {
 		t.Fatalf("json.Unmarshal(%s) error = %v", path, err)

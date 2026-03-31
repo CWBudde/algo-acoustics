@@ -246,6 +246,7 @@ func TestSceneJSONRoundTrip(t *testing.T) {
 	}
 
 	var decoded scene.Scene
+
 	err = json.Unmarshal(encoded, &decoded)
 	if err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)

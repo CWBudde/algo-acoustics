@@ -47,6 +47,7 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("T60FromDecaySlope() error = %v", err)
 	}
+
 	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("T60FromDecaySlope() = %v, want %v", got, targetT60)
 	}
@@ -55,6 +56,7 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EDT() error = %v", err)
 	}
+
 	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("EDT() = %v, want %v", got, targetT60)
 	}
@@ -63,6 +65,7 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("T20() error = %v", err)
 	}
+
 	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("T20() = %v, want %v", got, targetT60)
 	}
@@ -71,6 +74,7 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("T30() error = %v", err)
 	}
+
 	if math.Abs(got-targetT60) > 0.05 {
 		t.Fatalf("T30() = %v, want %v", got, targetT60)
 	}
@@ -79,6 +83,7 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("D50() error = %v", err)
 	}
+
 	if got <= 0 || got >= 1 {
 		t.Fatalf("D50() = %v, want between 0 and 1", got)
 	}
@@ -87,6 +92,7 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("C50() error = %v", err)
 	}
+
 	if !math.IsInf(got, 1) && got <= 0 {
 		t.Fatalf("C50() = %v, want positive or +Inf", got)
 	}
@@ -95,6 +101,7 @@ func TestDecayAndClarityMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("C80() error = %v", err)
 	}
+
 	if !math.IsInf(got, 1) && got <= 0 {
 		t.Fatalf("C80() = %v, want positive or +Inf", got)
 	}
