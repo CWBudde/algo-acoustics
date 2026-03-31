@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/export"
@@ -18,6 +19,7 @@ const (
 	defaultRenderDurationSecs = 1.5
 	defaultRenderNumRays      = 4096
 	defaultRenderCrossoverSec = 0.25
+	defaultRenderWindowName   = "hann"
 )
 
 func newRenderCommand() *cobra.Command {
@@ -26,6 +28,8 @@ func newRenderCommand() *cobra.Command {
 	var durationSeconds float64
 	var mode string
 	var crossoverTimeSeconds float64
+	var crossoverWindowName string
+	var crossoverWindowAlpha float64
 	var numRays int
 
 	cmd := &cobra.Command{
@@ -38,6 +42,16 @@ func newRenderCommand() *cobra.Command {
 			}
 			if mode != "early" && mode != "late" && mode != "hybrid" {
 				return fmt.Errorf("unsupported mode %q", mode)
+			}
+
+			crossoverWindow := hybrid.FadeWindowConfig{
+				Name:  crossoverWindowName,
+				Alpha: crossoverWindowAlpha,
+			}
+			if mode == "hybrid" {
+				if err := hybrid.ValidateFadeWindowConfig(crossoverWindow); err != nil {
+					return fmt.Errorf("invalid crossover window: %w", err)
+				}
 			}
 
 			scenePath := args[0]
@@ -93,6 +107,7 @@ func newRenderCommand() *cobra.Command {
 					CrossoverTimeSeconds: crossoverTimeSeconds,
 					CrossoverMode:        hybrid.TimeBased,
 					SmoothenCrossover:    true,
+					CrossoverWindow:      crossoverWindow,
 				})
 				if buffer == nil {
 					return fmt.Errorf("combine hybrid buffers")
@@ -113,6 +128,8 @@ func newRenderCommand() *cobra.Command {
 	cmd.Flags().Float64Var(&durationSeconds, "duration", defaultRenderDurationSecs, "render duration in seconds")
 	cmd.Flags().StringVar(&mode, "mode", "hybrid", "render mode: early, late, or hybrid")
 	cmd.Flags().Float64Var(&crossoverTimeSeconds, "crossover-time", defaultRenderCrossoverSec, "hybrid crossover time in seconds")
+	cmd.Flags().StringVar(&crossoverWindowName, "crossover-window", defaultRenderWindowName, fmt.Sprintf("hybrid crossover window (%s)", strings.Join(hybrid.SupportedFadeWindows(), ", ")))
+	cmd.Flags().Float64Var(&crossoverWindowAlpha, "crossover-window-alpha", 0, "shape parameter for parametric hybrid crossover windows")
 	cmd.Flags().IntVar(&numRays, "num-rays", defaultRenderNumRays, "number of rays for late-field rendering")
 
 	return cmd

@@ -42,6 +42,10 @@ func hrtfJSONFromDataset(dataset hrtf.Dataset) (*hrtfJSON, error) {
 	switch typed := dataset.(type) {
 	case nil:
 		return nil, nil
+	case hrtf.NoopDataset:
+		return &hrtfJSON{Type: "noop", SampleRateHz: typed.SampleRateHz}, nil
+	case *hrtf.NoopDataset:
+		return &hrtfJSON{Type: "noop", SampleRateHz: typed.SampleRateHz}, nil
 	case hrtf.NearestNeighborDataset:
 		return &hrtfJSON{Type: "nearestNeighbor", SampleRateHz: typed.SampleRateHz}, nil
 	case *hrtf.NearestNeighborDataset:
@@ -53,11 +57,18 @@ func hrtfJSONFromDataset(dataset hrtf.Dataset) (*hrtfJSON, error) {
 
 func (h hrtfJSON) toDataset() (hrtf.Dataset, error) {
 	switch h.Type {
+	case "noop":
+		return hrtf.NoopDataset{SampleRateHz: h.SampleRateHz}, nil
 	case "nearestNeighbor":
 		return hrtf.NearestNeighborDataset{SampleRateHz: h.SampleRateHz}, nil
 	default:
 		return nil, fmt.Errorf("unsupported HRTF type %q", h.Type)
 	}
+}
+
+// WorldToHeadDir returns a world-space direction in the receiver's head frame.
+func (r Receiver) WorldToHeadDir(worldDir geometry.Vec3) geometry.Vec3 {
+	return effectiveOrientation(r.Orientation).Conj().Rotate(worldDir).Normalize()
 }
 
 // MarshalJSON preserves the interface-backed HRTF field.

@@ -18,13 +18,14 @@ import (
 )
 
 const (
-	outputFilename  = "output.wav"
-	gllFixturePath  = "../../testdata/gll/synthetic_ls.gll"
-	frontReceiverX  = 4.2
-	rearReceiverX   = 1.8
-	sourcePositionX = 3.0
-	sourcePositionY = 2.25
-	sourcePositionZ = 1.2
+	outputFilename                = "output.wav"
+	gllFixturePath                = "../../testdata/gll/synthetic_ls.gll"
+	defaultExampleCrossoverWindow = "hann"
+	frontReceiverX                = 4.2
+	rearReceiverX                 = 1.8
+	sourcePositionX               = 3.0
+	sourcePositionY               = 2.25
+	sourcePositionZ               = 1.2
 )
 
 type energyComparison struct {
@@ -38,12 +39,31 @@ type exampleResult struct {
 	OutputBuffer    *ir.Buffer
 }
 
+type exampleOptions struct {
+	CrossoverWindow hybrid.FadeWindowConfig
+}
+
+func defaultExampleOptions() exampleOptions {
+	return exampleOptions{
+		CrossoverWindow: hybrid.FadeWindowConfig{Name: defaultExampleCrossoverWindow},
+	}
+}
+
 func run(outputPath string) error {
+	return runWithOptions(outputPath, defaultExampleOptions())
+}
+
+func runWithOptions(outputPath string, opts exampleOptions) error {
 	if outputPath == "" {
 		return errors.New("output path must not be empty")
 	}
 
-	result, err := evaluateExample()
+	validated, err := normalizeExampleOptions(opts)
+	if err != nil {
+		return err
+	}
+
+	result, err := evaluateExample(validated)
 	if err != nil {
 		return err
 	}
@@ -62,27 +82,38 @@ func run(outputPath string) error {
 	return nil
 }
 
-func evaluateExample() (exampleResult, error) {
+func normalizeExampleOptions(opts exampleOptions) (exampleOptions, error) {
+	if opts.CrossoverWindow.Name == "" {
+		opts.CrossoverWindow.Name = defaultExampleCrossoverWindow
+	}
+	if err := hybrid.ValidateFadeWindowConfig(opts.CrossoverWindow); err != nil {
+		return exampleOptions{}, err
+	}
+
+	return opts, nil
+}
+
+func evaluateExample(opts exampleOptions) (exampleResult, error) {
 	fixturePath := filepath.Clean(gllFixturePath)
 	model, err := directivity.LoadGLL(fixturePath, "")
 	if err != nil {
 		return exampleResult{}, fmt.Errorf("load gll fixture %q: %w", fixturePath, err)
 	}
 
-	return evaluateModel(exampleDirectivityModel{base: model})
+	return evaluateModel(exampleDirectivityModel{base: model}, opts)
 }
 
-func evaluateModel(model directivity.Model) (exampleResult, error) {
-	frontComparison, err := compareToOmni(model, frontReceiver())
+func evaluateModel(model directivity.Model, opts exampleOptions) (exampleResult, error) {
+	frontComparison, err := compareToOmni(model, frontReceiver(), opts)
 	if err != nil {
 		return exampleResult{}, err
 	}
-	rearComparison, err := compareToOmni(model, rearReceiver())
+	rearComparison, err := compareToOmni(model, rearReceiver(), opts)
 	if err != nil {
 		return exampleResult{}, err
 	}
 
-	buffer, err := renderHybridIR(model, frontReceiver())
+	buffer, err := renderHybridIR(model, frontReceiver(), opts)
 	if err != nil {
 		return exampleResult{}, err
 	}
@@ -122,13 +153,13 @@ func validateComparisons(result exampleResult) error {
 	return nil
 }
 
-func compareToOmni(model directivity.Model, receiver geometry.Vec3) (energyComparison, error) {
-	gllBuffer, err := renderHybridIR(model, receiver)
+func compareToOmni(model directivity.Model, receiver geometry.Vec3, opts exampleOptions) (energyComparison, error) {
+	gllBuffer, err := renderHybridIR(model, receiver, opts)
 	if err != nil {
 		return energyComparison{}, err
 	}
 
-	omniBuffer, err := renderHybridIR(directivity.OmniModel{}, receiver)
+	omniBuffer, err := renderHybridIR(directivity.OmniModel{}, receiver, opts)
 	if err != nil {
 		return energyComparison{}, err
 	}
@@ -139,7 +170,7 @@ func compareToOmni(model directivity.Model, receiver geometry.Vec3) (energyCompa
 	}, nil
 }
 
-func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3) (*ir.Buffer, error) {
+func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3, opts exampleOptions) (*ir.Buffer, error) {
 	sc := shoeboxScene(sourceDirectivity, receiver)
 	if err := scene.Validate(sc); err != nil {
 		return nil, err
@@ -184,6 +215,7 @@ func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3)
 		CrossoverTimeSeconds: 0.25,
 		CrossoverMode:        hybrid.TimeBased,
 		SmoothenCrossover:    true,
+		CrossoverWindow:      opts.CrossoverWindow,
 	})
 	if combined == nil {
 		return nil, errors.New("combine hybrid buffers")

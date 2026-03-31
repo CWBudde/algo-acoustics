@@ -29,6 +29,8 @@ func TestRenderCommandWritesWAVAndReportsSummary(t *testing.T) {
 		"-o", outputPath,
 		"--max-order", "3",
 		"--duration", "1.5",
+		"--crossover-window", "blackman",
+		"--crossover-window-alpha", "0.25",
 	})
 
 	if exitCode := run(cmd); exitCode != 0 {
@@ -59,7 +61,7 @@ func TestRenderCommandWritesWAVAndReportsSummary(t *testing.T) {
 	}
 
 	dx := 4.0 - 1.5
-	dy := 2.0 - 2.0
+	dy := 0.0
 	dz := 0.0
 	distance := math.Sqrt(dx*dx + dy*dy + dz*dz)
 	expectedSample := int(math.Round(distance / acoustics.SpeedOfSound * float64(decoder.SampleRate)))
@@ -83,4 +85,28 @@ func TestRenderCommandWritesWAVAndReportsSummary(t *testing.T) {
 	}
 
 	t.Fatalf("decoded samples %d..%d are all zero, want direct-path spike near %d", start, end, expectedSample)
+}
+
+func TestRenderCommandRejectsUnknownCrossoverWindow(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCommand()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{
+		"render",
+		filepath.Join("..", "..", "testdata", "rooms", "shoebox_simple.json"),
+		"-o", filepath.Join(t.TempDir(), "rendered.wav"),
+		"--mode", "hybrid",
+		"--crossover-window", "not-a-window",
+	})
+
+	if exitCode := run(cmd); exitCode == 0 {
+		t.Fatalf("run() = %d, want non-zero; stdout=%q stderr=%q", exitCode, stdout.String(), stderr.String())
+	}
+	if got := stderr.String(); !strings.Contains(got, "invalid crossover window") {
+		t.Fatalf("stderr = %q, want invalid crossover window error", got)
+	}
 }

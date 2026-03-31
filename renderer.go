@@ -67,5 +67,50 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 
 // RenderStereo is reserved for Phase 7 binaural output.
 func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, right []float64, err error) {
-	return nil, nil, errors.New("stereo rendering not implemented")
+	if sc == nil {
+		return nil, nil, errors.New("scene is nil")
+	}
+
+	receiver, err := firstBinauralReceiver(sc)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var earlyEvents []ir.Event
+	if r.Early != nil {
+		earlyEvents, err = r.Early.Generate(sc, cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	var lateEvents []ir.Event
+	if r.Late != nil {
+		lateEvents, err = r.Late.Generate(sc, cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	combined := hybrid.Combine(earlyEvents, lateEvents, r.Hybrid)
+	leftBuf, rightBuf, err := ir.RenderBinaural(combined, receiver.HRTF, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return append([]float64(nil), leftBuf.Samples...), append([]float64(nil), rightBuf.Samples...), nil
+}
+
+func firstBinauralReceiver(sc *scene.Scene) (scene.Receiver, error) {
+	for _, receiver := range sc.Receivers {
+		if receiver.Type == scene.ReceiverBinaural {
+			if receiver.HRTF == nil {
+				return scene.Receiver{}, errors.New("binaural receiver is missing an HRTF")
+			}
+
+			return receiver, nil
+		}
+	}
+
+	return scene.Receiver{}, errors.New("scene does not contain a binaural receiver")
 }

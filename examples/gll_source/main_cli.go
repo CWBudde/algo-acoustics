@@ -3,12 +3,19 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 )
 
 func main() {
-	if err := run(outputFilename); err != nil {
+	opts := defaultExampleOptions()
+	outputPath := flag.String("output", outputFilename, "output WAV path")
+	flag.StringVar(&opts.CrossoverWindow.Name, "crossover-window", opts.CrossoverWindow.Name, "hybrid crossover window")
+	flag.Float64Var(&opts.CrossoverWindow.Alpha, "crossover-window-alpha", 0, "shape parameter for parametric hybrid crossover windows")
+	flag.Parse()
+
+	if err := runWithOptions(*outputPath, opts); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

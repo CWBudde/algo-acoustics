@@ -1,12 +1,50 @@
 package hybrid
 
 import (
+	"fmt"
 	"math"
 	"strings"
 
 	"github.com/cwbudde/algo-acoustics/ir"
 	window "github.com/cwbudde/algo-dsp/dsp/window"
 )
+
+const defaultFadeWindowName = "hann"
+
+var supportedFadeWindowNames = []string{
+	"linear",
+	"hann",
+	"hamming",
+	"blackman",
+	"exact-blackman",
+	"blackman-harris",
+	"blackman-harris-3t",
+	"blackman-nuttall",
+	"nuttall-ctd",
+	"nuttall-cfd",
+	"flat-top",
+	"kaiser",
+	"tukey",
+	"triangle",
+	"cosine",
+	"welch",
+	"lanczos",
+	"gauss",
+	"lawrey-5t",
+	"lawrey-6t",
+	"burgess-59db",
+	"burgess-71db",
+	"albrecht-2t",
+	"albrecht-3t",
+	"albrecht-4t",
+	"albrecht-5t",
+	"albrecht-6t",
+	"albrecht-7t",
+	"albrecht-8t",
+	"albrecht-9t",
+	"albrecht-10t",
+	"albrecht-11t",
+}
 
 // FadeWindowConfig selects the fade law used across the crossover window.
 type FadeWindowConfig struct {
@@ -16,6 +54,24 @@ type FadeWindowConfig struct {
 	// Alpha is forwarded to parametric algo-dsp windows such as kaiser,
 	// tukey, gauss, and lanczos when non-zero.
 	Alpha float64
+}
+
+// SupportedFadeWindows returns the canonical window names accepted by FadeWindowConfig.
+func SupportedFadeWindows() []string {
+	return append([]string(nil), supportedFadeWindowNames...)
+}
+
+// ValidateFadeWindowConfig reports whether a fade window config is supported.
+func ValidateFadeWindowConfig(cfg FadeWindowConfig) error {
+	name := normalizedFadeWindowName(cfg.Name)
+	if name == "linear" {
+		return nil
+	}
+	if _, ok := resolveFadeWindowType(name); !ok {
+		return fmt.Errorf("unsupported fade window %q", cfg.Name)
+	}
+
+	return nil
 }
 
 // LinearFade returns a linear ramp with n points.
@@ -99,10 +155,7 @@ func fadeWeights(n int, fadeIn bool, cfg FadeWindowConfig) []float64 {
 }
 
 func increasingFadeWeights(n int, cfg FadeWindowConfig) []float64 {
-	name := strings.ToLower(strings.TrimSpace(cfg.Name))
-	if name == "" {
-		name = "hann"
-	}
+	name := normalizedFadeWindowName(cfg.Name)
 
 	if name == "linear" {
 		return LinearFade(0, n-1, n)
@@ -132,6 +185,15 @@ func increasingFadeWeights(n int, cfg FadeWindowConfig) []float64 {
 	}
 
 	return out
+}
+
+func normalizedFadeWindowName(name string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(name))
+	if trimmed == "" {
+		return defaultFadeWindowName
+	}
+
+	return trimmed
 }
 
 func resolveFadeWindowType(name string) (window.Type, bool) {

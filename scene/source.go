@@ -60,7 +60,7 @@ func (d directivityJSON) toModel() (directivity.Model, error) {
 // DirectionTo returns the direction to target in the source-local frame.
 func (s Source) DirectionTo(target geometry.Vec3) geometry.Vec3 {
 	relative := target.Sub(s.Position)
-	return s.Orientation.Conj().Rotate(relative).Normalize()
+	return effectiveOrientation(s.Orientation).Conj().Rotate(relative).Normalize()
 }
 
 // MarshalJSON preserves the interface-backed directivity field.

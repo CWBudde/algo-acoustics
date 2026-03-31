@@ -19,8 +19,17 @@ type wasmResult struct {
 }
 
 func runWASM(gllBytes []byte) (wasmResult, error) {
+	return runWASMWithOptions(gllBytes, defaultExampleOptions())
+}
+
+func runWASMWithOptions(gllBytes []byte, opts exampleOptions) (wasmResult, error) {
 	if len(gllBytes) == 0 {
 		return wasmResult{}, errors.New("gll bytes must not be empty")
+	}
+
+	validated, err := normalizeExampleOptions(opts)
+	if err != nil {
+		return wasmResult{}, err
 	}
 
 	model, err := directivity.LoadGLLReader(bytes.NewReader(gllBytes), "")
@@ -28,7 +37,7 @@ func runWASM(gllBytes []byte) (wasmResult, error) {
 		return wasmResult{}, fmt.Errorf("load gll bytes: %w", err)
 	}
 
-	result, err := evaluateModel(exampleDirectivityModel{base: model})
+	result, err := evaluateModel(exampleDirectivityModel{base: model}, validated)
 	if err != nil {
 		return wasmResult{}, err
 	}

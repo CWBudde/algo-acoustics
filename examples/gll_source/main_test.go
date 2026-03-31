@@ -3,8 +3,10 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/wav"
 )
 
@@ -45,6 +47,34 @@ func TestRunProducesNonSilentOutput(t *testing.T) {
 	}
 	if !nonZeroFound {
 		t.Fatal("decoded WAV is silent")
+	}
+}
+
+func TestRunWithOptionsSupportsCrossoverWindowSelection(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, outputFilename)
+	if err := runWithOptions(outputPath, exampleOptions{
+		CrossoverWindow: hybrid.FadeWindowConfig{Name: "blackman", Alpha: 0.25},
+	}); err != nil {
+		t.Fatalf("runWithOptions() error = %v", err)
+	}
+}
+
+func TestRunWithOptionsRejectsUnknownCrossoverWindow(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, outputFilename)
+	err := runWithOptions(outputPath, exampleOptions{
+		CrossoverWindow: hybrid.FadeWindowConfig{Name: "nope"},
+	})
+	if err == nil {
+		t.Fatal("runWithOptions() error = nil, want invalid crossover window error")
+	}
+	if !strings.Contains(err.Error(), "unsupported fade window") {
+		t.Fatalf("runWithOptions() error = %v, want unsupported fade window", err)
 	}
 }
 

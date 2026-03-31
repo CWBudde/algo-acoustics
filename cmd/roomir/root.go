@@ -20,6 +20,7 @@ func newRootCommand() *cobra.Command {
 
 	cmd.AddCommand(newValidateCommand())
 	cmd.AddCommand(newRenderCommand())
+	cmd.AddCommand(newRenderStereoCommand())
 	cmd.AddCommand(newDumpEventsCommand())
 
 	return cmd
