@@ -21,6 +21,10 @@ Work in progress. See [PLAN.md](PLAN.md) for the phased implementation roadmap.
 - [HRTF and SOFA](docs/hrtf-sofa.md)
 - [Validation](docs/validation.md)
 
+## Web Demo
+
+A small browser demo lives in [web/README.md](web/README.md). It uses Go/WASM for the actual render path and a static HTML/CSS/JS shell for the UI, similar to the lightweight browser stacks used in the sibling `algo-dsp` and `gll-tools` repositories.
+
 ## Dependencies
 
 | Package                                             | Role                                            |

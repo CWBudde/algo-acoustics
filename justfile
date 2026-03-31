@@ -50,6 +50,14 @@ build:
     go build ./cmd/roomplot/...
     go build ./cmd/roombench/...
 
+# Build the browser WebAssembly demo
+build-web-demo:
+    ./web/build-wasm.sh
+
+# Serve the browser demo locally
+web-demo: build-web-demo
+    python3 -m http.server 8080 -d web
+
 # Run all checks (formatting, linting, tests, tidiness)
 ci: check-formatted test lint check-tidy
 

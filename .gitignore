@@ -9,6 +9,8 @@
 # Build output
 dist/
 out/
+/web/algo_ac*.wasm
+/web/wasm_exec.js
 
 # Test binary and coverage
 *.test

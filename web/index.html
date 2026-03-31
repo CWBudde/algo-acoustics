@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>algo-acoustics Room Demo</title>
+    <meta
+      name="description"
+      content="A modern browser demo for algo-acoustics: tweak a shoebox room, swap materials, render a hybrid impulse response, and audition the result in-browser."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-backdrop"></div>
+    <main class="shell">
+      <aside class="rail reveal">
+        <section class="hero panel">
+          <p class="eyebrow">Room acoustics demo</p>
+          <h1>Wayverb-era control flow, rebuilt for HTML5, JS, and WASM.</h1>
+          <p class="lede">
+            Shape a compact shoebox scene, swap wall finishes, tune the hybrid
+            renderer, and preview the impulse response without leaving the
+            browser.
+          </p>
+          <div class="hero-meta">
+            <span id="engine-status" class="status-pill is-loading"
+              >Loading WASM</span
+            >
+            <span class="hero-note">Go engine in the browser</span>
+          </div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Source</p>
+              <h2>Emitter</h2>
+            </div>
+            <button id="reset-scene" class="ghost-button" type="button">
+              Reset
+            </button>
+          </div>
+
+          <div class="control-stack">
+            <label class="field">
+              <span>Pattern</span>
+              <select id="source-directivity">
+                <option value="omni">Omni</option>
+                <option value="cardioid">Cardioid</option>
+              </select>
+            </label>
+
+            <div class="field split-field">
+              <label>
+                <span>Azimuth</span>
+                <input
+                  id="source-azimuth"
+                  type="range"
+                  min="-180"
+                  max="180"
+                  step="1"
+                />
+              </label>
+              <strong id="source-azimuth-value" class="field-value"></strong>
+            </div>
+
+            <div class="field split-field">
+              <label>
+                <span>Focus</span>
+                <input
+                  id="source-focus"
+                  type="range"
+                  min="0.25"
+                  max="2.5"
+                  step="0.05"
+                />
+              </label>
+              <strong id="source-focus-value" class="field-value"></strong>
+            </div>
+
+            <div class="field split-field">
+              <label>
+                <span>Gain</span>
+                <input
+                  id="source-gain"
+                  type="range"
+                  min="-24"
+                  max="12"
+                  step="0.5"
+                />
+              </label>
+              <strong id="source-gain-value" class="field-value"></strong>
+            </div>
+
+            <div class="numeric-grid">
+              <label class="field compact-field">
+                <span>Source X</span>
+                <input id="source-x" type="number" min="0.1" step="0.1" />
+              </label>
+              <label class="field compact-field">
+                <span>Source Y</span>
+                <input id="source-y" type="number" min="0.1" step="0.1" />
+              </label>
+              <label class="field compact-field">
+                <span>Source Z</span>
+                <input id="source-z" type="number" min="0.1" step="0.1" />
+              </label>
+            </div>
+
+            <div class="numeric-grid receiver-grid">
+              <label class="field compact-field">
+                <span>Receiver X</span>
+                <input id="receiver-x" type="number" min="0.1" step="0.1" />
+              </label>
+              <label class="field compact-field">
+                <span>Receiver Y</span>
+                <input id="receiver-y" type="number" min="0.1" step="0.1" />
+              </label>
+              <label class="field compact-field">
+                <span>Receiver Z</span>
+                <input id="receiver-z" type="number" min="0.1" step="0.1" />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Room</p>
+              <h2>Envelope</h2>
+            </div>
+          </div>
+
+          <div class="numeric-grid room-grid">
+            <label class="field compact-field">
+              <span>Width</span>
+              <input
+                id="room-width"
+                type="number"
+                min="2.5"
+                max="16"
+                step="0.1"
+              />
+            </label>
+            <label class="field compact-field">
+              <span>Depth</span>
+              <input
+                id="room-depth"
+                type="number"
+                min="2.5"
+                max="16"
+                step="0.1"
+              />
+            </label>
+            <label class="field compact-field">
+              <span>Height</span>
+              <input
+                id="room-height"
+                type="number"
+                min="2.2"
+                max="7"
+                step="0.1"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Materials</p>
+              <h2>Wall palette</h2>
+            </div>
+          </div>
+
+          <div class="wall-grid">
+            <label class="field compact-field">
+              <span>West wall</span>
+              <select id="wall-west"></select>
+            </label>
+            <label class="field compact-field">
+              <span>East wall</span>
+              <select id="wall-east"></select>
+            </label>
+            <label class="field compact-field">
+              <span>South wall</span>
+              <select id="wall-south"></select>
+            </label>
+            <label class="field compact-field">
+              <span>North wall</span>
+              <select id="wall-north"></select>
+            </label>
+            <label class="field compact-field">
+              <span>Floor</span>
+              <select id="wall-floor"></select>
+            </label>
+            <label class="field compact-field">
+              <span>Ceiling</span>
+              <select id="wall-ceiling"></select>
+            </label>
+          </div>
+
+          <div id="material-summary" class="material-summary"></div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Ray field</p>
+              <h2>Tracer</h2>
+            </div>
+          </div>
+
+          <div class="field split-field">
+            <label>
+              <span>Rays</span>
+              <input
+                id="render-rays"
+                type="range"
+                min="128"
+                max="16384"
+                step="128"
+              />
+            </label>
+            <strong id="render-rays-value" class="field-value"></strong>
+          </div>
+
+          <div class="field split-field">
+            <label>
+              <span>Reflection order</span>
+              <input id="render-order" type="range" min="1" max="12" step="1" />
+            </label>
+            <strong id="render-order-value" class="field-value"></strong>
+          </div>
+
+          <div class="field split-field">
+            <label>
+              <span>Duration</span>
+              <input
+                id="render-duration"
+                type="range"
+                min="0.25"
+                max="3"
+                step="0.05"
+              />
+            </label>
+            <strong id="render-duration-value" class="field-value"></strong>
+          </div>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Hybrid render</p>
+              <h2>Blend</h2>
+            </div>
+          </div>
+
+          <div class="mode-switch" id="render-mode-switch">
+            <button class="mode-button" type="button" data-mode="early">
+              Early
+            </button>
+            <button class="mode-button" type="button" data-mode="late">
+              Late
+            </button>
+            <button class="mode-button" type="button" data-mode="hybrid">
+              Hybrid
+            </button>
+          </div>
+
+          <div class="field split-field">
+            <label>
+              <span>Crossover</span>
+              <input
+                id="render-crossover"
+                type="range"
+                min="0.03"
+                max="1.5"
+                step="0.01"
+              />
+            </label>
+            <strong id="render-crossover-value" class="field-value"></strong>
+          </div>
+
+          <label class="field compact-field">
+            <span>Window</span>
+            <select id="render-window">
+              <option value="hann">Hann</option>
+              <option value="hamming">Hamming</option>
+              <option value="blackman">Blackman</option>
+              <option value="blackman-harris">Blackman-Harris</option>
+              <option value="flattop">Flat Top</option>
+            </select>
+          </label>
+
+          <div class="action-row">
+            <button id="render-scene" class="primary-button" type="button">
+              Render room
+            </button>
+            <button
+              id="download-wav"
+              class="ghost-button"
+              type="button"
+              disabled
+            >
+              Download WAV
+            </button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="studio reveal">
+        <header class="studio-header panel">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h2>Fresh browser control room</h2>
+            <p>
+              The right pane stays visual: spatial layout, direct path, wall
+              response, and the rendered impulse response all update from the
+              same scene state.
+            </p>
+          </div>
+          <div class="metric-strip">
+            <article class="metric-chip">
+              <span>First arrival</span>
+              <strong id="metric-first-arrival">--</strong>
+            </article>
+            <article class="metric-chip">
+              <span>Peak</span>
+              <strong id="metric-peak">--</strong>
+            </article>
+            <article class="metric-chip">
+              <span>Early events</span>
+              <strong id="metric-events">--</strong>
+            </article>
+            <article class="metric-chip">
+              <span>Render time</span>
+              <strong id="metric-render-time">--</strong>
+            </article>
+          </div>
+        </header>
+
+        <div class="studio-grid">
+          <section class="viewport-card panel">
+            <div class="panel-head viewport-head">
+              <div>
+                <p class="section-kicker">Spatial view</p>
+                <h2>Scene preview</h2>
+              </div>
+              <p class="viewport-note">
+                Orbit, pan, and inspect wall treatment live.
+              </p>
+            </div>
+            <div class="viewport-shell">
+              <canvas id="scene-canvas"></canvas>
+              <div class="viewport-overlay">
+                <span class="legend-dot legend-source"></span>
+                <span>Source</span>
+                <span class="legend-dot legend-receiver"></span>
+                <span>Receiver</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="response-card panel">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Impulse response</p>
+                <h2>Waveform + audition</h2>
+              </div>
+              <span id="render-badge" class="status-pill"
+                >Waiting for render</span
+              >
+            </div>
+
+            <canvas id="waveform-canvas" height="280"></canvas>
+
+            <div class="audio-card">
+              <audio id="audio-player" controls preload="none"></audio>
+            </div>
+
+            <pre id="render-log" class="render-log">
+Run the renderer to generate a browser-side WAV preview.</pre
+            >
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="wasm_exec.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
