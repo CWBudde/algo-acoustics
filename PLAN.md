@@ -307,132 +307,132 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 3.1 Acoustic metrics (`metrics/`)
 
-- [ ] Add `metrics.go`
-  - [ ] `T60FromDecaySlope(buf *ir.Buffer) (float64, error)` — linear regression on energy decay
-  - [ ] `EDT(buf *ir.Buffer) (float64, error)` — early decay time (0 to −10 dB)
-  - [ ] `T20(buf *ir.Buffer) (float64, error)` — −5 to −25 dB decay
-  - [ ] `T30(buf *ir.Buffer) (float64, error)` — −5 to −35 dB decay
-  - [ ] `C50(buf *ir.Buffer) (float64, error)` — clarity 50 ms
-  - [ ] `C80(buf *ir.Buffer) (float64, error)` — clarity 80 ms
-  - [ ] `D50(buf *ir.Buffer) (float64, error)` — definition
+- [x] Add `metrics.go`
+  - [x] `T60FromDecaySlope(buf *ir.Buffer) (float64, error)` — linear regression on energy decay
+  - [x] `EDT(buf *ir.Buffer) (float64, error)` — early decay time (0 to −10 dB)
+  - [x] `T20(buf *ir.Buffer) (float64, error)` — −5 to −25 dB decay
+  - [x] `T30(buf *ir.Buffer) (float64, error)` — −5 to −35 dB decay
+  - [x] `C50(buf *ir.Buffer) (float64, error)` — clarity 50 ms
+  - [x] `C80(buf *ir.Buffer) (float64, error)` — clarity 80 ms
+  - [x] `D50(buf *ir.Buffer) (float64, error)` — definition
 
 > **Insight:** Delegate convolution and filter-bank operations to `algo-dsp`; implement only the metric extraction formulas here. Check `algo-dsp` for existing EDT/T30 helpers before writing new ones.
 
-- [ ] Add `compare.go`
-  - [ ] `MetricResult` struct: `Name string`, `Expected, Actual, Tolerance float64`, `Pass bool`
-  - [ ] `CompareMetric(name string, expected, actual, tolerance float64) MetricResult`
-  - [ ] `CompareAll(results []MetricResult) bool`
-  - [ ] `PrintReport(results []MetricResult, w io.Writer)`
+- [x] Add `compare.go`
+  - [x] `MetricResult` struct: `Name string`, `Expected, Actual, Tolerance float64`, `Pass bool`
+  - [x] `CompareMetric(name string, expected, actual, tolerance float64) MetricResult`
+  - [x] `CompareAll(results []MetricResult) bool`
+  - [x] `PrintReport(results []MetricResult, w io.Writer)`
 
 ### 3.2 JSON and CSV export (`export/`)
 
-- [ ] Add `json.go`
-  - [ ] `WriteEventsJSON(path string, events []ir.Event) error`
-  - [ ] `WriteMetricsJSON(path string, results []metrics.MetricResult) error`
-- [ ] Add `csv.go`
-  - [ ] `WriteEventsCSV(path string, events []ir.Event) error`
-  - [ ] `WriteMetricsCSV(path string, results []metrics.MetricResult) error`
+- [x] Add `json.go`
+  - [x] `WriteEventsJSON(path string, events []ir.Event) error`
+  - [x] `WriteMetricsJSON(path string, results []metrics.MetricResult) error`
+- [x] Add `csv.go`
+  - [x] `WriteEventsCSV(path string, events []ir.Event) error`
+  - [x] `WriteMetricsCSV(path string, results []metrics.MetricResult) error`
 
 ### 3.3 Regression test fixtures
 
-- [ ] Create `testdata/rooms/shoebox_absorptive.json` (high absorption walls)
-- [ ] Create `testdata/rooms/shoebox_symmetric.json` (source and receiver equidistant from center)
-- [ ] Create `testdata/rooms/shoebox_livelier.json` (very low absorption)
-- [ ] Golden test: run ISM on each fixture, serialize events to JSON, compare against committed baseline
-  - Tolerance: arrival time ±0.05 ms, amplitude ±0.5 dB
+- [x] Create `testdata/rooms/shoebox_absorptive.json` (high absorption walls)
+- [x] Create `testdata/rooms/shoebox_symmetric.json` (source and receiver equidistant from center)
+- [x] Create `testdata/rooms/shoebox_livelier.json` (very low absorption)
+- [x] Golden test: run ISM on each fixture, serialize events to JSON, compare against committed baseline
+  - [x] Tolerance: arrival time ±0.05 ms, amplitude ±0.5 dB
 
 ### 3.4 Property tests
 
-- [ ] Property: absorptive room has shorter T60 than reflective room
-- [ ] Property: larger room has longer first reflection time
-- [ ] Property: source–receiver distance increase reduces direct path amplitude by 6 dB/double
-- [ ] Property: swapping source and receiver positions yields same set of path lengths (reciprocity)
-- [ ] Property: monotonic decay — energy in each time window is non-increasing on average after direct sound
+- [x] Property: absorptive room has shorter T60 than reflective room
+- [x] Property: larger room has longer first reflection time
+- [x] Property: source–receiver distance increase reduces direct path amplitude by 6 dB/double
+- [x] Property: swapping source and receiver positions yields same set of path lengths (reciprocity)
+- [x] Property: monotonic decay — energy in each time window is non-increasing on average after direct sound
 
 ### 3.5 `roombench` CLI
 
-- [ ] Add `cmd/roombench/main.go`
-  - [ ] Sub-command `run` — runs all regression fixtures, prints pass/fail
-  - [ ] Sub-command `compare <baseline.json> <current.json>` — diff two metric reports
-  - [ ] Sub-command `report` — generates a text summary table
-- [ ] Wire `roombench run` into CI as a separate job
+- [x] Add `cmd/roombench/main.go`
+  - [x] Sub-command `run` — runs all regression fixtures, prints pass/fail
+  - [x] Sub-command `compare <baseline.json> <current.json>` — diff two metric reports
+  - [x] Sub-command `report` — generates a text summary table
+- [x] Wire `roombench run` into CI as a separate job
 
 ### 3.6 CLI: `roomir dump-events`
 
-- [ ] Add sub-command `dump-events <scene.json> -o events.json --format json|csv`
-- [ ] Useful for debugging and generating regression baselines
+- [x] Add sub-command `dump-events <scene.json> -o events.json --format json|csv`
+- [x] Useful for debugging and generating regression baselines
 
 ---
 
 ## Phase 4 — Ray-Traced Late Field
 
-### Milestone B (partial): smooth statistical reverb tail
+### Milestone B (complete): smooth statistical reverb tail
 
 > Add a scalable Monte Carlo late-energy model. No PDE yet.
 
 ### 4.1 Ray launch (`raytrace/`)
 
-- [ ] Add `launch.go`
-  - [ ] `LaunchConfig` struct: `NumRays int`, `MaxBounces int`, `MaxTimeSeconds float64`, `SpeedOfSound float64`
-  - [ ] `FibonacciSphere(n int) []geometry.Vec3` — uniformly distributed unit vectors
-  - [ ] `StratifiedDirections(n int) []geometry.Vec3` — jittered stratified grid on sphere
-  - [ ] `LaunchRays(src geometry.Vec3, cfg LaunchConfig) []geometry.Ray`
+- [x] Add `launch.go`
+  - [x] `LaunchConfig` struct: `NumRays int`, `MaxBounces int`, `MaxTimeSeconds float64`, `SpeedOfSound float64`
+  - [x] `FibonacciSphere(n int) []geometry.Vec3` — uniformly distributed unit vectors
+  - [x] `StratifiedDirections(n int) []geometry.Vec3` — jittered stratified grid on sphere
+  - [x] `LaunchRays(src geometry.Vec3, cfg LaunchConfig) []geometry.Ray`
 
 > **Insight:** Fibonacci sphere formula: `θ = 2π·i/φ²`, `z = 1 − (2i+1)/n` where `φ = (1+√5)/2`. This gives a near-uniform distribution without random noise.
 
 ### 4.2 Scene intersection for ray tracing (`raytrace/`)
 
-- [ ] Add `tracer.go`
-  - [ ] `ShoeboxTracer` struct: holds room walls as 6 planes
-  - [ ] `ShoeboxTracer.NextHit(r geometry.Ray) (geometry.Vec3, geometry.Vec3, int, bool)` — returns hit point, normal, wall index, hit flag
-  - [ ] `Tracer` interface: `NextHit(r geometry.Ray) (hitPoint, normal Vec3, wallIdx int, ok bool)`
+- [x] Add `tracer.go`
+  - [x] `ShoeboxTracer` struct: holds room walls as 6 planes
+  - [x] `ShoeboxTracer.NextHit(r geometry.Ray) (geometry.Vec3, geometry.Vec3, int, bool)` — returns hit point, normal, wall index, hit flag
+  - [x] `Tracer` interface: `NextHit(r geometry.Ray) (hitPoint, normal Vec3, wallIdx int, ok bool)`
 
 ### 4.3 Scatter and absorption per bounce (`raytrace/`)
 
-- [ ] Add `scatter.go`
-  - [ ] `ScatterConfig` struct: per-band absorption and scattering coefficients
-  - [ ] `SpecularReflect(dir, normal geometry.Vec3) geometry.Vec3`
-  - [ ] `DiffuseReflect(normal geometry.Vec3, rng *rand.Rand) geometry.Vec3` — cosine-weighted hemisphere
-  - [ ] `SelectReflection(scatterCoeff float64, dir, normal geometry.Vec3, rng *rand.Rand) geometry.Vec3`
-  - [ ] `AbsorbedFraction(absorptionByBand []float64) []float64` — per-band energy remaining after bounce
+- [x] Add `scatter.go`
+  - [x] `ScatterConfig` struct: per-band absorption and scattering coefficients
+  - [x] `SpecularReflect(dir, normal geometry.Vec3) geometry.Vec3`
+  - [x] `DiffuseReflect(normal geometry.Vec3, rng *rand.Rand) geometry.Vec3` — cosine-weighted hemisphere
+  - [x] `SelectReflection(scatterCoeff float64, dir, normal geometry.Vec3, rng *rand.Rand) geometry.Vec3`
+  - [x] `AbsorbedFraction(absorptionByBand []float64) []float64` — per-band energy remaining after bounce
 
 ### 4.4 Receiver hit model (`raytrace/`)
 
-- [ ] Add `receiver.go`
-  - [ ] `SphereReceiver` struct: `Center geometry.Vec3`, `Radius float64`
-  - [ ] `SphereReceiver.Intersects(r geometry.Ray, tMin, tMax float64) (t float64, hit bool)`
-  - [ ] `SphereReceiver.AngularWeight(dir geometry.Vec3) float64` — optional cosine weighting
+- [x] Add `receiver.go`
+  - [x] `SphereReceiver` struct: `Center geometry.Vec3`, `Radius float64`
+  - [x] `SphereReceiver.Intersects(r geometry.Ray, tMin, tMax float64) (t float64, hit bool)`
+  - [x] `SphereReceiver.AngularWeight(dir geometry.Vec3) float64` — optional cosine weighting
 
 ### 4.5 Energy accumulation (`raytrace/`)
 
-- [ ] Add `accumulate.go`
-  - [ ] `HistogramBin` struct: per-band energy, time
-  - [ ] `EnergyHistogram` struct: `Bins []HistogramBin`, `BinDuration float64`, `BandCount int`
-  - [ ] `NewEnergyHistogram(duration, binDuration float64, bandCount int) *EnergyHistogram`
-  - [ ] `EnergyHistogram.Add(timeSeconds float64, bandEnergy []float64)`
-  - [ ] `EnergyHistogram.ToLateMono(sampleRate int) *ir.Buffer` — convert histogram to stochastic late IR with shaped noise
+- [x] Add `accumulate.go`
+  - [x] `HistogramBin` struct: per-band energy, time
+  - [x] `EnergyHistogram` struct: `Bins []HistogramBin`, `BinDuration float64`, `BandCount int`
+  - [x] `NewEnergyHistogram(duration, binDuration float64, bandCount int) *EnergyHistogram`
+  - [x] `EnergyHistogram.Add(timeSeconds float64, bandEnergy []float64)`
+  - [x] `EnergyHistogram.ToLateMono(sampleRate int) *ir.Buffer` — convert histogram to stochastic late IR with shaped noise
 
 ### 4.6 Ray tracer integration (`raytrace/`)
 
-- [ ] Add top-level `raytrace/tracer.go` (rename/extend earlier stub)
-  - [ ] `RayTracer` struct: `Config LaunchConfig`, `Scene *scene.Scene`
-  - [ ] `RayTracer.Trace() (*EnergyHistogram, error)`
-    - [ ] Launch rays from source
-    - [ ] For each ray: propagate bounces until max bounces or max time
-    - [ ] Check receiver hit at each segment
-    - [ ] Accumulate energy
-- [ ] Unit test: 10,000 rays in a shoebox with zero absorption → flat decay (conservation check)
+- [x] Add top-level `raytrace/tracer.go` (rename/extend earlier stub)
+  - [x] `RayTracer` struct: `Config LaunchConfig`, `Scene *scene.Scene`
+  - [x] `RayTracer.Trace() (*EnergyHistogram, error)`
+    - [x] Launch rays from source
+    - [x] For each ray: propagate bounces until max bounces or max time
+    - [x] Check receiver hit at each segment
+    - [x] Accumulate energy
+- [x] Unit test: 10,000 rays in a shoebox with zero absorption → flat decay (conservation check)
 
 ### 4.7 Late IR synthesis from histogram
 
-- [ ] In `hybrid/` add `late_from_rays.go`
-  - [ ] `HistogramToEvents(h *raytrace.EnergyHistogram, rng *rand.Rand) []ir.Event` — optional sparse path
-  - [ ] `HistogramToBuffer(h *raytrace.EnergyHistogram, sampleRate int) *ir.Buffer` — direct noise shaping
+- [x] In `hybrid/` add `late_from_rays.go`
+  - [x] `HistogramToEvents(h *raytrace.EnergyHistogram, rng *rand.Rand) []ir.Event` — optional sparse path
+  - [x] `HistogramToBuffer(h *raytrace.EnergyHistogram, sampleRate int) *ir.Buffer` — direct noise shaping
 
 ### 4.8 Example: `shoebox_late` (inline, not separate dir yet)
 
-- [ ] Add a test-main in `raytrace/` package or inline example
-- [ ] Verify smooth decay plot by printing energy per 10 ms bin to stdout/CSV
+- [x] Add a test-main in `raytrace/` package or inline example
+- [x] Verify smooth decay plot by printing energy per 10 ms bin to stdout/CSV
 
 ---
 

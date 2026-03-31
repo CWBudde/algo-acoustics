@@ -58,8 +58,8 @@ func TestRenderCommandWritesWAVAndReportsSummary(t *testing.T) {
 		t.Fatalf("NumChans = %d, want %d", got, want)
 	}
 
-	dx := 3.5 - 1.2
-	dy := 2.2 - 1.0
+	dx := 4.0 - 1.5
+	dy := 2.0 - 2.0
 	dz := 0.0
 	distance := math.Sqrt(dx*dx + dy*dy + dz*dz)
 	expectedSample := int(math.Round(distance / acoustics.SpeedOfSound * float64(decoder.SampleRate)))
@@ -83,5 +83,4 @@ func TestRenderCommandWritesWAVAndReportsSummary(t *testing.T) {
 	}
 
 	t.Fatalf("decoded samples %d..%d are all zero, want direct-path spike near %d", start, end, expectedSample)
-	}
 }
