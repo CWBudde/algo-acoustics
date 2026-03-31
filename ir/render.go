@@ -81,14 +81,14 @@ func aggregateBandGain(bandGain []float64, bandCount int) (float64, error) {
 		return 0, fmt.Errorf("band gain length %d does not match band count %d", len(bandGain), bandCount)
 	}
 
-	energySum := 0.0
+	sum := 0.0
 	for _, value := range bandGain {
-		energySum += value * value
+		sum += value
 	}
 
-	if energySum <= 0 {
+	if sum == 0 {
 		return 0, nil
 	}
 
-	return math.Sqrt(energySum / float64(len(bandGain))), nil
+	return sum / float64(len(bandGain)), nil
 }

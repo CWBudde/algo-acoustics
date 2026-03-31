@@ -65,6 +65,11 @@ func TestRenderMonoAppliesBandSumAndPhase(t *testing.T) {
 			BandGain:     []float64{1, 1, 1},
 			PhaseRadians: math.Pi,
 		},
+		{
+			TimeSeconds: 0.03,
+			Amplitude:   0.6,
+			BandGain:    []float64{-1.0, -0.5, -0.25},
+		},
 	}, RenderConfig{
 		SampleRate:      100,
 		DurationSeconds: 0.1,
@@ -78,12 +83,16 @@ func TestRenderMonoAppliesBandSumAndPhase(t *testing.T) {
 		t.Fatalf("RenderMono() error = %v", err)
 	}
 
-	if got, want := buf.Samples[1], 0.33071891388307384; math.Abs(got-want) > 1e-12 {
+	if got, want := buf.Samples[1], 0.2916666666666667; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[1] = %v, want %v", got, want)
 	}
 
 	if got, want := buf.Samples[2], -0.4; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[2] = %v, want %v", got, want)
+	}
+
+	if got, want := buf.Samples[3], -0.35; math.Abs(got-want) > 1e-12 {
+		t.Fatalf("Samples[3] = %v, want %v", got, want)
 	}
 }
 

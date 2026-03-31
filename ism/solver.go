@@ -131,9 +131,11 @@ func specularEvent(source scene.Source, receiver scene.Receiver, imgSrc ImageSou
 		return ir.Event{}, false
 	}
 
+	orderedPath := sourceOrderedPath(path)
+
 	target := receiver.Position
-	if len(path) > 0 {
-		target = path[0].Point
+	if len(orderedPath) > 0 {
+		target = orderedPath[0].Point
 	}
 
 	bandGain := directivityBandGain(source, bandSpec, target)
@@ -141,17 +143,8 @@ func specularEvent(source scene.Source, receiver scene.Receiver, imgSrc ImageSou
 		return ir.Event{}, false
 	}
 
-	wallCounts := wallHitCounts(imgSrc.orderX, imgSrc.orderY, imgSrc.orderZ)
 	for bandIndex := range bandGain {
-		for wallIndex, count := range wallCounts {
-			if count == 0 {
-				continue
-			}
-
-			material := materials[room.WallMaterials[wallIndex]]
-			reflection := math.Sqrt(math.Max(0, 1-material.AbsorptionAt(bandIndex)))
-			bandGain[bandIndex] *= math.Pow(reflection, float64(count))
-		}
+		bandGain[bandIndex] *= pathPressureReflectance(orderedPath, source.Position, room, materials, bandIndex)
 	}
 
 	if bandGainSilent(bandGain) {
@@ -207,4 +200,100 @@ func bandGainSilent(bandGain []float64) bool {
 	}
 
 	return true
+}
+
+func sourceOrderedPath(path []reflectionPoint) []reflectionPoint {
+	if len(path) <= 1 {
+		return append([]reflectionPoint(nil), path...)
+	}
+
+	ordered := make([]reflectionPoint, len(path))
+	for i := range path {
+		ordered[i] = path[len(path)-1-i]
+	}
+
+	return ordered
+}
+
+func pathPressureReflectance(path []reflectionPoint, source geometry.Vec3, room *scene.Shoebox, materials map[string]scene.Material, bandIndex int) float64 {
+	if len(path) == 0 {
+		return 1
+	}
+
+	pressure := 1.0
+	previous := source
+
+	for _, reflection := range path {
+		cosAngle := reflectionCosine(previous, reflection.Point, reflection.Wall)
+		material := materials[room.WallMaterials[reflection.Wall]]
+		pressure *= wayverbPressureReflectance(material.AbsorptionAt(bandIndex), cosAngle)
+		previous = reflection.Point
+	}
+
+	return pressure
+}
+
+func reflectionCosine(previous, point geometry.Vec3, wall int) float64 {
+	direction := point.Sub(previous).Normalize()
+	if direction == geometry.Vec3Zero {
+		return 0
+	}
+
+	cosAngle := math.Abs(direction.Dot(wallNormal(wall)))
+	if cosAngle < 0 {
+		return 0
+	}
+
+	if cosAngle > 1 {
+		return 1
+	}
+
+	return cosAngle
+}
+
+func wallNormal(wall int) geometry.Vec3 {
+	switch wall {
+	case wallNegX:
+		return geometry.Vec3{X: 1}
+	case wallPosX:
+		return geometry.Vec3{X: -1}
+	case wallNegY:
+		return geometry.Vec3{Y: 1}
+	case wallPosY:
+		return geometry.Vec3{Y: -1}
+	case wallNegZ:
+		return geometry.Vec3{Z: 1}
+	case wallPosZ:
+		return geometry.Vec3{Z: -1}
+	default:
+		return geometry.Vec3Zero
+	}
+}
+
+func wayverbPressureReflectance(absorption, cosAngle float64) float64 {
+	if absorption < 0 {
+		absorption = 0
+	}
+
+	if absorption > 1 {
+		absorption = 1
+	}
+
+	if cosAngle < 0 {
+		cosAngle = 0
+	}
+
+	if cosAngle > 1 {
+		cosAngle = 1
+	}
+
+	magnitude := math.Sqrt(math.Max(0, 1-absorption))
+	if magnitude >= 1-1e-12 {
+		return 1
+	}
+
+	impedance := (1 + magnitude) / (1 - magnitude)
+	tmp := impedance * cosAngle
+
+	return (tmp - 1) / (tmp + 1)
 }

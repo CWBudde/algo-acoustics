@@ -299,6 +299,53 @@ func TestISMSolverSolveAppliesPerWallAbsorption(t *testing.T) {
 	}
 }
 
+func TestISMSolverSolveUsesAngleDependentPressureReflectance(t *testing.T) {
+	t.Parallel()
+
+	solver := ISMSolver{}
+	sc := testScene(t)
+	sc.Room.Shoebox.WallMaterials = [6]string{"soft", "hard", "hard", "hard", "hard", "hard"}
+	sc.Materials["soft"] = scene.Material{
+		Name:             "soft",
+		AbsorptionByBand: []float64{1, 1, 1, 1, 1, 1},
+		ScatteringByBand: []float64{0, 0, 0, 0, 0, 0},
+	}
+	sc.Sources[0].Position = geometry.Vec3{X: 2, Y: 2, Z: 3}
+	sc.Receivers[0].Position = geometry.Vec3{X: 6, Y: 5, Z: 4}
+
+	events, err := solver.Solve(&sc, ISMConfig{MaxOrder: 1})
+	if err != nil {
+		t.Fatalf("Solve() error = %v", err)
+	}
+
+	image := findImageSourceByOrderTriple(t, sc.Sources[0].Position, sc.Room.Shoebox, 1, -1, 0, 0)
+	event := findSpecularEventForImage(t, events, sc.Receivers[0].Position, image.Position)
+
+	path, ok := reflectionPath(image, sc.Receivers[0].Position)
+	if !ok {
+		t.Fatal("expected a valid reflection path")
+	}
+
+	want := pathPressureReflectance(sourceOrderedPath(path), sc.Sources[0].Position, sc.Room.Shoebox, sc.Materials, 0)
+	if got := event.BandGain[0]; math.Abs(got-want) > 1e-12 {
+		t.Fatalf("BandGain[0] = %v, want %v", got, want)
+	}
+
+	if event.BandGain[0] >= 0 {
+		t.Fatalf("BandGain[0] = %v, want negative pressure reflectance", event.BandGain[0])
+	}
+
+	buf, err := ir.RenderMono([]ir.Event{*event}, ir.RenderConfig{SampleRate: 48000, DurationSeconds: 0.25, BandSpec: sc.BandSpec})
+	if err != nil {
+		t.Fatalf("RenderMono() error = %v", err)
+	}
+
+	sampleIndex := int(math.Round(event.TimeSeconds * float64(buf.SampleRate)))
+	if got := buf.Samples[sampleIndex]; got >= 0 {
+		t.Fatalf("Samples[%d] = %v, want negative early impulse", sampleIndex, got)
+	}
+}
+
 func TestISMSolverSolveAppliesSourceDirectivity(t *testing.T) {
 	t.Parallel()
 
