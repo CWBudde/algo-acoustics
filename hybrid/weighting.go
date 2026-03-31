@@ -60,9 +60,13 @@ func ApplyFade(buf *ir.Buffer, startSample, endSample int, fadeIn bool) *ir.Buff
 		return out
 	}
 
-	window := HannFade(endSample - startSample)
+	span := endSample - startSample
 	for i := startSample; i < endSample; i++ {
-		weight := window[i-startSample]
+		weight := 1.0
+		if span > 1 {
+			position := float64(i-startSample) / float64(span-1)
+			weight = 0.5 - 0.5*math.Cos(math.Pi*position)
+		}
 		if !fadeIn {
 			weight = 1 - weight
 		}

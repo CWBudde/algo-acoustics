@@ -30,14 +30,20 @@ func TestFadeHelpers(t *testing.T) {
 func TestApplyFade(t *testing.T) {
 	t.Parallel()
 
-	buf := &ir.Buffer{SampleRate: 1000, Samples: []float64{1, 1, 1, 1, 1}}
-	fadeOut := ApplyFade(buf, 1, 4, false)
-	if fadeOut.Samples[1] <= fadeOut.Samples[3] {
+	buf := &ir.Buffer{SampleRate: 1000, Samples: []float64{1, 1, 1, 1, 1, 1}}
+	fadeOut := ApplyFade(buf, 1, 5, false)
+	if fadeOut.Samples[1] <= fadeOut.Samples[2] || fadeOut.Samples[2] <= fadeOut.Samples[3] || fadeOut.Samples[3] <= fadeOut.Samples[4] {
 		t.Fatalf("expected fade out to decrease, got %#v", fadeOut.Samples)
 	}
+	if math.Abs(fadeOut.Samples[1]-1) > 1e-12 || math.Abs(fadeOut.Samples[4]) > 1e-12 {
+		t.Fatalf("expected fade out endpoints to be 1 -> 0, got %#v", fadeOut.Samples)
+	}
 
-	fadeIn := ApplyFade(buf, 1, 4, true)
-	if fadeIn.Samples[1] >= fadeIn.Samples[3] {
+	fadeIn := ApplyFade(buf, 1, 5, true)
+	if fadeIn.Samples[1] >= fadeIn.Samples[2] || fadeIn.Samples[2] >= fadeIn.Samples[3] || fadeIn.Samples[3] >= fadeIn.Samples[4] {
 		t.Fatalf("expected fade in to increase, got %#v", fadeIn.Samples)
+	}
+	if math.Abs(fadeIn.Samples[1]) > 1e-12 || math.Abs(fadeIn.Samples[4]-1) > 1e-12 {
+		t.Fatalf("expected fade in endpoints to be 0 -> 1, got %#v", fadeIn.Samples)
 	}
 }
