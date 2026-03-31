@@ -9,6 +9,8 @@ import (
 )
 
 // Source is an emitting point in the scene.
+//
+//nolint:recvcheck // UnmarshalJSON must mutate the receiver while query/marshal methods are value-based.
 type Source struct {
 	Position    geometry.Vec3       `json:"position"`
 	Orientation geometry.Quaternion `json:"orientation"`

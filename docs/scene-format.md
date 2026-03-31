@@ -6,9 +6,9 @@ Mesh rooms use `"kind": "mesh"` and reference a Wavefront OBJ file via `"meshPat
 
 ```json
 {
-	"room": {
-		"kind": "mesh",
-		"meshPath": "cube.obj"
-	}
+  "room": {
+    "kind": "mesh",
+    "meshPath": "cube.obj"
+  }
 }
 ```

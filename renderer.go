@@ -13,13 +13,8 @@ import (
 // TransferFunction carries a low-frequency transfer function.
 type TransferFunction = pde.TransferFunction
 
-// EarlyEngine generates the early sparse event stream for a scene.
-type EarlyEngine interface {
-	Generate(sc *scene.Scene, cfg ir.RenderConfig) ([]ir.Event, error)
-}
-
-// LateEngine generates the late sparse event stream for a scene.
-type LateEngine interface {
+// EventEngine generates a sparse event stream for a scene.
+type EventEngine interface {
 	Generate(sc *scene.Scene, cfg ir.RenderConfig) ([]ir.Event, error)
 }
 
@@ -30,8 +25,8 @@ type LowFreqEngine interface {
 
 // Renderer orchestrates early, late, and future low-frequency engines.
 type Renderer struct {
-	Early   EarlyEngine
-	Late    LateEngine
+	Early   EventEngine
+	Late    EventEngine
 	LowFreq LowFreqEngine
 	Hybrid  hybrid.HybridConfig
 }
@@ -66,21 +61,36 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 		return nil, fmt.Errorf("render mono buffer: %w", err)
 	}
 
-	if r.LowFreq != nil {
-		if provider, ok := r.LowFreq.(interface{ CrossoverHz() float64 }); ok {
-			transfer, err := r.LowFreq.Transfer(sc, cfg)
-			if err != nil {
-				return nil, fmt.Errorf("generate low-frequency transfer: %w", err)
-			}
-
-			if transfer != nil {
-				lowIR := transfer.ToTimeDomain(cfg.SampleRate, len(buffer.Samples))
-				buffer = hybrid.BlendLowFreq(lowIR, buffer, provider.CrossoverHz(), cfg.SampleRate)
-			}
-		}
+	buffer, err = r.applyLowFreq(sc, cfg, buffer)
+	if err != nil {
+		return nil, err
 	}
 
 	return append([]float64(nil), buffer.Samples...), nil
+}
+
+func (r Renderer) applyLowFreq(sc *scene.Scene, cfg ir.RenderConfig, buffer *ir.Buffer) (*ir.Buffer, error) {
+	if r.LowFreq == nil {
+		return buffer, nil
+	}
+
+	provider, ok := r.LowFreq.(interface{ CrossoverHz() float64 })
+	if !ok {
+		return buffer, nil
+	}
+
+	transfer, err := r.LowFreq.Transfer(sc, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("generate low-frequency transfer: %w", err)
+	}
+
+	if transfer == nil {
+		return buffer, nil
+	}
+
+	lowIR := transfer.ToTimeDomain(cfg.SampleRate, len(buffer.Samples))
+
+	return hybrid.BlendLowFreq(lowIR, buffer, provider.CrossoverHz(), cfg.SampleRate), nil
 }
 
 // RenderStereo is reserved for Phase 7 binaural output.

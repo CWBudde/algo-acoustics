@@ -19,6 +19,8 @@ const (
 )
 
 // Receiver is a listening position in the scene.
+//
+//nolint:recvcheck // UnmarshalJSON must mutate the receiver while query/marshal methods are value-based.
 type Receiver struct {
 	Position    geometry.Vec3       `json:"position"`
 	Orientation geometry.Quaternion `json:"orientation"`

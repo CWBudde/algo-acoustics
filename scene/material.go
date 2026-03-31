@@ -12,6 +12,8 @@ import (
 const NumBands = 6
 
 // Material describes band-dependent absorption and scattering properties.
+//
+//nolint:recvcheck // UnmarshalJSON must mutate the receiver while read-only helpers stay value-based.
 type Material struct {
 	Name             string            `json:"name"`
 	AbsorptionByBand []float64         `json:"absorptionByBand,omitempty"`
