@@ -3,6 +3,7 @@ package directivity
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"strings"
@@ -35,6 +36,29 @@ func LoadGLL(path, preset string) (*GLLModel, error) {
 	file, err := openGLL(path)
 	if err != nil {
 		return nil, err
+	}
+
+	return LoadGLLFile(file, preset)
+}
+
+// LoadGLLReader loads a GLL file from an already-open reader and adapts the selected source definition.
+func LoadGLLReader(r io.ReadSeeker, preset string) (*GLLModel, error) {
+	if r == nil {
+		return nil, errors.New("gll reader is nil")
+	}
+
+	file, err := ggll.Parse(r)
+	if err != nil {
+		return nil, fmt.Errorf("parse gll reader: %w", err)
+	}
+
+	return LoadGLLFile(file, preset)
+}
+
+// LoadGLLFile adapts a parsed GLL file to the directivity interface.
+func LoadGLLFile(file *ggll.File, preset string) (*GLLModel, error) {
+	if file == nil {
+		return nil, errors.New("gll file is nil")
 	}
 
 	source, sourceKey, err := selectSourceDefinition(file, preset)

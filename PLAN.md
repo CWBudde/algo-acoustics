@@ -546,12 +546,13 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 6.5 Example: `gll_source`
 
-- [ ] Add `examples/gll_source/main.go`
-  - [ ] Load a test GLL fixture from `testdata/gll/`
-  - [ ] Set up shoebox scene with GLL source
-  - [ ] Render hybrid mono IR
-  - [ ] Compare to omni source IR: frontal energy higher, rear energy lower
-- [ ] Add a minimal synthetic GLL test fixture to `testdata/gll/`
+- [x] Add `examples/gll_source/main.go`
+  - [x] Load a test GLL fixture from `testdata/gll/`
+  - [x] Set up shoebox scene with GLL source
+  - [x] Render hybrid mono IR
+  - [x] Compare to omni source IR: frontal energy higher, rear energy lower
+  - [x] Expose a wasm-friendly backend entrypoint for browser inputs
+- [x] Add a minimal synthetic GLL test fixture to `testdata/gll/`
 
 ### 6.6 Diagnostic CLI: `roomplot source-directivity`
 
@@ -586,6 +587,8 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 - [ ] Unit test: interpolated result at a measurement position equals the measurement itself
 
 ### 7.3 SOFA adapter (`hrtf/`)
+
+(see ../go-sofa/)
 
 - [ ] Add `sofa_adapter.go`
   - [ ] `SOFAAdapter` struct implementing `Dataset` interface
