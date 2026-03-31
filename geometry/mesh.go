@@ -37,12 +37,14 @@ func (issues *MeshValidationIssues) Error() string {
 			lines = append(lines, "- "+problem)
 		}
 	}
+
 	if len(issues.Warnings) > 0 {
 		if len(issues.Problems) == 0 {
 			lines = append(lines, "mesh validation warnings:")
 		} else {
 			lines = append(lines, "warnings:")
 		}
+
 		for _, warning := range issues.Warnings {
 			lines = append(lines, "- "+warning)
 		}
@@ -94,6 +96,7 @@ func (m *Mesh) Validate() error {
 		issues.Problems = append(issues.Problems, "mesh is nil")
 		return issues
 	}
+
 	if len(m.Triangles) == 0 {
 		issues.Problems = append(issues.Problems, "mesh must contain at least one triangle")
 		return issues
@@ -112,11 +115,13 @@ func (m *Mesh) Validate() error {
 	}
 
 	openEdges := 0
+
 	for _, count := range edgeCounts {
 		if count != 2 {
 			openEdges++
 		}
 	}
+
 	if openEdges > 0 {
 		issues.Warnings = append(issues.Warnings, fmt.Sprintf("mesh is not watertight: %d boundary or non-manifold edges", openEdges))
 	}
@@ -158,12 +163,14 @@ func LoadOBJ(path string) (*Mesh, error) {
 			if parseErr != nil {
 				return nil, fmt.Errorf("line %d: %w", lineNumber, parseErr)
 			}
+
 			vertices = append(vertices, vertex)
 		case "f":
 			faceTriangles, parseErr := parseOBJFace(fields, vertices)
 			if parseErr != nil {
 				return nil, fmt.Errorf("line %d: %w", lineNumber, parseErr)
 			}
+
 			triangles = append(triangles, faceTriangles...)
 		case "vt", "vn", "o", "g", "s", "usemtl", "mtllib":
 			continue
@@ -171,12 +178,15 @@ func LoadOBJ(path string) (*Mesh, error) {
 			return nil, fmt.Errorf("line %d: unsupported OBJ record %q", lineNumber, fields[0])
 		}
 	}
+
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
 	mesh := &Mesh{Triangles: triangles}
-	if validationErr := mesh.Validate(); validationErr != nil {
+
+	validationErr := mesh.Validate()
+	if validationErr != nil {
 		var issues *MeshValidationIssues
 		if errors.As(validationErr, &issues) && !issues.HasProblems() {
 			return mesh, nil
@@ -201,6 +211,7 @@ type meshEdgeKey struct {
 
 func newMeshEdgeKey(a, b Vec3) meshEdgeKey {
 	keyA := newMeshVertexKey(a)
+
 	keyB := newMeshVertexKey(b)
 	if compareMeshVertexKey(keyA, keyB) <= 0 {
 		return meshEdgeKey{A: keyA, B: keyB}
@@ -245,10 +256,12 @@ func parseOBJVertex(fields []string) (Vec3, error) {
 	if err != nil {
 		return Vec3{}, fmt.Errorf("parse vertex x: %w", err)
 	}
+
 	y, err := strconv.ParseFloat(fields[2], 64)
 	if err != nil {
 		return Vec3{}, fmt.Errorf("parse vertex y: %w", err)
 	}
+
 	z, err := strconv.ParseFloat(fields[3], 64)
 	if err != nil {
 		return Vec3{}, fmt.Errorf("parse vertex z: %w", err)
@@ -268,6 +281,7 @@ func parseOBJFace(fields []string, vertices []Vec3) ([]Triangle, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		indices = append(indices, index)
 	}
 
@@ -298,6 +312,7 @@ func parseOBJVertexIndex(field string, vertexCount int) (int, error) {
 	if resolvedIndex < 0 {
 		resolvedIndex = vertexCount + resolvedIndex + 1
 	}
+
 	if resolvedIndex <= 0 || resolvedIndex > vertexCount {
 		return 0, fmt.Errorf("face vertex index %d out of range", index)
 	}

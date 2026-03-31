@@ -24,22 +24,27 @@ func TestRenderMonoAccumulatesNearestSamples(t *testing.T) {
 	if got, want := buf.Len(), 50; got != want {
 		t.Fatalf("Len() = %d, want %d", got, want)
 	}
+
 	if got, want := buf.Samples[10], 0.5; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[10] = %v, want %v", got, want)
 	}
+
 	if got, want := buf.Samples[11], 0.25; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[11] = %v, want %v", got, want)
 	}
+
 	if got, want := buf.Samples[15], -0.2; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[15] = %v, want %v", got, want)
 	}
 
 	nonZero := 0
+
 	for _, sample := range buf.Samples {
 		if sample != 0 {
 			nonZero++
 		}
 	}
+
 	if got, want := nonZero, 3; got != want {
 		t.Fatalf("non-zero samples = %d, want %d", got, want)
 	}
@@ -76,6 +81,7 @@ func TestRenderMonoAppliesBandSumAndPhase(t *testing.T) {
 	if got, want := buf.Samples[1], 0.875; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[1] = %v, want %v", got, want)
 	}
+
 	if got, want := buf.Samples[2], -1.2; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[2] = %v, want %v", got, want)
 	}

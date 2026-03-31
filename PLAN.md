@@ -792,11 +792,11 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 10.4 Scene mesh support (`scene/`)
 
-- [ ] Update `room.go`
-  - [ ] `Room.IsMesh() bool`
-  - [ ] `Room.IsValid() bool` — checks that mesh is non-nil when `Kind == RoomKindMesh`
-- [ ] Update `validate.go` to accept mesh rooms
-- [ ] Update JSON loader to handle mesh room with OBJ path reference
+- [x] Update `room.go`
+  - [x] `Room.IsMesh() bool`
+  - [x] `Room.IsValid() bool` — checks that mesh is non-nil when `Kind == RoomKindMesh`
+- [x] Update `validate.go` to accept mesh rooms
+- [x] Update JSON loader to handle mesh room with OBJ path reference
 
 ### 10.5 Integration test
 
@@ -806,56 +806,432 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ---
 
-## Phase 11 — Future Research Track
+## Phase 11 — Frequency-Dependent Scattering
 
-### Post-milestone: research and experimentation only after Phases 0–10 are solid
+### Milestone G: physically accurate surface scattering
 
-> These items are explicitly deferred. Do not begin until Phases 1–10 have stable, tested implementations.
+> Add per-octave-band scattering coefficients to materials, splitting reflected energy between specular and diffuse components using Lambert cosine-weighted hemisphere sampling. This is one of the most impactful accuracy improvements for late reverberation.
 
-### 11.1 Diffraction (deferred)
+### 11.1 Material scattering data model (`scene/`)
 
-- [ ] Review uniform theory of diffraction (UTD) literature
-- [ ] Identify edge diffraction paths in mesh geometry
-- [ ] Prototype wedge diffraction coefficient
+- [ ] Extend `Material` struct with per-octave-band scattering coefficients `Scattering [NumBands]float64` (125 Hz – 4 kHz, 6 bands minimum)
+- [ ] Add validation: each `s(f)` in `[0, 1]`, scattering must be monotonically non-decreasing with frequency (warn if not)
+- [ ] Update JSON scene loader to accept optional `"scattering"` array per material
+- [ ] Provide default scattering estimator from structural depth: `s(f) = 1 - exp(-k * (f / f0)^2)` where `f0 = c / (2 * depth)`
+- [ ] Update `material_test.go` with scattering coefficient round-trips
 
-### 11.2 Frequency-dependent scattering (deferred)
+### 11.2 Material library with scattering data (`scene/`)
 
-- [ ] Material scattering vs. frequency model
-- [ ] Validate against published room acoustics data
+- [ ] Create `materials_library.go` with published absorption + scattering data for common surfaces:
+  - Painted concrete, exposed brick, plasterboard, glass, carpet, wooden floor
+  - Audience seating (occupied/unoccupied), stage curtain
+  - QRD diffuser, bookshelf
+- [ ] Source data from ISO 17497 measurements, Cox & D'Antonio (2017), Vorländer (2020)
+- [ ] Unit test: all library materials have valid coefficient ranges
 
-### 11.3 Non-rectangular PDE / iterative Helmholtz (deferred)
+### 11.3 Lambert diffuse reflection (`raytrace/`)
 
-- [ ] Evaluate `algo-pde` roadmap for non-regular grid support
-- [ ] Prototype immersed boundary method for simple convex rooms
+- [ ] Implement `LambertDirection(normal Vec3, rng *rand.Rand) Vec3` — cosine-weighted hemisphere sampling via `theta = arccos(sqrt(r1))`, `phi = 2*pi*r2`
+- [ ] Build local coordinate frame from surface normal (tangent/bitangent construction)
+- [ ] Unit test: statistical distribution of 100k samples matches cos(theta) PDF within chi-squared tolerance
+- [ ] Benchmark: Lambert sampling throughput (target: > 10M samples/sec)
 
-### 11.4 GPU acceleration (deferred)
+### 11.4 Energy splitting at reflections (`raytrace/`)
 
-- [ ] Profile hot loops: ray tracing and PDE sweeps
-- [ ] Evaluate `go-cuda` or OpenCL binding feasibility
+- [ ] Extend ray struct to carry energy per frequency band (`Energy [NumBands]float64`)
+- [ ] At each reflection, per band: `E_specular(f) = (1 - alpha(f)) * (1 - s(f)) * E_in(f)`, `E_diffuse(f) = (1 - alpha(f)) * s(f) * E_in(f)`
+- [ ] Implement hybrid direction strategy: use mean scattering coefficient across bands to decide ray direction (specular vs. Lambert), then weight energy per-band independently
+- [ ] Add configurable strategy: probabilistic split, deterministic blend, or full ray splitting with Russian roulette
+- [ ] Update ray termination: kill ray when max energy across all bands drops below threshold
 
-### 11.5 Real-time preview (deferred)
+### 11.5 Air absorption per frequency band (`raytrace/`)
 
-- [ ] Define latency budget (< 20 ms update for parameter change)
-- [ ] Design incremental re-render strategy
+- [ ] Implement ISO 9613-1 atmospheric absorption: `alpha_air(f, T, h)` in dB/m as a function of frequency, temperature, and relative humidity
+- [ ] Apply per-band air absorption to ray energy after each path segment: `E(f) *= 10^(-alpha_air(f) * dist / 10)`
+- [ ] Unit test: attenuation at 4 kHz over 50 m at 20°C / 50% RH matches published ISO tables within 5%
 
-### 11.6 Browser demo (deferred)
+### 11.6 Validation and sensitivity testing
 
-- [ ] Evaluate WASM compilation of core packages
-- [ ] Minimal Web Audio API integration prototype
+- [ ] Shoebox room comparison: run with `s=0` (all specular) and `s=1` (all diffuse), verify EDT and C80 differ as expected (diffuse → longer EDT, lower C80)
+- [ ] Ray count convergence test: verify T30 stabilizes within 2% as ray count increases from 1k to 100k
+- [ ] Compare predicted T30, C80, D50 against published round-robin results (Bork 2000/2005 PTB study)
+- [ ] A/B comparison: same room geometry with/without scattering, listen for plausibility of late reverberation
+
+> **References:** ISO 17497-1/2 (scattering measurement), Vorländer "Auralization" (2020), Cox & D'Antonio "Acoustic Absorbers and Diffusers" (3rd ed., 2017), Mommertz (1995), PTB round-robin (Bork 2000/2005).
+
+---
+
+## Phase 12 — Edge Diffraction (UTD)
+
+### Milestone H: diffraction around edges and barriers
+
+> Implement the Uniform Theory of Diffraction (Kouyoumjian & Pathak 1974) to model sound bending around finite edges and wedges. First-order diffraction typically improves shadow-zone accuracy by 3–6 dB over ISM-only simulation.
+
+### 12.1 Diffracting edge extraction (`geometry/`)
+
+- [ ] Add `diffraction.go` with `DiffractionEdge` struct:
+  - `Start, End Vec3` — edge endpoints
+  - `Direction Vec3` — unit vector along edge
+  - `Length float64`
+  - `WedgeIndex float64` — `n = exterior_angle / pi` (1 < n ≤ 2)
+  - `FaceONormal, FaceNNormal Vec3` — normals of the two adjacent faces
+  - `FaceOID, FaceNID int`
+  - `LocalBasis [3]Vec3` — edge-local coordinate frame for angle computation
+- [ ] Implement `ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge`:
+  - Build edge-adjacency map from triangle mesh (half-edge or edge-face lookup)
+  - Compute dihedral angle between adjacent face normals
+  - Classify: convex edges (exterior angle > π) are diffracting; concave and coplanar are skipped
+  - Merge adjacent colinear diffracting edges sharing the same two planes
+- [ ] Compute edge-local coordinate system: edge direction as one axis, reference face normal defines `phi = 0`
+- [ ] Unit test: cube mesh produces 12 edges, all with `n = 1.5` (270° exterior = 1.5π)
+- [ ] Unit test: L-shaped room produces correct convex and concave edge classification
+
+### 12.2 Fresnel transition function (`geometry/`)
+
+- [ ] Implement `FresnelTransition(x float64) complex128` — the UTD transition function `F(x) = 2j√x · e^(jx) · ∫_√x^∞ e^(-jt²) dt`
+- [ ] Use three regimes:
+  - `x > 10`: asymptotic expansion `F(x) ≈ 1 + j/(2x) - 3/(4x²) - ...`
+  - `x < 0.3`: small-argument power series
+  - Intermediate: rational approximation or direct numerical integration
+- [ ] Unit test: validate against published tables (McNamara et al. 1990, Table 4.1)
+- [ ] Test boundary: `F(x) → 1` for large `x`, smooth transition near `x = 0`
+
+### 12.3 Kouyoumjian–Pathak diffraction coefficient (`geometry/`)
+
+- [ ] Implement `WedgeDiffraction(phi, phiPrime, betaZero, n, k, L float64) complex128`
+  - Four-term formula: incident shadow boundary, reflection shadow boundaries (face O and face N), second RSB
+  - Each term: `D_i = (-e^(-jπ/4)) / (2n√(2πk)) · cot(α_i / (2n)) · F(kLa_i)`
+  - Integer `N_i` selection to minimize `|2nπN ± β|`
+- [ ] Implement spreading factor `A = √(1 / (s · s'(s + s')))` for spherical wave incidence
+- [ ] Implement distance parameter `L = (s · s') / (s + s') · sin²(β₀)`
+- [ ] Unit test: half-plane diffraction (`n = 2`) matches classical Sommerfeld solution
+- [ ] Unit test: 90° wedge (`n = 1.5`) matches published values from Balanis (2012, Table 13.1)
+- [ ] Validate: coefficient is continuous across shadow boundaries (the defining property of UTD over GTD)
+
+### 12.4 Diffraction path finding (`geometry/`, `ism/`)
+
+- [ ] Implement `FindDiffractionPoint(source, receiver Vec3, edge DiffractionEdge) (point Vec3, t float64, ok bool)`:
+  - Fermat's principle — minimize total path length `|S - P| + |P - R|`
+  - Closed-form: project S and R onto plane perpendicular to edge, solve for `t` parameter
+  - Reject if `t ∉ [0, 1]` (diffraction point outside finite edge)
+- [ ] Implement visibility testing: verify source-to-edge and edge-to-receiver paths are unoccluded (reuse existing BVH intersection)
+- [ ] Implement first-order path enumeration: for each source–receiver pair, iterate over all diffracting edges, find valid diffraction points, check visibility, compute contribution
+- [ ] Implement combined reflection–diffraction paths: use ISM image sources as virtual sources for diffraction (source→reflect→diffract→receiver and source→diffract→reflect→receiver)
+- [ ] Unit test: barrier between source and receiver — diffraction path found over the barrier top edge
+- [ ] Unit test: diffraction point on a wall corner edge is geometrically correct
+
+### 12.5 Integration with ray tracer and ISM (`raytrace/`, `ism/`)
+
+- [ ] Add diffraction contribution accumulation to impulse response: `p_d = p_incident · D · A · e^(-jks) / √s`
+- [ ] Frequency-dependent: evaluate diffraction coefficient at each octave band center frequency
+- [ ] For ray tracer: when a traced ray passes near an edge (configurable angular threshold), spawn diffracted rays on the Keller cone — sample 8–16 directions around the cone
+- [ ] Implement contribution culling: skip edges whose estimated contribution is below –60 dB relative to direct sound
+- [ ] Add spatial index for edges (reuse BVH or build separate edge index) for efficient proximity queries
+
+### 12.6 Validation
+
+- [ ] Canonical infinite wedge: compare against BTM (Biot-Tolstoy-Medwin) exact solutions for wedge angles 90°, 180° (half-plane), 270°
+- [ ] Barrier insertion loss: compare against Maekawa chart / ISO 9613-2 for Fresnel numbers > 1, target ≤ 1 dB error
+- [ ] Room with strong diffraction feature (pillar or barrier): compare IR with/without diffraction, verify shadow-zone level increases by 3–6 dB
+- [ ] Performance: first-order diffraction should add < 20% to total render time for typical rooms (< 50 edges)
+
+> **References:** Kouyoumjian & Pathak (1974), Svensson et al. (1999) BTM model, Tsingos et al. (2001) UTD in virtual environments, McNamara et al. (1990) UTD textbook, Torres et al. (2001), Calamia & Svensson (2007) fast edge diffraction.
+>
+> **Known limitations:** UTD is a high-frequency approximation; accuracy degrades when `k · edge_length ≪ 1` (wavelength > edge length). For a 1 m edge, this means below ~170 Hz. Second-order diffraction gives diminishing returns (1–2 dB) at significant computational cost — implement first-order only initially.
+
+---
+
+## Phase 13 — Non-Rectangular Wave-Based Solver (IBM)
+
+### Milestone I: wave-based acoustics for arbitrary convex rooms
+
+> Extend `algo-pde` from rectangular-only to convex polyhedral rooms using the Immersed Boundary Method (IBM) on a regular Cartesian grid. This preserves the existing FDTD architecture while removing the shoebox geometry restriction for the low-frequency solver.
+
+### 13.1 Convex room geometry module (`pde/`)
+
+- [ ] Add `convex.go` with `ConvexRoom` struct: ordered list of wall planes (normal + offset)
+- [ ] Implement convexity validation: all vertices on the correct side of all planes
+- [ ] Implement `PointInConvexRoom(p Vec3) bool` — half-plane intersection test (all dot products positive)
+- [ ] Implement `DistanceToNearestWall(p Vec3) (dist float64, normal Vec3, wallIdx int)` — for each grid node near the boundary
+- [ ] Construct axis-aligned bounding box for the convex room + PML padding
+- [ ] Unit test: point containment for cube, wedge-shaped room, truncated pyramid
+
+### 13.2 Grid classification and boundary mapping (`pde/`)
+
+- [ ] Add `ibm_grid.go`:
+  - For each grid node: classify as interior, boundary, or exterior
+  - Boundary nodes: nodes inside the room with at least one exterior neighbor
+  - For each boundary node: store fractional distance to wall along each axis, wall normal vector
+- [ ] Implement efficient classification using the convex half-plane tests (avoid per-node ray casting)
+- [ ] Store classification as a compact bitmask or enum grid (memory-efficient for large grids)
+- [ ] Unit test: rectangular room classification matches existing shoebox solver exactly
+- [ ] Unit test: 45° rotated square room produces correct boundary node pattern
+
+### 13.3 Modified FDTD stencil for boundary nodes (`pde/`)
+
+- [ ] Implement interpolated boundary scheme: adjust FD coefficients based on sub-cell wall position
+  - Option A (baseline): weighted reflection — mirror pressure at wall with appropriate reflection coefficient
+  - Option B (higher accuracy): Hamilton–Bilbao coefficient modification based on fractional cell distances
+- [ ] Handle corner nodes where two walls meet (only convex corners for convex rooms)
+- [ ] Set exterior nodes to zero pressure (inactive)
+- [ ] Verify no stencil reads from uninitialized exterior data
+- [ ] Implement configurable wall boundary condition:
+  - Rigid walls: `∂p/∂n = 0` (Neumann)
+  - Impedance walls: frequency-independent real-valued reflection coefficient
+  - Frequency-dependent impedance: auxiliary differential equation (ADE) approach at boundary nodes
+- [ ] CFL stability verification: empirically test that modified boundary stencils do not reduce stability limit below usable threshold
+
+### 13.4 Source injection for arbitrary positions (`pde/`)
+
+- [ ] Point source injection at arbitrary position inside convex room
+- [ ] Verify source position is inside geometry before injection
+- [ ] Support both soft source (additive) and hard source (overwrite) modes
+- [ ] Gaussian pulse and sine burst source signals (reuse from shoebox solver)
+
+### 13.5 Validation against analytical solutions
+
+- [ ] **Rectangular room regression**: run IBM solver on a rectangular room, compare eigenfrequencies and IR against existing shoebox solver — must match within 0.1% for first 20 modes
+- [ ] **Equilateral triangle (2D)**: compare against analytical eigenfrequencies `f_{m,n} = (c / 3L) · √(m² + mn + n²)` — target < 0.5% error for well-resolved modes
+- [ ] **Circular room (2D)**: compare against Bessel function modes — tests curved-boundary IBM accuracy
+- [ ] **Energy decay**: verify energy decay rate in convex room matches Sabine prediction within 10% for a room with known absorption
+
+### 13.6 Performance optimization
+
+- [ ] Sparse active-node iteration: only update interior + boundary nodes, skip exterior (avoid wasting compute on bounding-box padding)
+- [ ] Profile: compare IBM solver throughput to shoebox solver — target < 15% overhead from boundary handling
+- [ ] Memory: for rooms filling < 50% of bounding box, implement compressed storage of active nodes
+
+> **References:** Botteldooren (1995) FDTD for room acoustics, Hamilton & Bilbao (2017) immersed boundary FDTD, Savioja & Svensson (2015) overview, Bilbao (2004) "Wave and Scattering Methods", Erlangga et al. (2004) shifted-Laplacian preconditioner.
+>
+> **Crossover frequency:** The IBM solver covers 0 Hz to a configurable crossover (default ~1000 Hz). Above the crossover, geometric acoustics (ray tracing + ISM from Phases 4–5) takes over. The hybrid combiner from Phase 5 handles the merge. Cost scaling is O(f_max⁴) in 3D — a 512³ grid at 1 kHz needs ~48 MB and runs in seconds; 4 kHz needs ~379 MB and minutes.
+>
+> **Future extension:** BEM (Boundary Element Method) is a strong alternative for convex rooms — surface-only discretization with O(N_boundary) DOF. Consider if IBM accuracy at oblique walls proves insufficient. FEM on unstructured meshes is the eventual path for non-convex rooms with fine geometric detail.
+
+---
+
+## Phase 14 — GPU Acceleration
+
+### Milestone J: GPU-accelerated hot paths
+
+> Profile CPU bottlenecks and offload the two heaviest workloads — FDTD stencil updates and batch ray tracing — to the GPU. Start with the subprocess model for clean separation, migrate to CGo + CUDA if IPC overhead matters.
+
+### 14.1 CPU profiling baseline
+
+- [ ] Profile full simulation pipeline with `go tool pprof` (CPU, memory, block profiles)
+- [ ] Identify Amdahl fraction: what percentage of wall-clock time is in FDTD stencils vs. ray tracing vs. orchestration/I/O?
+- [ ] Measure single-core vs. multi-core scaling of hot loops (`GOMAXPROCS` sweep: 1, 2, 4, 8)
+- [ ] Document problem sizes: grid dimensions, ray counts per batch, total timesteps
+- [ ] Compute Amdahl ceiling: `Speedup = 1 / ((1 - P) + P/S)` — if ceiling < 3×, GPU may not justify the complexity
+- [ ] Estimate GPU memory requirements for target problem sizes, verify fit on target GPU (e.g., RTX 4090 = 24 GB)
+
+### 14.2 Standalone CUDA kernel prototypes
+
+- [ ] Write standalone CUDA FDTD stencil kernel (`.cu` file, no Go involvement):
+  - 3D second-order finite-difference stencil with shared memory tiling
+  - Benchmark: grid update throughput (cells/sec) for 256³, 512³, 1024³ grids
+  - Compare against Go CPU baseline including transfer time
+- [ ] Write standalone CUDA ray-BVH traversal kernel:
+  - Evaluate NVIDIA OptiX for hardware RT-core acceleration vs. custom software BVH traversal
+  - Benchmark: rays/sec for 100k, 1M, 10M rays against a 10k-triangle scene
+  - Compare against Go CPU baseline including transfer time
+- [ ] **Decision gate**: if GPU kernel + transfer is less than 5× faster than multi-core CPU for actual problem sizes, reconsider GPU investment
+
+### 14.3 Integration architecture
+
+- [ ] Choose integration approach:
+  - **Subprocess model** (recommended first): Go orchestrates, GPU binary does compute via shared memory (`mmap`/`shm_open`) for bulk data + Unix domain socket for control
+  - **CGo + CUDA**: thin C wrapper around kernels, called from Go — tighter coupling, harder build chain
+- [ ] Define interface: what data crosses the boundary (geometry upload, field grids, ray buffers, results), in what format, how often
+- [ ] Design memory lifecycle: upload-once (geometry, BVH, materials) vs. per-frame (ray origins) vs. persistent (field grids stay on GPU)
+- [ ] Implement GPU worker pattern: single goroutine serializes GPU submissions via channel, avoids CGo thread-pool exhaustion
+
+### 14.4 FDTD GPU integration (`pde/`)
+
+- [ ] Implement GPU module (shared library or standalone binary) wrapping the FDTD stencil kernel
+- [ ] Go-side integration: upload grid + materials once, run N thousand timesteps entirely on GPU, download receiver time series
+- [ ] CUDA stream management: overlap compute and host↔device transfer (double-buffering)
+- [ ] Pinned (page-locked) host memory for 2–3× faster transfers
+- [ ] End-to-end benchmark: full PDE simulation with GPU, wall-clock time vs. CPU-only
+
+### 14.5 Ray tracing GPU integration (`raytrace/`)
+
+- [ ] Implement GPU ray tracing module:
+  - Upload BVH + mesh once
+  - Per-batch: upload ray origins/directions, download hit results (point, normal, triangle ID, distance)
+  - Accumulate energy histograms on GPU (avoid per-ray download)
+- [ ] End-to-end benchmark: full ray-traced IR with GPU, wall-clock time vs. CPU-only
+
+### 14.6 Production hardening
+
+- [ ] Error handling: GPU OOM, kernel launch failure, driver crash → graceful fallback to CPU
+- [ ] CPU fallback path: detect GPU absence at startup, select CPU or GPU code path
+- [ ] CI/CD: build pipeline with CUDA compilation, test on GPU-equipped runners (or skip GPU tests with build tag)
+- [ ] Document GPU requirements and deployment prerequisites
+
+> **References:** Mumax3 (`github.com/mumax/3`) — Go + CUDA for PDE stencils, closest architectural precedent. `gorgonia/cu` for CUDA driver API bindings from Go. NVIDIA OptiX for hardware ray tracing.
+>
+> **Key insight:** PCIe 4.0 bandwidth (~25 GB/s) is 30–100× slower than GPU memory bandwidth (~900 GB/s). Minimize host↔device transfers — keep field grids and energy accumulators on GPU across timesteps. A 512³ float32 grid is ~512 MB, well within modern GPU memory.
+>
+> **Expected speedups:** FDTD stencils: 20–50× over 8-core CPU. Ray-BVH traversal: 50–200× with OptiX RT cores. Total pipeline speedup depends on Amdahl fraction — profile first.
+
+---
+
+## Phase 15 — Real-Time Preview
+
+### Milestone K: interactive parameter feedback
+
+> Enable sub-second feedback when users change materials, source/receiver positions, or room dimensions. Separate geometric tracing from energy evaluation so material changes reuse cached ray paths.
+
+### 15.1 Architecture: trace/evaluate separation (`raytrace/`, `ism/`)
+
+- [ ] Refactor ray tracer to store ray paths as geometry-only data: sequence of surface IDs + hit points + path lengths (no energy)
+- [ ] Implement "replay" function: given cached paths + material coefficients → energy histogram / IR
+- [ ] Cache invalidation tags: geometry hash + source/receiver position hash + material hash
+- [ ] Material-only change: reuse cached paths, recompute energy only (target < 100 ms for 10k paths)
+- [ ] Geometry change: invalidate all cached paths, full re-trace required
+
+### 15.2 Statistical pre-computation (`metrics/`)
+
+- [ ] Instant estimates on any parameter change (< 5 ms):
+  - Sabine RT60: `0.161 V / A` where `A = Σ(α_i · S_i)`
+  - Eyring RT60: `0.161 V / (-S · ln(1 - ᾱ))`
+  - Critical distance, estimated C80 and D50 from statistical formulas
+- [ ] Display predicted parameters before simulation completes
+- [ ] Unit test: statistical estimates match full simulation within 15% for a standard shoebox
+
+### 15.3 Progressive rendering pipeline
+
+- [ ] **Tier 1 — Instant (< 50 ms):** statistical estimates (Sabine/Eyring RT60, C80, D50)
+- [ ] **Tier 2 — Fast preview (50–500 ms):** ISM order 2–3 + low ray count (1k–5k) + 3-band frequency resolution
+- [ ] **Tier 3 — Refined (0.5–5 s):** full ISM order + progressive ray batches (1k rays per batch, update display after each)
+- [ ] **Tier 4 — Final (background):** full ray count, all frequency bands, scattering, air absorption
+- [ ] Implement `context.WithCancel` cancellation: new user input cancels current Tier 3/4 computation, restarts from Tier 1
+- [ ] Debounce rapid parameter changes (slider dragging): coalesce within 50 ms window
+
+### 15.4 Incremental ISM with caching (`ism/`)
+
+- [ ] Cache image source tree (geometry-dependent only, no material data)
+- [ ] On material change: re-evaluate energy along cached IS paths without rebuilding tree
+- [ ] On geometry change: invalidate and rebuild affected branches
+- [ ] On source/receiver move: rebuild paths from new position using existing IS tree structure
+
+### 15.5 Quality presets and LOD controls
+
+- [ ] Expose quality level setting: Draft / Preview / Final
+- [ ] Map to concrete parameters:
+
+| Parameter       | Draft  | Preview  | Final    |
+| --------------- | ------ | -------- | -------- |
+| ISM order       | 2      | 4        | 8+       |
+| Ray count       | 1,000  | 10,000   | 100,000+ |
+| Frequency bands | 3      | 6        | 8        |
+| Max IR length   | 100 ms | 500 ms   | full T60 |
+| Scattering      | off    | mid-band | per-band |
+
+- [ ] Allow manual override of each parameter for advanced users
+
+### 15.6 Hybrid statistical tail
+
+- [ ] For preview tiers: compute early reflections exactly (first 50–100 ms), append exponential decay tail from Eyring formula
+- [ ] Configurable crossover time (default 80 ms)
+- [ ] Full computation (Tier 4) replaces statistical tail with ray-traced result
+- [ ] Smooth crossfade between statistical tail and ray-traced tail to avoid artifacts
+
+> **References:** ODEON "Quick Estimate" mode, CATT-Acoustic cone tracing with quality tiers, Treble cloud-based progressive rendering. All commercial tools separate quick statistical estimates from full computation.
+
+---
+
+## Phase 16 — Browser Demo (WASM)
+
+### Milestone L: interactive web-based room acoustics demo
+
+> Compile the core simulation engine to WebAssembly and build a browser-based demo with 3D room visualization, interactive parameter controls, and real-time auralization via Web Audio API.
+
+### 16.1 WASM build pipeline
+
+- [ ] Set up `GOOS=js GOARCH=wasm` build target in justfile
+- [ ] Evaluate TinyGo: build core packages, compare binary size and numerical correctness against standard Go WASM
+  - Standard Go: expect 8–15 MB raw, 2–4 MB brotli
+  - TinyGo: expect 500 KB – 2 MB raw, 150–600 KB brotli
+- [ ] Strip debug info (`-ldflags="-s -w"`), avoid importing `fmt` / `encoding/json` in hot paths
+- [ ] Automate: `just wasm` → `.wasm` + `wasm_exec.js` + brotli compression
+- [ ] **Decision**: standard Go vs. TinyGo based on binary size vs. feature coverage trade-off
+
+### 16.2 Go/WASM API surface (`cmd/wasm/`)
+
+- [ ] Define exported functions callable from JS via `syscall/js`:
+  - `createRoom(jsonGeometry) → roomID`
+  - `setMaterial(surfaceID, absorptionCoeffs, scatteringCoeffs)`
+  - `setSource(x, y, z)` / `setReceiver(x, y, z)`
+  - `simulate(options) → Float32Array` (impulse response)
+  - `getParameters() → {rt60, c80, d50, ...}`
+- [ ] Data transfer: `js.CopyBytesToJS` for typed arrays (Float32Array for IR)
+- [ ] Progress callback from WASM → JS for progress bar during simulation
+- [ ] Memory budget: target < 512 MB peak for broad device compatibility
+
+### 16.3 HTML/JS frontend scaffold
+
+- [ ] Static HTML page: Three.js viewport + control sidebar + results panel
+- [ ] Parameter sliders: per-surface material absorption, source/receiver XYZ position
+- [ ] Result display: RT60, C80, D50, energy decay curve (Chart.js or uPlot)
+- [ ] Audio player section with play/stop/export controls
+- [ ] Responsive layout for desktop and tablet
+
+### 16.4 Three.js 3D room visualization
+
+- [ ] Room geometry renderer: wireframe + solid mode, color-coded surfaces by material/absorption
+- [ ] Draggable source (sphere) and receiver (sphere) markers with `THREE.Raycaster` picking
+- [ ] `OrbitControls` for camera (orbit, pan, zoom)
+- [ ] Optional: ray path visualization (animated `THREE.Line` showing reflection sequences)
+- [ ] Optional: SPL heatmap texture on surfaces from simulation results
+
+### 16.5 Web Audio API auralization
+
+- [ ] Load dry audio samples: speech, clap, music (bundled as small MP3/OGG files)
+- [ ] Create `ConvolverNode` with IR from WASM simulation
+- [ ] Playback controls: play/stop, dry/wet mix slider, gain control
+- [ ] On IR update: crossfade between old and new `ConvolverNode` to avoid clicks
+- [ ] "Export WAV" button using `OfflineAudioContext`
+
+### 16.6 Demo presets and deployment
+
+- [ ] 2–3 built-in room geometries: shoebox, simple hall, classroom
+- [ ] Pre-selected material presets: concert hall, studio, bathroom
+- [ ] "Reset to default" button
+- [ ] URL parameter encoding for shareable room configurations
+- [ ] Deploy as static site (GitHub Pages or Cloudflare Pages)
+- [ ] Correct MIME type for `.wasm` (`application/wasm`), cache headers for WASM binary
+- [ ] If using `SharedArrayBuffer` for Web Workers: set COOP/COEP headers
+
+### 16.7 Performance constraints
+
+- [ ] Define demo limits: max 50 surfaces, max 50k rays, IR up to 3 s at 48 kHz
+- [ ] Simulation runs in Web Worker (keep UI responsive)
+- [ ] Use progressive rendering from Phase 15 — show Tier 1/2 results immediately, refine in background
+- [ ] Fallback: if computation exceeds 10 s timeout, return partial result with warning
+
+> **References:** Go WASM documentation, TinyGo WASM target, Three.js (`threejs.org`), Web Audio API `ConvolverNode` spec.
+>
+> **Performance note:** WASM runs at ~40–70% of native Go speed for numerical computation. For a simple room (< 50 surfaces) with 10k rays, expect 1–3 s simulation time in browser. Progressive rendering (Phase 15) is essential for interactive feel.
 
 ---
 
 ## Milestone Summary
 
-| Milestone                        | Phases  | Deliverable                           |
-| -------------------------------- | ------- | ------------------------------------- |
-| **A — First audible result**     | 0, 1, 2 | Mono WAV IR from shoebox scene        |
-| **B — Useful room simulator**    | 3, 4, 5 | Hybrid mono IR + metrics + regression |
-| **C — Loudspeaker-aware**        | 6       | GLL directivity source model          |
-| **D — Binaural simulator**       | 7       | Stereo BRIR WAV export                |
-| **E — Physics-enhanced low end** | 8       | `algo-pde` crossover hybrid IR        |
-| **F — Geometry expansion**       | 9, 10   | Mesh scenes + validation corpus       |
-| **Research**                     | 11      | Experimental features                 |
+| Milestone                        | Phases  | Deliverable                              |
+| -------------------------------- | ------- | ---------------------------------------- |
+| **A — First audible result**     | 0, 1, 2 | Mono WAV IR from shoebox scene           |
+| **B — Useful room simulator**    | 3, 4, 5 | Hybrid mono IR + metrics + regression    |
+| **C — Loudspeaker-aware**        | 6       | GLL directivity source model             |
+| **D — Binaural simulator**       | 7       | Stereo BRIR WAV export                   |
+| **E — Physics-enhanced low end** | 8       | `algo-pde` crossover hybrid IR           |
+| **F — Geometry expansion**       | 9, 10   | Mesh scenes + validation corpus          |
+| **G — Accurate scattering**      | 11      | Per-band scattering + air absorption     |
+| **H — Diffraction**              | 12      | UTD edge diffraction in ISM + ray tracer |
+| **I — Convex room wave solver**  | 13      | IBM-FDTD for non-rectangular rooms       |
+| **J — GPU acceleration**         | 14      | GPU-offloaded FDTD + ray tracing         |
+| **K — Interactive preview**      | 15      | Sub-second parameter feedback            |
+| **L — Browser demo**             | 16      | WASM + Three.js + Web Audio demo         |
 
 ---
 

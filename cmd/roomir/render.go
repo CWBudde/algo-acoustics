@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -45,8 +46,9 @@ func newRenderCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if outputPath == "" {
-				return fmt.Errorf("output path must not be empty")
+				return errors.New("output path must not be empty")
 			}
+
 			if mode != "early" && mode != "late" && mode != "hybrid" {
 				return fmt.Errorf("unsupported mode %q", mode)
 			}
@@ -56,12 +58,14 @@ func newRenderCommand() *cobra.Command {
 				Alpha: crossoverWindowAlpha,
 			}
 			if mode == "hybrid" {
-				if err := hybrid.ValidateFadeWindowConfig(crossoverWindow); err != nil {
+				err := hybrid.ValidateFadeWindowConfig(crossoverWindow)
+				if err != nil {
 					return fmt.Errorf("invalid crossover window: %w", err)
 				}
 			}
 
 			scenePath := args[0]
+
 			sc, err := scene.LoadSceneFile(scenePath)
 			if err != nil {
 				return fmt.Errorf("load scene %q: %w", scenePath, err)
@@ -78,28 +82,33 @@ func newRenderCommand() *cobra.Command {
 			}
 
 			var buffer *ir.Buffer
+
 			switch mode {
 			case "early":
 				events, err := solveEarly(sc, maxOrder)
 				if err != nil {
 					return err
 				}
+
 				buffer, err = ir.RenderMono(events, renderCfg)
 				if err != nil {
 					return fmt.Errorf("render mono IR: %w", err)
 				}
+
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered early mode with %d events in %.3fs to %s\n", len(events), durationSeconds, outputPath)
 			case "late":
 				buffer, err = renderLateBuffer(sc, durationSeconds, numRays, maxOrder)
 				if err != nil {
 					return err
 				}
+
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered late mode with %d rays in %.3fs to %s\n", numRays, durationSeconds, outputPath)
 			case "hybrid":
 				earlyEvents, err := solveEarly(sc, maxOrder)
 				if err != nil {
 					return err
 				}
+
 				earlyBuffer, err := ir.RenderMono(earlyEvents, renderCfg)
 				if err != nil {
 					return fmt.Errorf("render early IR: %w", err)
@@ -117,8 +126,9 @@ func newRenderCommand() *cobra.Command {
 					CrossoverWindow:      crossoverWindow,
 				})
 				if buffer == nil {
-					return fmt.Errorf("combine hybrid buffers")
+					return errors.New("combine hybrid buffers")
 				}
+
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered hybrid mode with %d early events and %d rays in %.3fs to %s\n", len(earlyEvents), numRays, durationSeconds, outputPath)
 			}
 
@@ -132,18 +142,23 @@ func newRenderCommand() *cobra.Command {
 					},
 					CrossoverFreqHz: lowFreqCrossoverHz,
 				}
+
 				transfer, err := engine.Transfer(sc, renderCfg)
 				if err != nil {
 					return fmt.Errorf("render low-frequency transfer: %w", err)
 				}
+
 				if transfer == nil {
-					return fmt.Errorf("render low-frequency transfer: nil transfer")
+					return errors.New("render low-frequency transfer: nil transfer")
 				}
+
 				lowIR := transfer.ToTimeDomain(sc.SampleRate, len(buffer.Samples))
+
 				buffer = hybrid.BlendLowFreq(lowIR, buffer, engine.CrossoverHz(), sc.SampleRate)
 				if buffer == nil {
-					return fmt.Errorf("blend low-frequency output")
+					return errors.New("blend low-frequency output")
 				}
+
 				fmt.Fprintf(cmd.ErrOrStderr(), "applied low-frequency blend at %.1f Hz\n", engine.CrossoverHz())
 			}
 
@@ -175,6 +190,7 @@ func newRenderCommand() *cobra.Command {
 
 func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {
 	solver := ism.ISMSolver{}
+
 	events, err := solver.Solve(sc, ism.ISMConfig{
 		MaxOrder:     maxOrder,
 		SpeedOfSound: acoustics.SpeedOfSound,
@@ -188,10 +204,7 @@ func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {
 }
 
 func renderLateBuffer(sc *scene.Scene, durationSeconds float64, numRays, maxOrder int) (*ir.Buffer, error) {
-	maxBounces := maxOrder * 2
-	if maxBounces < 1 {
-		maxBounces = 1
-	}
+	maxBounces := max(maxOrder*2, 1)
 
 	tracer := raytrace.RayTracer{
 		Config: raytrace.LaunchConfig{
@@ -204,6 +217,7 @@ func renderLateBuffer(sc *scene.Scene, durationSeconds float64, numRays, maxOrde
 		ReceiverRadius:     0.25,
 		BinDurationSeconds: 0.01,
 	}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		return nil, fmt.Errorf("trace scene: %w", err)

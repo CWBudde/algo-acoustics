@@ -19,6 +19,7 @@ func TestRenderStereoCommandWritesStereoWAV(t *testing.T) {
 	cmd := newRootCommand()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
+
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.SetArgs([]string{
@@ -44,6 +45,7 @@ func TestRenderStereoCommandWritesStereoWAV(t *testing.T) {
 	defer file.Close()
 
 	decoder := wav.NewDecoder(file)
+
 	decoded, err := decoder.FullPCMBuffer()
 	if err != nil {
 		t.Fatalf("FullPCMBuffer() error = %v", err)
@@ -52,6 +54,7 @@ func TestRenderStereoCommandWritesStereoWAV(t *testing.T) {
 	if got, want := int(decoder.NumChans), 2; got != want {
 		t.Fatalf("NumChans = %d, want %d", got, want)
 	}
+
 	if len(decoded.Data) == 0 {
 		t.Fatal("decoded stereo WAV is empty")
 	}

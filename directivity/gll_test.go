@@ -5,9 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	ggll "github.com/cwbudde/gll-tools/pkg/gll"
-
 	"github.com/cwbudde/algo-acoustics/geometry"
+	ggll "github.com/cwbudde/gll-tools/pkg/gll"
 )
 
 type fakeBalloon struct {

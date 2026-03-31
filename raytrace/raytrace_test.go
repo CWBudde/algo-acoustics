@@ -36,20 +36,24 @@ func TestRayTracerTraceProducesLateEnergy(t *testing.T) {
 		Config: LaunchConfig{NumRays: 10000, MaxBounces: 8, MaxTimeSeconds: 1, SpeedOfSound: acoustics.SpeedOfSound},
 		Scene:  sc,
 	}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		t.Fatalf("Trace() error = %v", err)
 	}
+
 	if len(hist.Bins) == 0 {
 		t.Fatal("Trace() returned empty histogram")
 	}
 
 	var total float64
+
 	for _, bin := range hist.Bins {
 		for _, energy := range bin.BandEnergy {
 			total += energy
 		}
 	}
+
 	if total <= 0 {
 		t.Fatal("Trace() produced zero total energy")
 	}
@@ -78,20 +82,24 @@ func TestRayTracerTraceSupportsMeshRoom(t *testing.T) {
 		Scene:          sc,
 		ReceiverRadius: 0.5,
 	}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		t.Fatalf("Trace() error = %v", err)
 	}
+
 	if len(hist.Bins) == 0 {
 		t.Fatal("Trace() returned empty histogram")
 	}
 
 	var total float64
+
 	for _, bin := range hist.Bins {
 		for _, energy := range bin.BandEnergy {
 			total += energy
 		}
 	}
+
 	if total <= 0 {
 		t.Fatal("Trace() produced zero total energy for mesh room")
 	}

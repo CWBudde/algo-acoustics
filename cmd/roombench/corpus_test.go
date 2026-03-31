@@ -20,12 +20,12 @@ func TestBenchmarkCorpusSmoke(t *testing.T) {
 	}
 
 	for _, path := range corpus {
-		path := path
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			sc, err := scene.LoadSceneFile(path)
 			if err != nil {
 				t.Fatalf("LoadSceneFile() error = %v", err)
 			}
+
 			if err := scene.Validate(sc); err != nil {
 				t.Fatalf("Validate() error = %v", err)
 			}
@@ -43,9 +43,11 @@ func TestBenchmarkCorpusSmoke(t *testing.T) {
 			if _, err := metrics.T60FromDecaySlope(buf); err != nil {
 				t.Fatalf("T60FromDecaySlope() error = %v", err)
 			}
+
 			if _, err := metrics.EDT(buf); err != nil {
 				t.Fatalf("EDT() error = %v", err)
 			}
+
 			if _, err := metrics.C80(buf); err != nil {
 				t.Fatalf("C80() error = %v", err)
 			}

@@ -24,24 +24,31 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	if r == nil {
 		return nil, errors.New("raytracer is nil")
 	}
+
 	if r.Scene == nil {
 		return nil, errors.New("scene is nil")
 	}
+
 	if len(r.Scene.Sources) == 0 {
 		return nil, errors.New("scene has no sources")
 	}
+
 	if len(r.Scene.Receivers) == 0 {
 		return nil, errors.New("scene has no receivers")
 	}
+
 	if r.Config.NumRays <= 0 {
 		return nil, errors.New("NumRays must be positive")
 	}
+
 	if r.Config.MaxBounces < 0 {
 		return nil, errors.New("MaxBounces must not be negative")
 	}
+
 	if r.Config.MaxTimeSeconds <= 0 {
 		return nil, errors.New("MaxTimeSeconds must be positive")
 	}
+
 	if r.Config.SpeedOfSound <= 0 {
 		return nil, errors.New("SpeedOfSound must be positive")
 	}
@@ -50,10 +57,12 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	if bandCount <= 0 {
 		bandCount = 1
 	}
+
 	binDuration := r.BinDurationSeconds
 	if binDuration <= 0 {
 		binDuration = defaultBinDurationSeconds
 	}
+
 	hist := NewEnergyHistogram(r.Config.MaxTimeSeconds, binDuration, bandCount)
 
 	tracer, err := r.sceneTracer()
@@ -63,13 +72,16 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 
 	source := r.Scene.Sources[0]
 	receiverData := r.Scene.Receivers[0]
+
 	receiverRadius := r.ReceiverRadius
 	if receiverRadius <= 0 {
 		receiverRadius = 0.25
 	}
+
 	receiver := SphereReceiver{Center: receiverData.Position, Radius: receiverRadius}
 
 	rng := rand.New(rand.NewSource(1))
+
 	rays := LaunchRays(source.Position, r.Config)
 	if len(rays) == 0 {
 		return hist, nil
@@ -81,16 +93,19 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	for _, ray := range rays {
 		currentRay := ray
 		pathLength := 0.0
+
 		bandEnergy := make([]float64, bandCount)
 		for bandIndex := range bandEnergy {
 			freqHz := float64(bandIndex)
 			if bandIndex < len(r.Scene.BandSpec.CenterFreqs) {
 				freqHz = r.Scene.BandSpec.CenterFreqs[bandIndex]
 			}
+
 			gain := 1.0
 			if source.Directivity != nil {
 				gain = source.Directivity.GainLinear(freqHz, currentRay.Direction)
 			}
+
 			bandEnergy[bandIndex] = launchEnergy * gain * gain
 		}
 
@@ -115,10 +130,12 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 					hitEnergy := make([]float64, bandCount)
 					capture := receiver.AngularWeight(currentRay.Direction)
 					distanceScale := 1 / math.Max(1, pathLength+tHit)
+
 					distanceScale *= distanceScale
 					for bandIndex := range hitEnergy {
 						hitEnergy[bandIndex] = bandEnergy[bandIndex] * capture * distanceScale
 					}
+
 					hist.Add(arrivalTime, hitEnergy)
 				}
 			}
@@ -131,13 +148,16 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 			material := r.sceneMaterialForWall(wallIdx)
 			for bandIndex := range bandEnergy {
 				absorption := material.AbsorptionAt(bandIndex)
+
 				remaining := 1 - absorption
 				if remaining < 0 {
 					remaining = 0
 				}
+
 				if remaining > 1 {
 					remaining = 1
 				}
+
 				bandEnergy[bandIndex] *= remaining
 			}
 

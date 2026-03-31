@@ -13,6 +13,7 @@ func HistogramToEvents(h *raytrace.EnergyHistogram, rng *rand.Rand) []ir.Event {
 	if h == nil || len(h.Bins) == 0 {
 		return nil
 	}
+
 	if rng == nil {
 		rng = rand.New(rand.NewSource(1))
 	}
@@ -23,6 +24,7 @@ func HistogramToEvents(h *raytrace.EnergyHistogram, rng *rand.Rand) []ir.Event {
 		for _, bandEnergy := range bin.BandEnergy {
 			totalEnergy += bandEnergy
 		}
+
 		if totalEnergy <= 0 {
 			continue
 		}

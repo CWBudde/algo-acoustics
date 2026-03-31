@@ -37,7 +37,7 @@ func TestOctave6Centers(t *testing.T) {
 func TestBandEdgesSymmetric(t *testing.T) {
 	// Each upper edge should equal the next lower edge (contiguous bands).
 	spec := acoustics.Octave6
-	for i := 0; i < len(spec.UpperEdges)-1; i++ {
+	for i := range len(spec.UpperEdges) - 1 {
 		if math.Abs(spec.UpperEdges[i]-spec.LowerEdges[i+1]) > 1e-6 {
 			t.Errorf("gap between band %d upper (%.2f) and band %d lower (%.2f)",
 				i, spec.UpperEdges[i], i+1, spec.LowerEdges[i+1])

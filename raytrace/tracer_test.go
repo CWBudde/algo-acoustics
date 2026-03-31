@@ -20,15 +20,19 @@ func TestShoeboxTracerNextHitFindsNearestWall(t *testing.T) {
 	if !ok {
 		t.Fatal("NextHit() returned ok=false")
 	}
+
 	if wallIdx != 1 {
 		t.Fatalf("wallIdx = %d, want 1", wallIdx)
 	}
+
 	if diff := math.Abs(hitPoint.X - 4); diff > 1e-12 {
 		t.Fatalf("hitPoint.X = %g, want 4", hitPoint.X)
 	}
+
 	if hitPoint.Y != 1 || hitPoint.Z != 1 {
 		t.Fatalf("hitPoint = %#v, want x wall hit at y=1 z=1", hitPoint)
 	}
+
 	if normal != (geometry.Vec3{X: 1}) {
 		t.Fatalf("normal = %#v, want +X", normal)
 	}

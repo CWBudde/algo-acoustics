@@ -67,6 +67,7 @@ func ValidateFadeWindowConfig(cfg FadeWindowConfig) error {
 	if name == "linear" {
 		return nil
 	}
+
 	if _, ok := resolveFadeWindowType(name); !ok {
 		return fmt.Errorf("unsupported fade window %q", cfg.Name)
 	}
@@ -83,12 +84,13 @@ func LinearFade(start, end int, n int) []float64 {
 			return nil
 		}
 	}
+
 	if n == 1 {
 		return []float64{1}
 	}
 
 	out := make([]float64, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		out[i] = float64(i) / float64(n-1)
 	}
 
@@ -110,13 +112,17 @@ func ApplyFadeWithWindow(buf *ir.Buffer, startSample, endSample int, fadeIn bool
 	if buf == nil {
 		return nil
 	}
+
 	out := cloneBuffer(buf)
+
 	if startSample < 0 {
 		startSample = 0
 	}
+
 	if endSample > len(out.Samples) {
 		endSample = len(out.Samples)
 	}
+
 	if startSample >= endSample {
 		return out
 	}
@@ -133,6 +139,7 @@ func fadeWeights(n int, fadeIn bool, cfg FadeWindowConfig) []float64 {
 	if n <= 0 {
 		return nil
 	}
+
 	if n == 1 {
 		if fadeIn {
 			return []float64{1}
@@ -174,6 +181,7 @@ func increasingFadeWeights(n int, cfg FadeWindowConfig) []float64 {
 	half := window.Generate(windowType, 2*n-1, opts...)[:n]
 	start := half[0]
 	end := half[len(half)-1]
+
 	span := end - start
 	if math.Abs(span) < 1e-12 {
 		return LinearFade(0, n-1, n)

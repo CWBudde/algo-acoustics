@@ -50,6 +50,7 @@ func reflectionPath(imgSrc ImageSource, receiver geometry.Vec3) ([]reflectionPoi
 	}
 
 	delta := imgSrc.Position.Sub(receiver)
+
 	path := make([]reflectionPoint, 0, len(crossings))
 	for _, crossing := range crossings {
 		if crossing.t <= pathEpsilon || crossing.t >= 1-pathEpsilon {
@@ -57,6 +58,7 @@ func reflectionPath(imgSrc ImageSource, receiver geometry.Vec3) ([]reflectionPoi
 		}
 
 		unfolded := receiver.Add(delta.Scale(crossing.t))
+
 		point := foldPoint(unfolded, imgSrc.roomDims)
 		if !pointOnWallInterior(point, crossing.wall, imgSrc.roomDims) {
 			return nil, false
@@ -72,6 +74,7 @@ func crossingEvents(imgSrc ImageSource, receiver geometry.Vec3) ([]pathCrossing,
 	events := make([]pathCrossing, 0, imgSrc.Order)
 
 	var ok bool
+
 	events, ok = appendAxisCrossings(events, receiver.X, imgSrc.Position.X, imgSrc.roomDims.X, imgSrc.orderX, wallNegX, wallPosX)
 	if !ok {
 		return nil, false
@@ -101,14 +104,17 @@ func appendAxisCrossings(events []pathCrossing, receiverCoord, imageCoord, dimen
 	}
 
 	steps := absInt(order)
-	for step := 0; step < steps; step++ {
+	for step := range steps {
 		planeIndex := step + 1
+
 		wall := positiveWall
 		if step%2 == 1 {
 			wall = negativeWall
 		}
+
 		if order < 0 {
 			planeIndex = -step
+
 			wall = negativeWall
 			if step%2 == 1 {
 				wall = positiveWall
@@ -133,6 +139,7 @@ func foldPoint(point, dims geometry.Vec3) geometry.Vec3 {
 
 func foldCoordinate(value, dimension float64) float64 {
 	period := 2 * dimension
+
 	folded := math.Mod(value, period)
 	if folded < 0 {
 		folded += period
@@ -150,6 +157,7 @@ func foldCoordinate(value, dimension float64) float64 {
 		if mirrored <= pathEpsilon {
 			return 0
 		}
+
 		if math.Abs(mirrored-dimension) <= pathEpsilon {
 			return dimension
 		}

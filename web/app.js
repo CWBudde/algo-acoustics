@@ -75,11 +75,43 @@ const DEFAULT_STATE = {
 };
 
 const POSITION_MARGIN = 0.15;
+const THEME_KEY = "algo-acoustics-demo-theme";
+const THEME_MODES = ["auto", "light", "dark"];
+const THEME_ICONS = {
+  auto: `
+    <circle cx="12" cy="12" r="5"></circle>
+    <line x1="12" y1="1" x2="12" y2="3"></line>
+    <line x1="12" y1="21" x2="12" y2="23"></line>
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+    <line x1="1" y1="12" x2="3" y2="12"></line>
+    <line x1="21" y1="12" x2="23" y2="12"></line>
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+  `,
+  light: `
+    <circle cx="12" cy="12" r="5"></circle>
+    <line x1="12" y1="1" x2="12" y2="3"></line>
+    <line x1="12" y1="21" x2="12" y2="23"></line>
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+    <line x1="1" y1="12" x2="3" y2="12"></line>
+    <line x1="21" y1="12" x2="23" y2="12"></line>
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+  `,
+  dark: `
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+  `,
+};
 
 const state = structuredClone(DEFAULT_STATE);
+let currentThemeMode = "auto";
+let mediaThemeQuery = null;
 
 const refs = {
   engineStatus: document.getElementById("engine-status"),
+  themeToggle: document.getElementById("theme-toggle"),
   renderBadge: document.getElementById("render-badge"),
   resetScene: document.getElementById("reset-scene"),
   sourceDirectivity: document.getElementById("source-directivity"),
@@ -135,12 +167,14 @@ let lastAudioURL = null;
 init();
 
 async function init() {
+  initTheme();
   populateMaterialSelects();
   bindEvents();
   syncFormFromState();
   updateMaterialSummary();
   drawWaveform();
   sceneView = createSceneView(refs.sceneCanvas);
+  applySceneTheme();
   updateSceneView();
   await initWasm();
 }
@@ -170,6 +204,8 @@ async function initWasm() {
 }
 
 function bindEvents() {
+  refs.themeToggle?.addEventListener("click", cycleTheme);
+
   refs.resetScene.addEventListener("click", () => {
     copyState(DEFAULT_STATE, state);
     syncFormFromState();
@@ -544,6 +580,127 @@ function buildRequest() {
   };
 }
 
+function getSystemTheme() {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function applyTheme(mode) {
+  const theme = mode === "auto" ? getSystemTheme() : mode;
+  if (theme === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+
+  updateThemeToggle();
+  applySceneTheme();
+  updateSceneView();
+  drawWaveform(lastRender?.samples ?? null);
+}
+
+function updateThemeToggle() {
+  if (!refs.themeToggle) {
+    return;
+  }
+
+  const label = refs.themeToggle.querySelector(".theme-toggle-label");
+  const icon = refs.themeToggle.querySelector(".theme-toggle-icon");
+  const labels = { auto: "Auto", light: "Light", dark: "Dark" };
+  const text = labels[currentThemeMode] ?? "Auto";
+
+  if (label) {
+    label.textContent = text;
+  }
+  if (icon) {
+    icon.innerHTML = THEME_ICONS[currentThemeMode] ?? THEME_ICONS.auto;
+  }
+
+  refs.themeToggle.setAttribute("aria-label", `Theme: ${text}`);
+  refs.themeToggle.title = `Theme: ${text}`;
+}
+
+function cycleTheme() {
+  const currentIndex = THEME_MODES.indexOf(currentThemeMode);
+  const nextIndex = (currentIndex + 1) % THEME_MODES.length;
+  currentThemeMode = THEME_MODES[nextIndex];
+  localStorage.setItem(THEME_KEY, currentThemeMode);
+  applyTheme(currentThemeMode);
+}
+
+function initTheme() {
+  const savedTheme = localStorage.getItem(THEME_KEY);
+  if (savedTheme && THEME_MODES.includes(savedTheme)) {
+    currentThemeMode = savedTheme;
+  }
+
+  mediaThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  mediaThemeQuery.addEventListener("change", () => {
+    if (currentThemeMode === "auto") {
+      applyTheme("auto");
+    }
+  });
+
+  applyTheme(currentThemeMode);
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+}
+
+function cssNumber(name, fallback) {
+  const value = Number.parseFloat(cssVar(name));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function scenePalette() {
+  return {
+    gridMajor: cssVar("--scene-grid-major") || "#2f3d4a",
+    gridMinor: cssVar("--scene-grid-minor") || "#1e2934",
+    edge: cssVar("--scene-edge") || "rgba(243, 245, 248, 0.5)",
+    ray: cssVar("--scene-ray") || "rgba(248, 250, 252, 0.18)",
+    path: cssVar("--scene-path") || "rgba(242, 239, 231, 0.85)",
+    key: cssVar("--scene-key") || "#fff2dc",
+    fill: cssVar("--scene-fill") || "#7dd3c7",
+    ambient: cssNumber("--scene-ambient", 0.8),
+    keyIntensity: cssNumber("--scene-key-intensity", 1.3),
+    fillIntensity: cssNumber("--scene-fill-intensity", 0.55),
+  };
+}
+
+function waveformPalette(context, width) {
+  const gradient = context.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, cssVar("--accent-2") || "#0f9d92");
+  gradient.addColorStop(1, cssVar("--accent") || "#ff6b4a");
+  return {
+    background: cssVar("--wave-fill") || "#0d141b",
+    grid: cssVar("--wave-grid") || "rgba(255,255,255,0.08)",
+    empty: cssVar("--wave-empty") || "rgba(255,255,255,0.68)",
+    divider: cssVar("--wave-divider") || "rgba(255,255,255,0.28)",
+    trace: gradient,
+  };
+}
+
+function applySceneTheme() {
+  if (!sceneView) {
+    return;
+  }
+
+  const palette = scenePalette();
+  sceneView.ambientLight.intensity = palette.ambient;
+  sceneView.keyLight.color.set(palette.key);
+  sceneView.keyLight.intensity = palette.keyIntensity;
+  sceneView.fillLight.color.set(palette.fill);
+  sceneView.fillLight.intensity = palette.fillIntensity;
+
+  const [major, minor] = sceneView.grid.material;
+  major.color.set(palette.gridMajor);
+  minor.color.set(palette.gridMinor);
+}
+
 function createSceneView(canvas) {
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -566,14 +723,16 @@ function createSceneView(canvas) {
     state.room.depth / 2,
   );
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+  scene.add(ambientLight);
   const keyLight = new THREE.DirectionalLight(0xfff2dc, 1.3);
   keyLight.position.set(8, 10, 6);
   scene.add(keyLight);
   const fillLight = new THREE.DirectionalLight(0x7dd3c7, 0.55);
   fillLight.position.set(-6, 4, -8);
   scene.add(fillLight);
-  scene.add(new THREE.GridHelper(30, 24, 0x2f3d4a, 0x1e2934));
+  const grid = new THREE.GridHelper(30, 24, 0x2f3d4a, 0x1e2934);
+  scene.add(grid);
 
   const roomGroup = new THREE.Group();
   scene.add(roomGroup);
@@ -602,7 +761,18 @@ function createSceneView(canvas) {
   }
   animate();
 
-  return { scene, camera, controls, renderer, roomGroup, resize };
+  return {
+    scene,
+    camera,
+    controls,
+    renderer,
+    roomGroup,
+    ambientLight,
+    keyLight,
+    fillLight,
+    grid,
+    resize,
+  };
 }
 
 function updateSceneView() {
@@ -616,6 +786,7 @@ function updateSceneView() {
   const width = state.room.width;
   const depth = state.room.depth;
   const height = state.room.height;
+  const palette = scenePalette();
 
   const walls = [
     createWallMesh("west", depth, height, state.materials.west, (mesh) => {
@@ -648,9 +819,9 @@ function updateSceneView() {
   const edgeBox = new THREE.LineSegments(
     new THREE.EdgesGeometry(new THREE.BoxGeometry(width, height, depth)),
     new THREE.LineBasicMaterial({
-      color: 0xf3f5f8,
+      color: palette.edge,
       transparent: true,
-      opacity: 0.5,
+      opacity: 1,
     }),
   );
   edgeBox.position.set(width / 2, height / 2, depth / 2);
@@ -658,11 +829,11 @@ function updateSceneView() {
 
   roomGroup.add(createMarkerSphere(state.source, 0xff6b4a, 0.12));
   roomGroup.add(createMarkerSphere(state.receiver, 0x0f9d92, 0.14));
-  roomGroup.add(createDirectPathLine());
-  roomGroup.add(createCornerFanLines());
+  roomGroup.add(createDirectPathLine(palette));
+  roomGroup.add(createCornerFanLines(palette));
 
   if (state.source.directivity === "cardioid") {
-    roomGroup.add(createDirectivityCone());
+    roomGroup.add(createDirectivityCone(palette));
   }
 }
 
@@ -698,7 +869,7 @@ function createMarkerSphere(position, color, radius) {
   return marker;
 }
 
-function createDirectPathLine() {
+function createDirectPathLine(palette) {
   const geometry = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(state.source.x, state.source.z, state.source.y),
     new THREE.Vector3(state.receiver.x, state.receiver.z, state.receiver.y),
@@ -706,16 +877,16 @@ function createDirectPathLine() {
   return new THREE.Line(
     geometry,
     new THREE.LineDashedMaterial({
-      color: 0xf2efe7,
+      color: palette.path,
       dashSize: 0.22,
       gapSize: 0.16,
-      opacity: 0.85,
+      opacity: 1,
       transparent: true,
     }),
   );
 }
 
-function createCornerFanLines() {
+function createCornerFanLines(palette) {
   const corners = [
     [0, 0, 0],
     [state.room.width, 0, 0],
@@ -737,20 +908,20 @@ function createCornerFanLines() {
   return new THREE.LineSegments(
     geometry,
     new THREE.LineBasicMaterial({
-      color: 0xf8fafc,
+      color: palette.ray,
       transparent: true,
-      opacity: 0.18,
+      opacity: 1,
     }),
   );
 }
 
-function createDirectivityCone() {
+function createDirectivityCone(palette) {
   const cone = new THREE.Mesh(
     new THREE.ConeGeometry(0.16, 0.42, 24, 1, true),
     new THREE.MeshStandardMaterial({
-      color: 0xffb08d,
+      color: palette.path,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.32,
     }),
   );
   const azimuthRadians = (state.source.azimuthDegrees * Math.PI) / 180;
@@ -773,6 +944,7 @@ function drawWaveform(samples = null) {
   const context = canvas.getContext("2d");
   const width = canvas.clientWidth || canvas.width || 640;
   const height = canvas.clientHeight || canvas.height || 280;
+  const palette = waveformPalette(context, width);
   canvas.width = width * Math.min(window.devicePixelRatio || 1, 2);
   canvas.height = height * Math.min(window.devicePixelRatio || 1, 2);
   context.setTransform(
@@ -785,13 +957,13 @@ function drawWaveform(samples = null) {
   );
 
   context.clearRect(0, 0, width, height);
-  context.fillStyle = "#0d141b";
+  context.fillStyle = palette.background;
   context.fillRect(0, 0, width, height);
 
-  drawWaveGrid(context, width, height);
+  drawWaveGrid(context, width, height, palette);
 
   if (!samples || samples.length === 0) {
-    context.fillStyle = "rgba(255,255,255,0.68)";
+    context.fillStyle = palette.empty;
     context.font = '600 16px "Manrope"';
     context.fillText(
       "Render a scene to inspect the impulse response.",
@@ -807,10 +979,7 @@ function drawWaveform(samples = null) {
     1e-6,
   );
 
-  const gradient = context.createLinearGradient(0, 0, width, 0);
-  gradient.addColorStop(0, "#0f9d92");
-  gradient.addColorStop(1, "#ff6b4a");
-  context.strokeStyle = gradient;
+  context.strokeStyle = palette.trace;
   context.lineWidth = 2;
   context.beginPath();
   downsampled.forEach((sample, index) => {
@@ -828,7 +997,7 @@ function drawWaveform(samples = null) {
     const x =
       (state.render.crossoverTimeSeconds / state.render.durationSeconds) *
       width;
-    context.strokeStyle = "rgba(255,255,255,0.28)";
+    context.strokeStyle = palette.divider;
     context.setLineDash([6, 6]);
     context.beginPath();
     context.moveTo(x, 18);
@@ -838,8 +1007,8 @@ function drawWaveform(samples = null) {
   }
 }
 
-function drawWaveGrid(context, width, height) {
-  context.strokeStyle = "rgba(255,255,255,0.08)";
+function drawWaveGrid(context, width, height, palette) {
+  context.strokeStyle = palette.grid;
   context.lineWidth = 1;
   for (let index = 1; index < 5; index += 1) {
     const x = (index / 5) * width;

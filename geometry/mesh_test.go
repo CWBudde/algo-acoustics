@@ -36,7 +36,8 @@ func TestMeshValidateClosedMesh(t *testing.T) {
 		{V0: geometry.Vec3{1, 0, 0}, V1: geometry.Vec3{0, 0, 1}, V2: geometry.Vec3{0, 1, 0}},
 	}}
 
-	if err := mesh.Validate(); err != nil {
+	err := mesh.Validate()
+	if err != nil {
 		t.Fatalf("Validate() error = %v, want nil", err)
 	}
 }
@@ -57,9 +58,11 @@ func TestMeshValidateDegenerateTriangle(t *testing.T) {
 	if !errors.As(err, &issues) {
 		t.Fatalf("Validate() error type = %T, want *geometry.MeshValidationIssues", err)
 	}
+
 	if !issues.HasProblems() {
 		t.Fatal("Validate() should report a hard problem for degenerate geometry")
 	}
+
 	if !strings.Contains(err.Error(), "triangle[0] is degenerate") {
 		t.Fatalf("Validate() = %q, want degenerate triangle message", err)
 	}
@@ -81,9 +84,11 @@ func TestMeshValidateWarnsNonWatertight(t *testing.T) {
 	if !errors.As(err, &issues) {
 		t.Fatalf("Validate() error type = %T, want *geometry.MeshValidationIssues", err)
 	}
+
 	if issues.HasProblems() {
 		t.Fatalf("Validate() should only warn for non-watertight mesh, got %v", err)
 	}
+
 	if !strings.Contains(err.Error(), "not watertight") {
 		t.Fatalf("Validate() = %q, want watertight warning", err)
 	}
@@ -149,6 +154,7 @@ func TestLoadOBJRejectsOutOfRangeIndex(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadOBJ() returned nil for out-of-range face index")
 	}
+
 	if !strings.Contains(err.Error(), "out of range") {
 		t.Fatalf("LoadOBJ() error = %q, want out-of-range message", err)
 	}
@@ -158,6 +164,7 @@ func loadOBJFixture(t *testing.T, name, contents string) *geometry.Mesh {
 	t.Helper()
 
 	path := writeOBJFixture(t, name, contents)
+
 	mesh, err := geometry.LoadOBJ(path)
 	if err != nil {
 		t.Fatalf("LoadOBJ() error = %v", err)
@@ -170,7 +177,9 @@ func writeOBJFixture(t *testing.T, name, contents string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+
+	err := os.WriteFile(path, []byte(contents), 0o600)
+	if err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 

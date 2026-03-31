@@ -33,9 +33,11 @@ func TestGenerateImageSourcesFirstOrder(t *testing.T) {
 		if !ok {
 			t.Fatalf("unexpected image source position: %+v", img.Position)
 		}
+
 		if img.Order != want.Order {
 			t.Fatalf("image source %+v order = %d, want %d", img.Position, img.Order, want.Order)
 		}
+
 		if img.WallMask != want.WallMask {
 			t.Fatalf("image source %+v wall mask = %06b, want %06b", img.Position, img.WallMask, want.WallMask)
 		}
@@ -51,13 +53,16 @@ func TestIsAudibleRejectsCornerHit(t *testing.T) {
 
 	var cornerImage ImageSource
 	found := false
+
 	for _, img := range imageSources {
 		if img.orderX == -1 && img.orderY == -1 && img.orderZ == 0 {
 			cornerImage = img
 			found = true
+
 			break
 		}
 	}
+
 	if !found {
 		t.Fatal("failed to find the expected corner-grazing image source")
 	}

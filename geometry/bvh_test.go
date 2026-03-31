@@ -39,16 +39,20 @@ func TestBVHIntersectNearestTriangle(t *testing.T) {
 	}
 
 	r := geometry.NewRay(geometry.Vec3Zero, geometry.Vec3{Z: 1})
+
 	tHit, triIdx, hit := bvh.Intersect(r)
 	if !hit {
 		t.Fatal("Intersect() reported miss, want hit")
 	}
+
 	if triIdx != 0 {
 		t.Fatalf("Intersect() triangle index = %d, want 0", triIdx)
 	}
+
 	if math.Abs(tHit-1) > 1e-12 {
 		t.Fatalf("Intersect() t = %v, want 1", tHit)
 	}
+
 	if bvh.AABB != mesh.BoundingBox() {
 		t.Fatalf("root AABB = %#v, want %#v", bvh.AABB, mesh.BoundingBox())
 	}
@@ -57,12 +61,13 @@ func TestBVHIntersectNearestTriangle(t *testing.T) {
 func TestBVHIntersectMatchesBruteForceRandom(t *testing.T) {
 	rng := rand.New(rand.NewSource(10))
 	mesh := randomTriangleMesh(rng, 1000)
+
 	bvh := geometry.BuildBVH(mesh)
 	if bvh == nil {
 		t.Fatal("BuildBVH() returned nil for random mesh")
 	}
 
-	for index := 0; index < 2000; index++ {
+	for index := range 2000 {
 		ray := randomComparisonRay(rng, mesh, index)
 
 		wantT, wantTri, wantHit := bruteForceIntersect(mesh, ray)
@@ -71,12 +76,15 @@ func TestBVHIntersectMatchesBruteForceRandom(t *testing.T) {
 		if gotHit != wantHit {
 			t.Fatalf("ray[%d] hit = %v, want %v", index, gotHit, wantHit)
 		}
+
 		if !wantHit {
 			continue
 		}
+
 		if gotTri != wantTri {
 			t.Fatalf("ray[%d] triangle = %d, want %d", index, gotTri, wantTri)
 		}
+
 		if math.Abs(gotT-wantT) > 1e-9 {
 			t.Fatalf("ray[%d] t = %v, want %v", index, gotT, wantT)
 		}
@@ -87,6 +95,7 @@ func BenchmarkMeshIntersect(b *testing.B) {
 	rng := rand.New(rand.NewSource(42))
 	mesh := randomTriangleMesh(rng, 10000)
 	bvh := geometry.BuildBVH(mesh)
+
 	rays := make([]geometry.Ray, 1024)
 	for index := range rays {
 		rays[index] = randomComparisonRay(rng, mesh, index)
@@ -94,14 +103,16 @@ func BenchmarkMeshIntersect(b *testing.B) {
 
 	b.Run("bvh", func(b *testing.B) {
 		b.ReportAllocs()
-		for index := 0; index < b.N; index++ {
+
+		for index := range b.N {
 			benchmarkT, benchmarkTriIdx, benchmarkHit = bvh.Intersect(rays[index%len(rays)])
 		}
 	})
 
 	b.Run("brute_force", func(b *testing.B) {
 		b.ReportAllocs()
-		for index := 0; index < b.N; index++ {
+
+		for index := range b.N {
 			benchmarkT, benchmarkTriIdx, benchmarkHit = bruteForceIntersect(mesh, rays[index%len(rays)])
 		}
 	})
@@ -116,6 +127,7 @@ var (
 func bruteForceIntersect(mesh *geometry.Mesh, r geometry.Ray) (t float64, triIdx int, hit bool) {
 	bestT := math.Inf(1)
 	bestIdx := -1
+
 	for index, tri := range mesh.Triangles {
 		candidateT, candidateHit := geometry.RayTriangle(r, tri)
 		if !candidateHit || candidateT >= bestT {
@@ -147,6 +159,7 @@ func randomTriangle(rng *rand.Rand) geometry.Triangle {
 	for {
 		u := randomDirection(rng).Scale(0.5 + rng.Float64()*1.5)
 		v := randomDirection(rng).Scale(0.5 + rng.Float64()*1.5)
+
 		tri := geometry.Triangle{
 			V0: center.Sub(u),
 			V1: center.Add(u),
@@ -162,12 +175,14 @@ func randomComparisonRay(rng *rand.Rand, mesh *geometry.Mesh, index int) geometr
 	if index%3 == 0 {
 		origin := randomVecInRange(rng, 160)
 		direction := randomDirection(rng)
+
 		return geometry.NewRay(origin, direction)
 	}
 
 	tri := mesh.Triangles[rng.Intn(len(mesh.Triangles))]
 	target := tri.Centroid().Add(randomDirection(rng).Scale(0.15))
 	origin := target.Add(randomDirection(rng).Scale(150 + rng.Float64()*50))
+
 	return geometry.NewRay(origin, target.Sub(origin))
 }
 

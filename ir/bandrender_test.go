@@ -42,9 +42,11 @@ func TestRenderBandUsesSelectedBandAndPhase(t *testing.T) {
 	if got, want := buf.Samples[1], 1.0; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[1] = %v, want %v", got, want)
 	}
+
 	if got, want := buf.Samples[2], -0.25; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[2] = %v, want %v", got, want)
 	}
+
 	if got, want := buf.Samples[3], 0.4; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[3] = %v, want %v", got, want)
 	}
@@ -126,10 +128,12 @@ func TestSumBands(t *testing.T) {
 	if got, want := result.SampleRate, 48000; got != want {
 		t.Fatalf("SampleRate = %d, want %d", got, want)
 	}
+
 	want := []float64{1.5, 1, 3.25}
 	if len(result.Samples) != len(want) {
 		t.Fatalf("len(Samples) = %d, want %d", len(result.Samples), len(want))
 	}
+
 	for index := range want {
 		if got := result.Samples[index]; math.Abs(got-want[index]) > 1e-12 {
 			t.Fatalf("Samples[%d] = %v, want %v", index, got, want[index])
@@ -139,6 +143,7 @@ func TestSumBands(t *testing.T) {
 	if got := SumBands(nil); got != nil {
 		t.Fatalf("SumBands(nil) = %#v, want nil", got)
 	}
+
 	if got := SumBands([]*Buffer{nil, nil}); got != nil {
 		t.Fatalf("SumBands(all nil) = %#v, want nil", got)
 	}

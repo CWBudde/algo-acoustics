@@ -50,12 +50,15 @@ func PrintReport(results []MetricResult, w io.Writer) {
 
 	writer := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(writer, "Metric\tExpected\tActual\tTolerance\tPass")
+
 	for _, result := range results {
 		pass := "FAIL"
 		if result.Pass {
 			pass = "PASS"
 		}
+
 		_, _ = fmt.Fprintf(writer, "%s\t%.6f\t%.6f\t%.6f\t%s\n", result.Name, result.Expected, result.Actual, result.Tolerance, pass)
 	}
+
 	_ = writer.Flush()
 }

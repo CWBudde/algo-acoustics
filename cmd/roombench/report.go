@@ -62,11 +62,13 @@ func newReportCommand() *cobra.Command {
 					outputPath = "bench_report.md"
 				}
 
-				if err := writeCorpusMarkdown(outputPath, rows); err != nil {
+				err := writeCorpusMarkdown(outputPath, rows)
+				if err != nil {
 					return err
 				}
 
 				fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", outputPath)
+
 				return nil
 			default:
 				return fmt.Errorf("unknown report format %q", format)
@@ -86,10 +88,12 @@ func buildCorpusReport(fixtureDir string, maxOrder int) ([]corpusRow, error) {
 	rows := make([]corpusRow, 0, len(defaultCorpusCases))
 	for _, corpusCase := range defaultCorpusCases {
 		fixturePath := filepath.Join(fixtureDir, corpusCase.fixture)
+
 		sc, err := scene.LoadSceneFile(fixturePath)
 		if err != nil {
 			return nil, fmt.Errorf("load fixture %s: %w", fixturePath, err)
 		}
+
 		if err := scene.Validate(sc); err != nil {
 			return nil, fmt.Errorf("validate fixture %s: %w", fixturePath, err)
 		}
@@ -108,10 +112,12 @@ func buildCorpusReport(fixtureDir string, maxOrder int) ([]corpusRow, error) {
 		if err != nil {
 			return nil, fmt.Errorf("compute T60 for %s: %w", fixturePath, err)
 		}
+
 		edt, err := metrics.EDT(buf)
 		if err != nil {
 			return nil, fmt.Errorf("compute EDT for %s: %w", fixturePath, err)
 		}
+
 		c80, err := metrics.C80(buf)
 		if err != nil {
 			return nil, fmt.Errorf("compute C80 for %s: %w", fixturePath, err)
@@ -137,11 +143,13 @@ func renderCorpusTable(w io.Writer, rows []corpusRow) {
 	}
 
 	_, _ = fmt.Fprintln(w, "Room\tT60\tEDT\tC80\tExpected range\tPass")
+
 	for _, row := range rows {
 		status := "FAIL"
 		if row.pass {
 			status = "PASS"
 		}
+
 		_, _ = fmt.Fprintf(w, "%s\t%.3f\t%.3f\t%.3f\t%s\t%s\n", row.name, row.t60, row.edt, row.c80, row.rangeStr, status)
 	}
 }
@@ -156,6 +164,7 @@ func writeCorpusMarkdown(path string, rows []corpusRow) error {
 	if _, err := fmt.Fprintln(file, "| Room | T60 | EDT | C80 | Expected range | Pass |"); err != nil {
 		return fmt.Errorf("write report header: %w", err)
 	}
+
 	if _, err := fmt.Fprintln(file, "| --- | ---: | ---: | ---: | --- | --- |"); err != nil {
 		return fmt.Errorf("write report header: %w", err)
 	}
@@ -165,6 +174,7 @@ func writeCorpusMarkdown(path string, rows []corpusRow) error {
 		if row.pass {
 			status = "PASS"
 		}
+
 		if _, err := fmt.Fprintf(file, "| %s | %.3f | %.3f | %.3f | %s | %s |\n", escapeMarkdown(row.name), row.t60, row.edt, row.c80, escapeMarkdown(row.rangeStr), status); err != nil {
 			return fmt.Errorf("write report row: %w", err)
 		}

@@ -11,14 +11,17 @@ import (
 	"github.com/go-audio/audio"
 )
 
-const pcm16Max = 32767
-const pcm16Min = -32768
+const (
+	pcm16Max = 32767
+	pcm16Min = -32768
+)
 
 // WriteMonoWAV writes a mono 16-bit PCM WAV file from a dense IR buffer.
 func WriteMonoWAV(path string, buf *ir.Buffer) error {
 	if buf == nil {
 		return errors.New("buffer must not be nil")
 	}
+
 	if buf.SampleRate <= 0 {
 		return errors.New("buffer sample rate must be positive")
 	}
@@ -31,12 +34,15 @@ func WriteStereoWAV(path string, left, right *ir.Buffer) error {
 	if left == nil || right == nil {
 		return errors.New("left and right buffers must not be nil")
 	}
+
 	if left.SampleRate <= 0 || right.SampleRate <= 0 {
 		return errors.New("buffer sample rates must be positive")
 	}
+
 	if left.SampleRate != right.SampleRate {
 		return errors.New("buffer sample rates must match")
 	}
+
 	if len(left.Samples) != len(right.Samples) {
 		return errors.New("buffer lengths must match")
 	}
@@ -81,6 +87,7 @@ func writeWAV(path string, sampleRate int, numChans int, data []float32) (err er
 	if err != nil {
 		return fmt.Errorf("create wav file: %w", err)
 	}
+
 	defer func() {
 		closeErr := file.Close()
 		if err == nil && closeErr != nil {

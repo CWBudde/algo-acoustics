@@ -22,16 +22,19 @@ func (s SphereReceiver) Intersects(r geometry.Ray, tMin, tMax float64) (float64,
 	a := r.Direction.Dot(r.Direction)
 	b := 2 * oc.Dot(r.Direction)
 	c := oc.Dot(oc) - s.Radius*s.Radius
+
 	discriminant := b*b - 4*a*c
 	if discriminant < 0 {
 		return 0, false
 	}
 
 	sqrtDiscriminant := math.Sqrt(discriminant)
+
 	t0 := (-b - sqrtDiscriminant) / (2 * a)
 	if t0 >= tMin && t0 <= tMax {
 		return t0, true
 	}
+
 	t1 := (-b + sqrtDiscriminant) / (2 * a)
 	if t1 >= tMin && t1 <= tMax {
 		return t1, true

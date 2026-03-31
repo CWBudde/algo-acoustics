@@ -76,6 +76,7 @@ func estimateDecayTime(buf *ir.Buffer, upperDB, lowerDB, targetDB float64) (floa
 			filtered = append(filtered, point)
 		}
 	}
+
 	if len(filtered) < 2 {
 		return 0, fmt.Errorf("not enough decay samples in range %g to %g dB", upperDB, lowerDB)
 	}
@@ -92,9 +93,11 @@ func decayPoints(buf *ir.Buffer) ([]decayPoint, error) {
 	if buf == nil {
 		return nil, errors.New("buffer must not be nil")
 	}
+
 	if buf.SampleRate <= 0 {
 		return nil, errors.New("buffer sample rate must be positive")
 	}
+
 	if len(buf.Samples) == 0 {
 		return nil, errors.New("buffer must not be empty")
 	}
@@ -103,11 +106,13 @@ func decayPoints(buf *ir.Buffer) ([]decayPoint, error) {
 	for _, sample := range buf.Samples {
 		totalEnergy += sample * sample
 	}
+
 	if totalEnergy == 0 {
 		return nil, errors.New("buffer contains no energy")
 	}
 
 	points := make([]decayPoint, len(buf.Samples))
+
 	remaining := 0.0
 	for index := len(buf.Samples) - 1; index >= 0; index-- {
 		remaining += buf.Samples[index] * buf.Samples[index]
@@ -122,6 +127,7 @@ func decayPoints(buf *ir.Buffer) ([]decayPoint, error) {
 
 func linearRegression(points []decayPoint) (slope, intercept float64) {
 	count := float64(len(points))
+
 	var sumX, sumY, sumXX, sumXY float64
 	for _, point := range points {
 		sumX += point.timeSeconds
@@ -137,6 +143,7 @@ func linearRegression(points []decayPoint) (slope, intercept float64) {
 
 	slope = (count*sumXY - sumX*sumY) / denominator
 	intercept = (sumY - slope*sumX) / count
+
 	return slope, intercept
 }
 
@@ -145,12 +152,15 @@ func clarityIndex(buf *ir.Buffer, earlySeconds float64) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	if early == 0 && late == 0 {
 		return 0, errors.New("buffer contains no energy")
 	}
+
 	if late == 0 {
 		return math.Inf(1), nil
 	}
+
 	if early == 0 {
 		return math.Inf(-1), nil
 	}
@@ -162,12 +172,15 @@ func splitEnergy(buf *ir.Buffer, earlySeconds float64) (early, late float64, err
 	if buf == nil {
 		return 0, 0, errors.New("buffer must not be nil")
 	}
+
 	if buf.SampleRate <= 0 {
 		return 0, 0, errors.New("buffer sample rate must be positive")
 	}
+
 	if len(buf.Samples) == 0 {
 		return 0, 0, errors.New("buffer must not be empty")
 	}
+
 	if earlySeconds < 0 {
 		return 0, 0, errors.New("early window must be non-negative")
 	}

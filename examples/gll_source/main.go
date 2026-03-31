@@ -86,7 +86,9 @@ func normalizeExampleOptions(opts exampleOptions) (exampleOptions, error) {
 	if opts.CrossoverWindow.Name == "" {
 		opts.CrossoverWindow.Name = defaultExampleCrossoverWindow
 	}
-	if err := hybrid.ValidateFadeWindowConfig(opts.CrossoverWindow); err != nil {
+
+	err := hybrid.ValidateFadeWindowConfig(opts.CrossoverWindow)
+	if err != nil {
 		return exampleOptions{}, err
 	}
 
@@ -95,6 +97,7 @@ func normalizeExampleOptions(opts exampleOptions) (exampleOptions, error) {
 
 func evaluateExample(opts exampleOptions) (exampleResult, error) {
 	fixturePath := filepath.Clean(gllFixturePath)
+
 	model, err := directivity.LoadGLL(fixturePath, "")
 	if err != nil {
 		return exampleResult{}, fmt.Errorf("load gll fixture %q: %w", fixturePath, err)
@@ -108,6 +111,7 @@ func evaluateModel(model directivity.Model, opts exampleOptions) (exampleResult,
 	if err != nil {
 		return exampleResult{}, err
 	}
+
 	rearComparison, err := compareToOmni(model, rearReceiver(), opts)
 	if err != nil {
 		return exampleResult{}, err
@@ -146,6 +150,7 @@ func validateComparisons(result exampleResult) error {
 	if result.FrontComparison.GLL <= result.FrontComparison.Omni {
 		return fmt.Errorf("front energy %g is not greater than omni energy %g", result.FrontComparison.GLL, result.FrontComparison.Omni)
 	}
+
 	if result.RearComparison.GLL >= result.RearComparison.Omni {
 		return fmt.Errorf("rear energy %g is not lower than omni energy %g", result.RearComparison.GLL, result.RearComparison.Omni)
 	}
@@ -205,12 +210,14 @@ func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3,
 		ReceiverRadius:     0.25,
 		BinDurationSeconds: 0.01,
 	}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		return nil, fmt.Errorf("trace scene: %w", err)
 	}
 
 	lateBuffer := hybrid.HistogramToBuffer(hist, sc.SampleRate)
+
 	combined := hybrid.CombineBuffers(earlyBuffer, lateBuffer, hybrid.HybridConfig{
 		CrossoverTimeSeconds: 0.25,
 		CrossoverMode:        hybrid.TimeBased,

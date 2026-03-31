@@ -17,7 +17,8 @@ type RenderConfig struct {
 
 // RenderMono renders sparse events into a dense mono impulse response buffer.
 func RenderMono(events []Event, cfg RenderConfig) (*Buffer, error) {
-	if err := validateRenderConfig(cfg); err != nil {
+	err := validateRenderConfig(cfg)
+	if err != nil {
 		return nil, err
 	}
 
@@ -49,6 +50,7 @@ func validateRenderConfig(cfg RenderConfig) error {
 	if cfg.SampleRate <= 0 {
 		return errors.New("sample rate must be positive")
 	}
+
 	if cfg.DurationSeconds <= 0 {
 		return errors.New("duration must be positive")
 	}
@@ -74,6 +76,7 @@ func sumBandGain(bandGain []float64, bandCount int) (float64, error) {
 	if len(bandGain) == 0 {
 		return 1, nil
 	}
+
 	if bandCount > 0 && len(bandGain) != bandCount {
 		return 0, fmt.Errorf("band gain length %d does not match band count %d", len(bandGain), bandCount)
 	}

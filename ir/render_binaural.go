@@ -14,9 +14,11 @@ func RenderBinaural(events []Event, hrtfDataset hrtf.Dataset, cfg RenderConfig) 
 	if hrtfDataset == nil {
 		return nil, nil, errors.New("hrtf dataset must not be nil")
 	}
+
 	if err := validateRenderConfig(cfg); err != nil {
 		return nil, nil, err
 	}
+
 	if sampleRate := hrtfDataset.SampleRate(); sampleRate > 0 && sampleRate != cfg.SampleRate {
 		return nil, nil, fmt.Errorf("hrtf sample rate %d does not match render sample rate %d", sampleRate, cfg.SampleRate)
 	}
@@ -31,6 +33,7 @@ func RenderBinaural(events []Event, hrtfDataset hrtf.Dataset, cfg RenderConfig) 
 		}
 
 		headDir := eventDirectionForHRTF(event.Direction)
+
 		leftHRIR, rightHRIR, delaySeconds, lookupErr := hrtfDataset.Lookup(headDir)
 		if lookupErr != nil {
 			return nil, nil, fmt.Errorf("event %d hrtf lookup: %w", index, lookupErr)
@@ -61,6 +64,7 @@ func convolveInto(samples []float64, startIndex int, amplitude float64, hrir []f
 	if amplitude == 0 {
 		return samples
 	}
+
 	if len(hrir) == 0 {
 		return addSample(samples, startIndex, amplitude)
 	}
@@ -69,6 +73,7 @@ func convolveInto(samples []float64, startIndex int, amplitude float64, hrir []f
 	if startIndex < 0 {
 		kernelStart = -startIndex
 		startIndex = 0
+
 		if kernelStart >= len(hrir) {
 			return samples
 		}
@@ -92,6 +97,7 @@ func addSample(samples []float64, index int, value float64) []float64 {
 	if index < 0 {
 		return samples
 	}
+
 	if index >= len(samples) {
 		extended := make([]float64, index+1)
 		copy(extended, samples)
@@ -99,5 +105,6 @@ func addSample(samples []float64, index int, value float64) []float64 {
 	}
 
 	samples[index] += value
+
 	return samples
 }

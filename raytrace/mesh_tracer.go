@@ -20,7 +20,8 @@ func NewMeshTracer(mesh *geometry.Mesh, materials []*scene.Material) (MeshTracer
 		return MeshTracer{}, errors.New("mesh is nil")
 	}
 
-	if err := mesh.Validate(); err != nil {
+	err := mesh.Validate()
+	if err != nil {
 		var issues *geometry.MeshValidationIssues
 		if !errors.As(err, &issues) || issues.HasProblems() {
 			return MeshTracer{}, err
@@ -55,6 +56,7 @@ func (t MeshTracer) NextHit(r geometry.Ray) (geometry.Vec3, geometry.Vec3, int, 
 	}
 
 	tri := t.Mesh.Triangles[triIdx]
+
 	normal := tri.Normal()
 	if normal == geometry.Vec3Zero {
 		return geometry.Vec3{}, geometry.Vec3{}, 0, false

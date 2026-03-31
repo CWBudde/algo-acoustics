@@ -30,14 +30,17 @@ func TestWriteEventsJSONAndCSV(t *testing.T) {
 	if err := WriteEventsJSON(jsonPath, events); err != nil {
 		t.Fatalf("WriteEventsJSON() error = %v", err)
 	}
+
 	jsonData, err := os.ReadFile(jsonPath)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
+
 	var decodedEvents []ir.Event
 	if err := json.Unmarshal(jsonData, &decodedEvents); err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
+
 	if len(decodedEvents) != len(events) || decodedEvents[0].Amplitude != events[0].Amplitude {
 		t.Fatalf("decoded events = %#v, want %#v", decodedEvents, events)
 	}
@@ -46,6 +49,7 @@ func TestWriteEventsJSONAndCSV(t *testing.T) {
 	if err := WriteEventsCSV(csvPath, events); err != nil {
 		t.Fatalf("WriteEventsCSV() error = %v", err)
 	}
+
 	file, err := os.Open(csvPath)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -56,6 +60,7 @@ func TestWriteEventsJSONAndCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)
 	}
+
 	if got, want := len(rows), 2; got != want {
 		t.Fatalf("csv rows = %d, want %d", got, want)
 	}
@@ -71,14 +76,17 @@ func TestWriteMetricsJSONAndCSV(t *testing.T) {
 	if err := WriteMetricsJSON(jsonPath, results); err != nil {
 		t.Fatalf("WriteMetricsJSON() error = %v", err)
 	}
+
 	jsonData, err := os.ReadFile(jsonPath)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
+
 	var decodedResults []metrics.MetricResult
 	if err := json.Unmarshal(jsonData, &decodedResults); err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
+
 	if len(decodedResults) != len(results) || decodedResults[0].Name != results[0].Name {
 		t.Fatalf("decoded metrics = %#v, want %#v", decodedResults, results)
 	}
@@ -87,6 +95,7 @@ func TestWriteMetricsJSONAndCSV(t *testing.T) {
 	if err := WriteMetricsCSV(csvPath, results); err != nil {
 		t.Fatalf("WriteMetricsCSV() error = %v", err)
 	}
+
 	if data, err := os.ReadFile(csvPath); err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	} else if len(data) == 0 {

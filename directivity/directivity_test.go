@@ -1,7 +1,6 @@
 package directivity
 
 import (
-	"math"
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
@@ -49,7 +48,8 @@ func TestCardioidModelPowerResponse(t *testing.T) {
 
 	model := CardioidModel{Axis: geometry.Vec3{X: 1, Y: 0, Z: 0}, OrderN: 2}
 	got := model.GainLinear(125, geometry.Vec3{X: 0, Y: 1, Z: 0})
-	want := math.Pow(0.5, 2)
+
+	want := 0.5 * 0.5
 	if got != want {
 		t.Fatalf("side GainLinear() = %v, want %v", got, want)
 	}

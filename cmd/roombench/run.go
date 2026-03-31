@@ -31,12 +31,15 @@ func newRunCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("list fixtures: %w", err)
 			}
+
 			sort.Strings(fixtures)
+
 			if len(fixtures) == 0 {
 				return fmt.Errorf("no fixtures found in %s", fixtureDir)
 			}
 
 			passed := 0
+
 			for _, fixturePath := range fixtures {
 				fixtureName := filepath.Base(fixturePath)
 				baselinePath := filepath.Join(baselineDir, fixtureName)
@@ -45,6 +48,7 @@ func newRunCommand() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("load fixture %s: %w", fixtureName, err)
 				}
+
 				if err := scene.Validate(sc); err != nil {
 					return fmt.Errorf("validate fixture %s: %w", fixtureName, err)
 				}
@@ -61,15 +65,19 @@ func newRunCommand() *cobra.Command {
 
 				if compareEvents(events, baselineEvents) {
 					passed++
+
 					fmt.Fprintf(cmd.OutOrStdout(), "PASS %s (%d events)\n", fixtureName, len(events))
+
 					continue
 				}
 
 				fmt.Fprintf(cmd.OutOrStdout(), "FAIL %s\n", fixtureName)
+
 				return nil
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "%d/%d regression fixtures passed\n", passed, len(fixtures))
+
 			return nil
 		},
 	}
@@ -118,21 +126,27 @@ func eventClose(got, want ir.Event) bool {
 	if got.Kind != want.Kind {
 		return false
 	}
+
 	if math.Abs(got.TimeSeconds-want.TimeSeconds) > 0.00005 {
 		return false
 	}
+
 	if !amplitudeClose(got.Amplitude, want.Amplitude) {
 		return false
 	}
+
 	if math.Abs(got.DistanceMeters-want.DistanceMeters) > 1e-9 {
 		return false
 	}
+
 	if !vecClose(got.Direction, want.Direction) {
 		return false
 	}
+
 	if len(got.BandGain) != len(want.BandGain) {
 		return false
 	}
+
 	for index := range got.BandGain {
 		if math.Abs(got.BandGain[index]-want.BandGain[index]) > 1e-9 {
 			return false

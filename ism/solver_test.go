@@ -17,6 +17,7 @@ func TestISMSolverSolveDirectAndFirstOrder(t *testing.T) {
 
 	solver := ISMSolver{}
 	sc := testScene(t)
+
 	events, err := solver.Solve(&sc, ISMConfig{MaxOrder: 1})
 	if err != nil {
 		t.Fatalf("Solve() error = %v", err)
@@ -31,20 +32,24 @@ func TestISMSolverSolveDirectAndFirstOrder(t *testing.T) {
 	}
 
 	wantDistances := []float64{3, 5, 5, math.Sqrt(45), math.Sqrt(45), math.Sqrt(153), 15}
+
 	gotDistances := make([]float64, 0, len(events))
 	for _, event := range events {
 		gotDistances = append(gotDistances, event.DistanceMeters)
 		if math.Abs(event.Amplitude-(1/event.DistanceMeters)) > 1e-9 {
 			t.Fatalf("event amplitude = %v, want %v", event.Amplitude, 1/event.DistanceMeters)
 		}
+
 		for bandIndex, gain := range event.BandGain {
 			if math.Abs(gain-1) > 1e-9 {
 				t.Fatalf("event BandGain[%d] = %v, want 1", bandIndex, gain)
 			}
 		}
 	}
+
 	sort.Float64s(gotDistances)
 	sort.Float64s(wantDistances)
+
 	for index, wantDistance := range wantDistances {
 		if math.Abs(gotDistances[index]-wantDistance) > 1e-9 {
 			t.Fatalf("distance[%d] = %v, want %v", index, gotDistances[index], wantDistance)
@@ -69,6 +74,7 @@ func TestISMSolverSolveDirectPathTimeMatchesDistance(t *testing.T) {
 	}
 
 	distance := sc.Sources[0].Position.Distance(sc.Receivers[0].Position)
+
 	wantTime := distance / acoustics.SpeedOfSound
 	if math.Abs(direct.TimeSeconds-wantTime) > 1e-12 {
 		t.Fatalf("direct TimeSeconds = %v, want %v", direct.TimeSeconds, wantTime)
@@ -105,17 +111,20 @@ func TestISMSolverSolveFirstFloorReflectionMatchesGeometry(t *testing.T) {
 	}
 
 	var floorReflection *ir.Event
+
 	for index := range events {
 		if events[index].Kind == ir.EventSpecular && directionMatches(events[index].Direction, geometry.Vec3{X: 0, Y: 0, Z: -1}) {
 			floorReflection = &events[index]
 			break
 		}
 	}
+
 	if floorReflection == nil {
 		t.Fatal("expected a floor reflection event")
 	}
 
 	wantImage := geometry.Vec3{X: 3, Y: 3, Z: -1}
+
 	wantDistance := sc.Receivers[0].Position.Distance(wantImage)
 	if math.Abs(floorReflection.DistanceMeters-wantDistance) > 1e-12 {
 		t.Fatalf("floor reflection distance = %v, want %v", floorReflection.DistanceMeters, wantDistance)
@@ -151,12 +160,14 @@ func TestISMSolverSolveReciprocityPreservesPathLengths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Solve(base) error = %v", err)
 	}
+
 	swappedEvents, err := solver.Solve(&swapped, ISMConfig{MaxOrder: 2})
 	if err != nil {
 		t.Fatalf("Solve(swapped) error = %v", err)
 	}
 
 	baseDistances := eventDistances(baseEvents)
+
 	swappedDistances := eventDistances(swappedEvents)
 	if len(baseDistances) != len(swappedDistances) {
 		t.Fatalf("event count differs: %d vs %d", len(baseDistances), len(swappedDistances))
@@ -197,12 +208,14 @@ func TestISMSolverSolveScalingRoomDoublesFirstReflectionTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Solve(base) error = %v", err)
 	}
+
 	scaledEvents, err := solver.Solve(&scaled, ISMConfig{MaxOrder: 1})
 	if err != nil {
 		t.Fatalf("Solve(scaled) error = %v", err)
 	}
 
 	baseFirst := firstSpecularTime(baseEvents)
+
 	scaledFirst := firstSpecularTime(scaledEvents)
 	if math.Abs(scaledFirst-2*baseFirst) > 1e-12 {
 		t.Fatalf("scaled first specular time = %v, want %v", scaledFirst, 2*baseFirst)
@@ -213,6 +226,7 @@ func TestISMSolverSolveZeroAbsorptionMatchesTheoreticalAmplitudeSum(t *testing.T
 	t.Parallel()
 
 	solver := ISMSolver{}
+
 	sc := testScene(t)
 	for key, material := range sc.Materials {
 		material.AbsorptionByBand = []float64{0, 0, 0, 0, 0, 0}
@@ -258,6 +272,7 @@ func TestISMSolverSolveAppliesPerWallAbsorption(t *testing.T) {
 	}
 
 	var negativeXReflection, positiveXReflection *ir.Event
+
 	for index := range events {
 		switch {
 		case events[index].Kind == ir.EventSpecular && directionMatches(events[index].Direction, geometry.Vec3{X: -1, Y: 0, Z: 0}):
@@ -276,6 +291,7 @@ func TestISMSolverSolveAppliesPerWallAbsorption(t *testing.T) {
 			t.Fatalf("negative-x BandGain[%d] = %v, want 0.5", bandIndex, gain)
 		}
 	}
+
 	for bandIndex, gain := range positiveXReflection.BandGain {
 		if math.Abs(gain-1) > 1e-9 {
 			t.Fatalf("positive-x BandGain[%d] = %v, want 1", bandIndex, gain)
@@ -306,13 +322,16 @@ func TestISMSolverSolveAppliesSourceDirectivity(t *testing.T) {
 
 	var directEvent ir.Event
 	foundDirect := false
+
 	for _, event := range events {
 		if event.Kind == ir.EventDirect {
 			directEvent = event
 			foundDirect = true
+
 			break
 		}
 	}
+
 	if !foundDirect {
 		t.Fatal("expected a direct event")
 	}
@@ -379,6 +398,7 @@ func eventDistances(events []ir.Event) []float64 {
 	for _, event := range events {
 		distances = append(distances, event.DistanceMeters)
 	}
+
 	sort.Float64s(distances)
 
 	return distances
@@ -386,10 +406,12 @@ func eventDistances(events []ir.Event) []float64 {
 
 func firstSpecularTime(events []ir.Event) float64 {
 	first := math.Inf(1)
+
 	for _, event := range events {
 		if event.Kind != ir.EventSpecular {
 			continue
 		}
+
 		if event.TimeSeconds < first {
 			first = event.TimeSeconds
 		}

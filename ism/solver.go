@@ -27,21 +27,28 @@ func (ISMSolver) Solve(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 	if sc == nil {
 		return nil, errors.New("scene is nil")
 	}
+
 	if cfg.MaxOrder < 0 {
 		return nil, errors.New("max order must be non-negative")
 	}
-	if err := scene.Validate(sc); err != nil {
+
+	err := scene.Validate(sc)
+	if err != nil {
 		return nil, err
 	}
+
 	if sc.Room.Kind != scene.RoomKindShoebox || sc.Room.Shoebox == nil {
 		return nil, errors.New("ISM solver requires a shoebox room")
 	}
+
 	if len(sc.Sources) == 0 {
 		return nil, errors.New("ISM solver requires at least one source")
 	}
+
 	if len(sc.Receivers) == 0 {
 		return nil, errors.New("ISM solver requires exactly one receiver")
 	}
+
 	if len(sc.Receivers) > 1 {
 		return nil, fmt.Errorf("ISM solver currently supports exactly one receiver, got %d", len(sc.Receivers))
 	}
@@ -86,6 +93,7 @@ func (ISMSolver) Solve(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 		if events[i].TimeSeconds != events[j].TimeSeconds {
 			return events[i].TimeSeconds < events[j].TimeSeconds
 		}
+
 		if events[i].Kind != events[j].Kind {
 			return events[i].Kind < events[j].Kind
 		}

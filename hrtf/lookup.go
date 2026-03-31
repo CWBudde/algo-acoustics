@@ -54,6 +54,7 @@ func NearestNeighbor(grid *MeasurementGrid, dir geometry.Vec3) int {
 
 	bestIndex := 0
 	bestScore := math.Inf(-1)
+
 	for index, measurement := range grid.Directions {
 		score := measurement.Normalize().Dot(target)
 		if index == 0 || score > bestScore {
@@ -83,9 +84,11 @@ func measurementAt(grid *MeasurementGrid, index int) (left, right []float64, del
 	if index < len(grid.LeftHRIRs) {
 		left = cloneFloat64s(grid.LeftHRIRs[index])
 	}
+
 	if index < len(grid.RightHRIRs) {
 		right = cloneFloat64s(grid.RightHRIRs[index])
 	}
+
 	if index < len(grid.Delays) {
 		delay = grid.Delays[index]
 	}
@@ -100,5 +103,6 @@ func cloneFloat64s(values []float64) []float64 {
 
 	out := make([]float64, len(values))
 	copy(out, values)
+
 	return out
 }

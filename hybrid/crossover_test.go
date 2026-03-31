@@ -11,9 +11,10 @@ func TestBlendLowFreqReturnsCombinedBuffer(t *testing.T) {
 	t.Parallel()
 
 	low := make([]float64, 256)
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		low[i] = 1
 	}
+
 	geo := &ir.Buffer{SampleRate: 1024, Samples: make([]float64, 256)}
 	for i := 128; i < 256; i++ {
 		geo.Samples[i] = 1
@@ -23,9 +24,11 @@ func TestBlendLowFreqReturnsCombinedBuffer(t *testing.T) {
 	if out == nil {
 		t.Fatal("BlendLowFreq returned nil")
 	}
+
 	if len(out.Samples) == 0 {
 		t.Fatal("BlendLowFreq returned empty buffer")
 	}
+
 	if math.Abs(out.Samples[0]) < 1e-9 {
 		t.Fatal("expected low-frequency contribution near the start")
 	}

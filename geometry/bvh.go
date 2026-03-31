@@ -60,6 +60,7 @@ func buildBVHNode(mesh *Mesh, indices []int) *BVHNode {
 	pivot := bvhAxisValue(centroidBounds.Center(), axis)
 
 	leftIndices := make([]int, 0, len(indices)/2)
+
 	rightIndices := make([]int, 0, len(indices)/2)
 	for _, triIdx := range indices {
 		if bvhAxisValue(mesh.Triangles[triIdx].Centroid(), axis) < pivot {
@@ -73,6 +74,7 @@ func buildBVHNode(mesh *Mesh, indices []int) *BVHNode {
 		sorted := append([]int(nil), indices...)
 		sort.Slice(sorted, func(i, j int) bool {
 			left := bvhAxisValue(mesh.Triangles[sorted[i]].Centroid(), axis)
+
 			right := bvhAxisValue(mesh.Triangles[sorted[j]].Centroid(), axis)
 			if left == right {
 				return sorted[i] < sorted[j]
@@ -87,10 +89,12 @@ func buildBVHNode(mesh *Mesh, indices []int) *BVHNode {
 	}
 
 	node.Left = buildBVHNode(mesh, leftIndices)
+
 	node.Right = buildBVHNode(mesh, rightIndices)
 	if node.Left == nil || node.Right == nil {
 		node.Left = nil
 		node.Right = nil
+
 		node.Triangles = append([]int(nil), indices...)
 	}
 
@@ -110,6 +114,7 @@ func (n *BVHNode) intersectNearest(r Ray, maxT float64) (t float64, triIdx int, 
 	if len(n.Triangles) > 0 || (n.Left == nil && n.Right == nil) {
 		bestT := maxT
 		bestIdx := -1
+
 		for _, candidate := range n.Triangles {
 			candidateT, candidateHit := RayTriangle(r, n.mesh.Triangles[candidate])
 			if !candidateHit || candidateT >= bestT {
@@ -137,6 +142,7 @@ func (n *BVHNode) intersectNearest(r Ray, maxT float64) (t float64, triIdx int, 
 
 	bestT := maxT
 	bestIdx := -1
+
 	for _, child := range children {
 		if !child.hit || child.entry > bestT {
 			continue
@@ -188,6 +194,7 @@ func bvhBoundsForTriangles(mesh *Mesh, indices []int) Box {
 
 func bvhCentroidBounds(mesh *Mesh, indices []int) Box {
 	centroid := mesh.Triangles[indices[0]].Centroid()
+
 	bounds := Box{Min: centroid, Max: centroid}
 	for _, triIdx := range indices[1:] {
 		centroid = mesh.Triangles[triIdx].Centroid()
@@ -208,6 +215,7 @@ func bvhCentroidBounds(mesh *Mesh, indices []int) Box {
 
 func bvhTriangleBounds(tri Triangle) Box {
 	min := tri.V0
+
 	max := tri.V0
 	for _, vertex := range []Vec3{tri.V1, tri.V2} {
 		min = Vec3{

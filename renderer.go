@@ -50,6 +50,7 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 			return nil, err
 		}
 	}
+
 	if r.Late != nil {
 		lateEvents, err = r.Late.Generate(sc, cfg)
 		if err != nil {
@@ -58,6 +59,7 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 	}
 
 	combined := hybrid.Combine(earlyEvents, lateEvents, r.Hybrid)
+
 	buffer, err := ir.RenderMono(combined, cfg)
 	if err != nil {
 		return nil, err
@@ -108,6 +110,7 @@ func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, righ
 	}
 
 	combined := hybrid.Combine(earlyEvents, lateEvents, r.Hybrid)
+
 	leftBuf, rightBuf, err := ir.RenderBinaural(combined, receiver.HRTF, cfg)
 	if err != nil {
 		return nil, nil, err

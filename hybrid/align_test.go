@@ -18,6 +18,7 @@ func TestAlignLateTailMatchesEarlyEnergy(t *testing.T) {
 	if aligned == nil {
 		t.Fatal("AlignLateTail() = nil")
 	}
+
 	if aligned.Samples[20] < 1.5 {
 		t.Fatalf("aligned sample = %v, want scaled up", aligned.Samples[20])
 	}

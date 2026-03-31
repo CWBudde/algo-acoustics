@@ -25,6 +25,7 @@ func TestRenderBinauralWithNoopDatasetMatchesMono(t *testing.T) {
 	t.Parallel()
 
 	events := []Event{{TimeSeconds: 0.01, Amplitude: 0.5, Direction: geometry.Vec3{X: 1}}, {TimeSeconds: 0.02, Amplitude: 0.25, Direction: geometry.Vec3{Y: 1}}}
+
 	mono, err := RenderMono(events, RenderConfig{SampleRate: 100, DurationSeconds: 0.1})
 	if err != nil {
 		t.Fatalf("RenderMono() error = %v", err)
@@ -38,10 +39,12 @@ func TestRenderBinauralWithNoopDatasetMatchesMono(t *testing.T) {
 	if left.Len() != mono.Len() || right.Len() != mono.Len() {
 		t.Fatalf("stereo lengths = %d/%d, want %d", left.Len(), right.Len(), mono.Len())
 	}
+
 	for i := range mono.Samples {
 		if math.Abs(left.Samples[i]-mono.Samples[i]) > 1e-12 {
 			t.Fatalf("left[%d] = %v, want %v", i, left.Samples[i], mono.Samples[i])
 		}
+
 		if math.Abs(right.Samples[i]-mono.Samples[i]) > 1e-12 {
 			t.Fatalf("right[%d] = %v, want %v", i, right.Samples[i], mono.Samples[i])
 		}
@@ -59,6 +62,7 @@ func TestRenderBinauralUsesDirectionalHRTF(t *testing.T) {
 	if math.Abs(left.Samples[1]-1) > 1e-12 {
 		t.Fatalf("left sample = %v, want 1", left.Samples[1])
 	}
+
 	if math.Abs(right.Samples[1]-0.5) > 1e-12 {
 		t.Fatalf("right sample = %v, want 0.5", right.Samples[1])
 	}

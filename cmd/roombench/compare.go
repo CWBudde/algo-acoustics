@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -21,6 +22,7 @@ func newCompareCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load baseline metrics: %w", err)
 			}
+
 			current, err := loadMetricResults(args[1])
 			if err != nil {
 				return fmt.Errorf("load current metrics: %w", err)
@@ -28,8 +30,9 @@ func newCompareCommand() *cobra.Command {
 
 			results := compareMetricReports(baseline, current)
 			metrics.PrintReport(results, cmd.OutOrStdout())
+
 			if !metrics.CompareAll(results) {
-				return fmt.Errorf("one or more metrics differ")
+				return errors.New("one or more metrics differ")
 			}
 
 			return nil
@@ -69,9 +72,11 @@ func compareMetricReports(baseline, current []metrics.MetricResult) []metrics.Me
 		if actual.Tolerance > tolerance {
 			tolerance = actual.Tolerance
 		}
+
 		results = append(results, metrics.CompareMetric(expected.Name, expected.Actual, actual.Actual, tolerance))
 	}
 
 	sort.Slice(results, func(i, j int) bool { return results[i].Name < results[j].Name })
+
 	return results
 }

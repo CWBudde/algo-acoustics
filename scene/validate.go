@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
 // ValidationErrors collects all scene validation failures.
@@ -21,6 +23,7 @@ func (errs ValidationErrors) Error() string {
 
 	var builder strings.Builder
 	builder.WriteString("scene validation failed:")
+
 	for _, err := range errs {
 		builder.WriteString("\n- ")
 		builder.WriteString(err.Error())
@@ -47,7 +50,9 @@ func Validate(s *Scene) error {
 	}
 
 	bandCount := s.BandSpec.BandCount()
-	if err := validateRoom(s.Room); err != nil {
+
+	err := validateRoom(s.Room)
+	if err != nil {
 		errs = append(errs, err)
 	}
 
@@ -100,7 +105,7 @@ func Validate(s *Scene) error {
 func validateRoom(room Room) error {
 	switch room.Kind {
 	case RoomKindShoebox:
-		if room.Shoebox == nil {
+		if !room.IsValid() {
 			return errors.New("shoebox room requires a shoebox definition")
 		}
 
@@ -108,12 +113,15 @@ func validateRoom(room Room) error {
 		if room.Shoebox.Width <= 0 {
 			errs = append(errs, errors.New("shoebox width must be greater than zero"))
 		}
+
 		if room.Shoebox.Depth <= 0 {
 			errs = append(errs, errors.New("shoebox depth must be greater than zero"))
 		}
+
 		if room.Shoebox.Height <= 0 {
 			errs = append(errs, errors.New("shoebox height must be greater than zero"))
 		}
+
 		for index, materialName := range room.Shoebox.WallMaterials {
 			if materialName == "" {
 				errs = append(errs, fmt.Errorf("shoebox wall material %d is empty", index))
@@ -124,12 +132,18 @@ func validateRoom(room Room) error {
 			return errs
 		}
 	case RoomKindMesh:
-		if room.Mesh == nil {
+		if !room.IsValid() {
 			return errors.New("mesh room requires a mesh definition")
 		}
-		if len(room.Mesh.Triangles) == 0 {
-			return errors.New("mesh room requires at least one triangle")
+
+		err := room.Mesh.Validate()
+		if err != nil {
+			var issues *geometry.MeshValidationIssues
+			if !errors.As(err, &issues) || issues.HasProblems() {
+				return fmt.Errorf("mesh room is invalid: %w", err)
+			}
 		}
+
 		if bounds := room.Mesh.BoundingBox(); bounds.Volume() <= 0 {
 			return errors.New("mesh room bounds must have positive volume")
 		}

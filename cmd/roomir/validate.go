@@ -33,6 +33,7 @@ func newValidateCommand() *cobra.Command {
 			}
 
 			fmt.Fprintln(cmd.OutOrStdout(), "✓ scene is valid")
+
 			return nil
 		},
 	}

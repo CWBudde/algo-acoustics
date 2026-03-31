@@ -69,9 +69,11 @@ func uniqueModesUpToFreq(modes []ModalFrequency, maxFreq float64) []ModalFrequen
 		if mode.Freq > maxFreq {
 			continue
 		}
+
 		if len(out) > 0 && math.Abs(out[len(out)-1].Freq-mode.Freq) <= 1e-9 {
 			continue
 		}
+
 		out = append(out, mode)
 	}
 
@@ -93,9 +95,11 @@ func nonZeroComponents(mode ModalFrequency) int {
 	if mode.Nx != 0 {
 		count++
 	}
+
 	if mode.Ny != 0 {
 		count++
 	}
+
 	if mode.Nz != 0 {
 		count++
 	}
@@ -105,6 +109,7 @@ func nonZeroComponents(mode ModalFrequency) int {
 
 func localSweepPeak(room *scene.Shoebox, src, rcv geometry.Vec3, centerFreq float64) (float64, error) {
 	span := math.Max(centerFreq*0.1, 5)
+
 	tf, err := SweepShoebox(room, src, rcv, SweepConfig{
 		FreqMin:           math.Max(1, centerFreq-span),
 		FreqMax:           centerFreq + span,
@@ -117,6 +122,7 @@ func localSweepPeak(room *scene.Shoebox, src, rcv geometry.Vec3, centerFreq floa
 
 	bestIndex := 0
 	bestMagnitude := 0.0
+
 	for index, value := range tf.H {
 		magnitude := math.Hypot(real(value), imag(value))
 		if index == 0 || magnitude > bestMagnitude {

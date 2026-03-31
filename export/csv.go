@@ -49,6 +49,7 @@ func WriteEventsCSV(path string, events []ir.Event) error {
 	}
 
 	writer.Flush()
+
 	if err := writer.Error(); err != nil {
 		return fmt.Errorf("flush csv writer: %w", err)
 	}
@@ -77,12 +78,15 @@ func WriteMetricsCSV(path string, results []metrics.MetricResult) error {
 			strconv.FormatFloat(result.Tolerance, 'f', -1, 64),
 			strconv.FormatBool(result.Pass),
 		}
-		if err := writer.Write(row); err != nil {
+
+		err := writer.Write(row)
+		if err != nil {
 			return fmt.Errorf("write csv row: %w", err)
 		}
 	}
 
 	writer.Flush()
+
 	if err := writer.Error(); err != nil {
 		return fmt.Errorf("flush csv writer: %w", err)
 	}

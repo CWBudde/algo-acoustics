@@ -30,9 +30,11 @@ func TestReportCommandWritesMarkdownReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Getwd() error = %v", err)
 	}
+
 	t.Cleanup(func() {
 		_ = os.Chdir(currentDir)
 	})
+
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatalf("Chdir() error = %v", err)
 	}
@@ -45,15 +47,18 @@ func TestReportCommandWritesMarkdownReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
+
 	text := string(content)
 	if !strings.Contains(text, "| Room | T60 | EDT | C80 | Expected range | Pass |") {
 		t.Fatalf("report header missing from %q", text)
 	}
+
 	for _, room := range []string{"tiny room", "control room", "lecture room", "pa room"} {
 		if !strings.Contains(text, room) {
 			t.Fatalf("report output missing room %q", room)
 		}
 	}
+
 	if !strings.Contains(stdout.String(), "wrote "+outputPath) {
 		t.Fatalf("stdout = %q, want write confirmation", stdout.String())
 	}

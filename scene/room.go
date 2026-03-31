@@ -27,9 +27,27 @@ func (s Shoebox) Bounds() geometry.Box {
 
 // Room is the top-level geometry container for a scene.
 type Room struct {
-	Kind    RoomKind       `json:"kind"`
-	Shoebox *Shoebox       `json:"shoebox,omitempty"`
-	Mesh    *geometry.Mesh `json:"mesh,omitempty"`
+	Kind     RoomKind       `json:"kind"`
+	Shoebox  *Shoebox       `json:"shoebox,omitempty"`
+	MeshPath string         `json:"meshPath,omitempty"`
+	Mesh     *geometry.Mesh `json:"mesh,omitempty"`
+}
+
+// IsMesh reports whether the room uses triangulated geometry.
+func (r Room) IsMesh() bool {
+	return r.Kind == RoomKindMesh
+}
+
+// IsValid reports whether the room carries the geometry payload needed by its kind.
+func (r Room) IsValid() bool {
+	switch r.Kind {
+	case RoomKindShoebox:
+		return r.Shoebox != nil
+	case RoomKindMesh:
+		return r.Mesh != nil
+	default:
+		return false
+	}
 }
 
 // Bounds returns the room bounding box if it can be derived from the room data.

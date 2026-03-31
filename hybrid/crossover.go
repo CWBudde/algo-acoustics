@@ -12,18 +12,19 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 	if geoIR == nil {
 		return nil
 	}
+
 	if len(lowIR) == 0 {
 		return cloneBuffer(geoIR)
 	}
+
 	if sampleRate <= 0 || geoIR.SampleRate != sampleRate {
 		return nil
 	}
 
-	n := len(geoIR.Samples)
-	if len(lowIR) > n {
-		n = len(lowIR)
-	}
+	n := max(len(lowIR), len(geoIR.Samples))
+
 	fftSize := nextPowerOf2(maxInt(2*n, 2))
+
 	plan, err := algofft.NewPlan64(fftSize)
 	if err != nil {
 		return nil
@@ -33,6 +34,7 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 	for i, v := range lowIR {
 		lowSpec[i] = complex(v, 0)
 	}
+
 	for i, v := range geoIR.Samples {
 		geoSpec[i] = complex(v, 0)
 	}
@@ -41,6 +43,7 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 	if err := plan.Forward(lowFreq, lowSpec); err != nil {
 		return nil
 	}
+
 	if err := plan.Forward(geoFreq, geoSpec); err != nil {
 		return nil
 	}
@@ -64,11 +67,10 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 	}
 
 	out := ir.NewBuffer(sampleRate, float64(n)/float64(sampleRate))
-	limit := len(out.Samples)
-	if limit > len(combinedTime) {
-		limit = len(combinedTime)
-	}
-	for i := 0; i < limit; i++ {
+
+	limit := min(len(out.Samples), len(combinedTime))
+
+	for i := range limit {
 		out.Samples[i] = real(combinedTime[i])
 	}
 
@@ -79,13 +81,17 @@ func lowPassWeight(freq, crossoverHz float64) float64 {
 	if crossoverHz <= 0 {
 		return 1
 	}
+
 	if freq <= crossoverHz*0.5 {
 		return 1
 	}
+
 	if freq >= crossoverHz*2 {
 		return 0
 	}
+
 	x := (math.Log2(freq/crossoverHz) + 1) / 2
+
 	return 0.5 * (1 + math.Cos(math.Pi*x))
 }
 
@@ -93,9 +99,11 @@ func nextPowerOf2(n int) int {
 	if n <= 1 {
 		return 1
 	}
+
 	power := 1
 	for power < n {
 		power <<= 1
 	}
+
 	return power
 }

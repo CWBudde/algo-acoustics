@@ -2,15 +2,31 @@ package scene
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+
+	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
 // LoadScene decodes a scene from JSON.
 func LoadScene(r io.Reader) (*Scene, error) {
+	return loadScene(r, "")
+}
+
+func loadScene(r io.Reader, baseDir string) (*Scene, error) {
 	var sc Scene
+
 	decoder := json.NewDecoder(r)
-	if err := decoder.Decode(&sc); err != nil {
+
+	err := decoder.Decode(&sc)
+	if err != nil {
+		return nil, err
+	}
+
+	err = resolveRoomMesh(&sc, baseDir)
+	if err != nil {
 		return nil, err
 	}
 
@@ -25,5 +41,25 @@ func LoadSceneFile(path string) (*Scene, error) {
 	}
 	defer file.Close()
 
-	return LoadScene(file)
+	return loadScene(file, filepath.Dir(path))
+}
+
+func resolveRoomMesh(sc *Scene, baseDir string) error {
+	if sc == nil || !sc.Room.IsMesh() || sc.Room.Mesh != nil || sc.Room.MeshPath == "" {
+		return nil
+	}
+
+	meshPath := sc.Room.MeshPath
+	if baseDir != "" && !filepath.IsAbs(meshPath) {
+		meshPath = filepath.Join(baseDir, meshPath)
+	}
+
+	mesh, err := geometry.LoadOBJ(meshPath)
+	if err != nil {
+		return fmt.Errorf("load room mesh %q: %w", sc.Room.MeshPath, err)
+	}
+
+	sc.Room.Mesh = mesh
+
+	return nil
 }

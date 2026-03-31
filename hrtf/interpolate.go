@@ -53,6 +53,7 @@ func InterpolateHRIR(grid *MeasurementGrid, dir geometry.Vec3) (left, right []fl
 		}
 
 		left, right, delay = blendMeasurements(grid, triangle, weights)
+
 		return left, right, delay
 	}
 
@@ -85,7 +86,7 @@ func allMeasurementTriangles(count int) [][3]int {
 	}
 
 	triangles := make([][3]int, 0, count*(count-1)*(count-2)/6)
-	for i := 0; i < count-2; i++ {
+	for i := range count - 2 {
 		for j := i + 1; j < count-1; j++ {
 			for k := j + 1; k < count; k++ {
 				triangles = append(triangles, [3]int{i, j, k})
@@ -102,10 +103,12 @@ func triangleValid(triangle [3]int, count int) bool {
 
 func weightsAreValid(weights [3]float64) bool {
 	var sum float64
+
 	for _, weight := range weights {
 		if weight < -barycentricEpsilon {
 			return false
 		}
+
 		sum += weight
 	}
 
@@ -117,6 +120,7 @@ func blendMeasurements(grid *MeasurementGrid, triangle [3]int, weights [3]float6
 	var rightSources [3][]float64
 	var delays [3]float64
 	maxLen := 0
+
 	for i, index := range triangle {
 		if index < len(grid.LeftHRIRs) {
 			leftSources[i] = grid.LeftHRIRs[index]
@@ -124,12 +128,14 @@ func blendMeasurements(grid *MeasurementGrid, triangle [3]int, weights [3]float6
 				maxLen = len(leftSources[i])
 			}
 		}
+
 		if index < len(grid.RightHRIRs) {
 			rightSources[i] = grid.RightHRIRs[index]
 			if len(rightSources[i]) > maxLen {
 				maxLen = len(rightSources[i])
 			}
 		}
+
 		if index < len(grid.Delays) {
 			delays[i] = grid.Delays[index]
 		}
@@ -141,13 +147,16 @@ func blendMeasurements(grid *MeasurementGrid, triangle [3]int, weights [3]float6
 
 	left = make([]float64, maxLen)
 	right = make([]float64, maxLen)
-	for i := 0; i < 3; i++ {
+
+	for i := range 3 {
 		for sampleIndex, sample := range leftSources[i] {
 			left[sampleIndex] += weights[i] * sample
 		}
+
 		for sampleIndex, sample := range rightSources[i] {
 			right[sampleIndex] += weights[i] * sample
 		}
+
 		delay += weights[i] * delays[i]
 	}
 

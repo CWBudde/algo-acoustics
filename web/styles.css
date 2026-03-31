@@ -7,15 +7,115 @@
   --ink: #182432;
   --muted: #66717d;
   --line: rgba(24, 36, 50, 0.11);
+  --page-grid: rgba(255, 255, 255, 0.25);
   --accent: #ff6b4a;
   --accent-soft: rgba(255, 107, 74, 0.14);
   --accent-2: #0f9d92;
   --accent-2-soft: rgba(15, 157, 146, 0.16);
   --shadow: 0 18px 60px rgba(32, 38, 44, 0.12);
+  --panel-border: rgba(255, 255, 255, 0.72);
+  --panel-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.18),
+    transparent 22%
+  );
+  --ghost-bg: rgba(24, 36, 50, 0.06);
+  --ghost-hover: rgba(24, 36, 50, 0.1);
+  --mode-bg: rgba(24, 36, 50, 0.06);
+  --mode-active-shadow: inset 0 0 0 1px rgba(24, 36, 50, 0.08);
+  --chip-bg: rgba(255, 255, 255, 0.62);
+  --chip-border: rgba(24, 36, 50, 0.08);
+  --metric-bg: rgba(255, 255, 255, 0.65);
+  --metric-border: rgba(24, 36, 50, 0.06);
+  --viewport-bg: radial-gradient(circle at top, rgba(79, 94, 111, 0.18), transparent 28%),
+    linear-gradient(180deg, #16202b, #0c1218 82%);
+  --wave-bg: linear-gradient(
+    180deg,
+    rgba(24, 36, 50, 0.97),
+    rgba(10, 17, 23, 0.98)
+  );
+  --wave-fill: #0d141b;
+  --wave-border: rgba(255, 255, 255, 0.06);
+  --wave-grid: rgba(255, 255, 255, 0.08);
+  --wave-empty: rgba(255, 255, 255, 0.68);
+  --wave-divider: rgba(255, 255, 255, 0.28);
+  --audio-bg: rgba(24, 36, 50, 0.05);
+  --log-bg: rgba(24, 36, 50, 0.05);
+  --log-border: rgba(24, 36, 50, 0.06);
+  --overlay-bg: rgba(8, 12, 18, 0.64);
+  --overlay-ink: rgba(255, 255, 255, 0.86);
+  --scene-grid-major: #2f3d4a;
+  --scene-grid-minor: #1e2934;
+  --scene-edge: rgba(243, 245, 248, 0.5);
+  --scene-ray: rgba(248, 250, 252, 0.18);
+  --scene-path: rgba(242, 239, 231, 0.85);
+  --scene-key: #fff2dc;
+  --scene-fill: #7dd3c7;
+  --scene-ambient: 0.8;
+  --scene-key-intensity: 1.3;
+  --scene-fill-intensity: 0.55;
   --radius-xl: 28px;
   --radius-lg: 22px;
   --radius-md: 16px;
   --radius-sm: 12px;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #08111b;
+  --bg-deep: #0d1a22;
+  --panel: rgba(13, 22, 30, 0.82);
+  --panel-strong: rgba(12, 18, 25, 0.94);
+  --ink: #edf3f7;
+  --muted: #9eb2bf;
+  --line: rgba(167, 184, 196, 0.18);
+  --page-grid: rgba(165, 181, 194, 0.08);
+  --accent: #ff8a5c;
+  --accent-soft: rgba(255, 138, 92, 0.2);
+  --accent-2: #6ce1d6;
+  --accent-2-soft: rgba(108, 225, 214, 0.16);
+  --shadow: 0 22px 70px rgba(0, 0, 0, 0.34);
+  --panel-border: rgba(172, 193, 208, 0.14);
+  --panel-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06),
+    transparent 22%
+  );
+  --ghost-bg: rgba(255, 255, 255, 0.06);
+  --ghost-hover: rgba(255, 255, 255, 0.1);
+  --mode-bg: rgba(255, 255, 255, 0.06);
+  --mode-active-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --chip-bg: rgba(255, 255, 255, 0.06);
+  --chip-border: rgba(186, 205, 220, 0.12);
+  --metric-bg: rgba(255, 255, 255, 0.05);
+  --metric-border: rgba(186, 205, 220, 0.1);
+  --viewport-bg: radial-gradient(circle at top, rgba(108, 225, 214, 0.12), transparent 32%),
+    linear-gradient(180deg, #081018, #03070d 82%);
+  --wave-bg: linear-gradient(
+    180deg,
+    rgba(9, 14, 19, 0.98),
+    rgba(3, 6, 10, 1)
+  );
+  --wave-fill: #060b10;
+  --wave-border: rgba(186, 205, 220, 0.1);
+  --wave-grid: rgba(193, 209, 221, 0.1);
+  --wave-empty: rgba(233, 241, 247, 0.72);
+  --wave-divider: rgba(233, 241, 247, 0.22);
+  --audio-bg: rgba(255, 255, 255, 0.04);
+  --log-bg: rgba(255, 255, 255, 0.04);
+  --log-border: rgba(186, 205, 220, 0.12);
+  --overlay-bg: rgba(4, 7, 10, 0.7);
+  --overlay-ink: rgba(241, 245, 249, 0.9);
+  --scene-grid-major: #587086;
+  --scene-grid-minor: #253443;
+  --scene-edge: rgba(226, 236, 244, 0.34);
+  --scene-ray: rgba(211, 223, 232, 0.12);
+  --scene-path: rgba(243, 232, 215, 0.74);
+  --scene-key: #ffd3aa;
+  --scene-fill: #7de8dd;
+  --scene-ambient: 0.72;
+  --scene-key-intensity: 1.15;
+  --scene-fill-intensity: 0.5;
 }
 
 * {
@@ -56,8 +156,8 @@ audio {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.25) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.25) 1px, transparent 1px);
+    linear-gradient(var(--page-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--page-grid) 1px, transparent 1px);
   background-size: 42px 42px;
   opacity: 0.25;
   pointer-events: none;
@@ -84,7 +184,7 @@ audio {
   position: relative;
   overflow: hidden;
   background: var(--panel);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
@@ -95,11 +195,7 @@ audio {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.18),
-    transparent 22%
-  );
+  background: var(--panel-sheen);
   pointer-events: none;
 }
 
@@ -108,6 +204,10 @@ audio {
 .viewport-card,
 .response-card {
   padding: 24px;
+}
+
+.hero {
+  isolation: isolate;
 }
 
 .hero h1,
@@ -152,6 +252,44 @@ audio {
   gap: 10px;
   align-items: center;
   margin-top: 22px;
+}
+
+.theme-toggle {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.theme-toggle:hover {
+  background: var(--ghost-hover);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.theme-toggle-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.theme-toggle-label {
+  font-size: 0.84rem;
+  font-weight: 800;
 }
 
 .status-pill {
@@ -212,7 +350,7 @@ audio {
 
 .ghost-button {
   padding: 10px 14px;
-  background: rgba(24, 36, 50, 0.06);
+  background: var(--ghost-bg);
   color: var(--ink);
   font-weight: 700;
 }
@@ -307,8 +445,8 @@ audio {
   gap: 10px;
   padding: 10px 12px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(24, 36, 50, 0.08);
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
   font-size: 0.82rem;
   color: var(--muted);
 }
@@ -329,7 +467,7 @@ audio {
 
 .mode-button {
   padding: 12px 10px;
-  background: rgba(24, 36, 50, 0.06);
+  background: var(--mode-bg);
   color: var(--muted);
   font-weight: 800;
 }
@@ -341,7 +479,7 @@ audio {
     rgba(15, 157, 146, 0.18)
   );
   color: var(--ink);
-  box-shadow: inset 0 0 0 1px rgba(24, 36, 50, 0.08);
+  box-shadow: var(--mode-active-shadow);
 }
 
 .action-row {
@@ -367,8 +505,8 @@ audio {
   min-width: 136px;
   padding: 14px 16px;
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(24, 36, 50, 0.06);
+  background: var(--metric-bg);
+  border: 1px solid var(--metric-border);
 }
 
 .metric-chip span {
@@ -395,9 +533,7 @@ audio {
   min-height: 560px;
   border-radius: calc(var(--radius-xl) - 8px);
   overflow: hidden;
-  background:
-    radial-gradient(circle at top, rgba(79, 94, 111, 0.18), transparent 28%),
-    linear-gradient(180deg, #16202b, #0c1218 82%);
+  background: var(--viewport-bg);
 }
 
 #scene-canvas,
@@ -413,12 +549,8 @@ audio {
 #waveform-canvas {
   margin-top: 8px;
   border-radius: calc(var(--radius-xl) - 8px);
-  background: linear-gradient(
-    180deg,
-    rgba(24, 36, 50, 0.97),
-    rgba(10, 17, 23, 0.98)
-  );
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--wave-bg);
+  border: 1px solid var(--wave-border);
 }
 
 .viewport-overlay {
@@ -430,8 +562,8 @@ audio {
   gap: 10px;
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(8, 12, 18, 0.64);
-  color: rgba(255, 255, 255, 0.86);
+  background: var(--overlay-bg);
+  color: var(--overlay-ink);
   font-size: 0.82rem;
   backdrop-filter: blur(10px);
 }
@@ -448,7 +580,7 @@ audio {
   margin-top: 16px;
   padding: 14px;
   border-radius: var(--radius-md);
-  background: rgba(24, 36, 50, 0.05);
+  background: var(--audio-bg);
 }
 
 .audio-card audio {
@@ -461,8 +593,8 @@ audio {
   padding: 16px;
   white-space: pre-wrap;
   border-radius: var(--radius-md);
-  background: rgba(24, 36, 50, 0.05);
-  border: 1px solid rgba(24, 36, 50, 0.06);
+  background: var(--log-bg);
+  border: 1px solid var(--log-border);
   line-height: 1.5;
 }
 
@@ -509,6 +641,16 @@ audio {
   .viewport-card,
   .response-card {
     padding: 18px;
+  }
+
+  .theme-toggle {
+    top: 14px;
+    right: 14px;
+    padding: 9px 12px;
+  }
+
+  .theme-toggle-label {
+    display: none;
   }
 
   .numeric-grid,

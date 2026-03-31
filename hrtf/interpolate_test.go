@@ -32,9 +32,11 @@ func TestInterpolateHRIREqualsMeasurementAtExactDirection(t *testing.T) {
 	if len(left) != 2 || left[0] != 3 || left[1] != 4 {
 		t.Fatalf("left HRIR = %v, want exact measurement", left)
 	}
+
 	if len(right) != 2 || right[0] != 9 || right[1] != 10 {
 		t.Fatalf("right HRIR = %v, want exact measurement", right)
 	}
+
 	if math.Abs(delay-0.02) > 1e-12 {
 		t.Fatalf("delay = %v, want 0.02", delay)
 	}

@@ -10,12 +10,14 @@ func NormalizePeak(buf *Buffer) float64 {
 	}
 
 	peak := 0.0
+
 	for _, sample := range buf.Samples {
 		magnitude := math.Abs(sample)
 		if magnitude > peak {
 			peak = magnitude
 		}
 	}
+
 	if peak == 0 {
 		return 0
 	}

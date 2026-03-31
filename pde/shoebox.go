@@ -1,7 +1,7 @@
 package pde
 
 import (
-	"fmt"
+	"errors"
 	"math"
 	"sort"
 
@@ -44,20 +44,24 @@ func (tf *TransferFunction) ToTimeDomain(sampleRate int, nFFT int) []float64 {
 	if nFFT < 2*(len(tf.H)-1) {
 		nFFT = 2 * (len(tf.H) - 1)
 	}
+
 	if nFFT < 2 {
 		return nil
 	}
 
 	spectrum := make([]complex128, nFFT)
+
 	half := nFFT / 2
 	for k := 0; k <= half; k++ {
 		freq := float64(k) * float64(sampleRate) / float64(nFFT)
 		spectrum[k] = tf.sampleAt(freq)
 	}
+
 	spectrum[0] = complex(real(spectrum[0]), 0)
 	if half < len(spectrum) {
 		spectrum[half] = complex(real(spectrum[half]), 0)
 	}
+
 	for k := 1; k < half; k++ {
 		spectrum[nFFT-k] = complex(real(spectrum[k]), -imag(spectrum[k]))
 	}
@@ -96,30 +100,40 @@ func (tf *TransferFunction) sampleAt(freq float64) complex128 {
 		if i < len(tf.Freqs) {
 			f = tf.Freqs[i]
 		}
+
 		samples = append(samples, sample{freq: f, val: tf.H[i]})
 	}
+
 	if len(samples) == 0 {
 		return 0
 	}
+
 	sort.Slice(samples, func(i, j int) bool { return samples[i].freq < samples[j].freq })
+
 	if freq <= samples[0].freq {
 		return samples[0].val
 	}
+
 	last := samples[len(samples)-1]
 	if freq >= last.freq {
 		return last.val
 	}
-	for i := 0; i < len(samples)-1; i++ {
+
+	for i := range len(samples) - 1 {
 		lo := samples[i]
+
 		hi := samples[i+1]
 		if freq < lo.freq || freq > hi.freq {
 			continue
 		}
+
 		span := hi.freq - lo.freq
 		if span <= 0 {
 			return hi.val
 		}
+
 		w := (freq - lo.freq) / span
+
 		return complex(
 			real(lo.val)*(1-w)+real(hi.val)*w,
 			imag(lo.val)*(1-w)+imag(hi.val)*w,
@@ -155,28 +169,34 @@ func (e PDELowFreqEngine) CrossoverHz() float64 {
 // Transfer generates a low-frequency transfer function for the first source/receiver pair.
 func (e PDELowFreqEngine) Transfer(sc *scene.Scene, cfg ir.RenderConfig) (*TransferFunction, error) {
 	if sc == nil {
-		return nil, fmt.Errorf("scene is nil")
+		return nil, errors.New("scene is nil")
 	}
+
 	if sc.Room.Kind != scene.RoomKindShoebox || sc.Room.Shoebox == nil {
-		return nil, fmt.Errorf("PDE low-frequency solver requires a shoebox room")
+		return nil, errors.New("PDE low-frequency solver requires a shoebox room")
 	}
+
 	if len(sc.Sources) == 0 {
-		return nil, fmt.Errorf("scene has no sources")
+		return nil, errors.New("scene has no sources")
 	}
+
 	if len(sc.Receivers) == 0 {
-		return nil, fmt.Errorf("scene has no receivers")
+		return nil, errors.New("scene has no receivers")
 	}
 
 	sweep := e.Sweep
 	if sweep.FreqMin <= 0 {
 		sweep.FreqMin = 20
 	}
+
 	if sweep.FreqMax <= sweep.FreqMin {
 		sweep.FreqMax = 300
 	}
+
 	if sweep.NumPoints <= 0 {
 		sweep.NumPoints = 48
 	}
+
 	if sweep.BoundaryCondition == "" {
 		sweep.BoundaryCondition = "neumann"
 	}
@@ -197,20 +217,24 @@ func nearestCell(pos geometry.Vec3, nx, ny, nz int, hx, hy, hz float64) (int, in
 	ix := int(math.Round(pos.X / hx))
 	iy := int(math.Round(pos.Y / hy))
 	iz := int(math.Round(pos.Z / hz))
+
 	if ix < 0 {
 		ix = 0
 	} else if ix >= nx {
 		ix = nx - 1
 	}
+
 	if iy < 0 {
 		iy = 0
 	} else if iy >= ny {
 		iy = ny - 1
 	}
+
 	if iz < 0 {
 		iz = 0
 	} else if iz >= nz {
 		iz = nz - 1
 	}
+
 	return ix, iy, iz
 }

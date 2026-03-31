@@ -27,6 +27,7 @@ func TestReceiverWorldToHeadDirRotatedOrientation(t *testing.T) {
 	if math.Abs(dir.X) > 1e-9 || math.Abs(dir.Z) > 1e-9 {
 		t.Fatalf("WorldToHeadDir() = %#v, want direction in XY plane", dir)
 	}
+
 	if math.Abs(dir.Y+1) > 1e-9 {
 		t.Fatalf("WorldToHeadDir() = %#v, want -Y", dir)
 	}
@@ -42,6 +43,7 @@ func TestReceiverWorldToHeadDirQuarterTurnSwapsLaterals(t *testing.T) {
 	if math.Abs(left.X-1) > 1e-9 || math.Abs(left.Y) > 1e-9 || math.Abs(left.Z) > 1e-9 {
 		t.Fatalf("left direction = %#v, want +X", left)
 	}
+
 	if math.Abs(right.X+1) > 1e-9 || math.Abs(right.Y) > 1e-9 || math.Abs(right.Z) > 1e-9 {
 		t.Fatalf("right direction = %#v, want -X", right)
 	}

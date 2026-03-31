@@ -27,6 +27,7 @@ func NewEnergyHistogram(duration, binDuration float64, bandCount int) *EnergyHis
 	}
 
 	binCount := int(math.Ceil(duration / binDuration))
+
 	bins := make([]HistogramBin, binCount)
 	for i := range bins {
 		bins[i] = HistogramBin{
@@ -48,6 +49,7 @@ func (h *EnergyHistogram) Add(timeSeconds float64, bandEnergy []float64) {
 	if index < 0 {
 		return
 	}
+
 	if index >= len(h.Bins) {
 		index = len(h.Bins) - 1
 	}
@@ -57,11 +59,9 @@ func (h *EnergyHistogram) Add(timeSeconds float64, bandEnergy []float64) {
 		bin.BandEnergy = make([]float64, h.BandCount)
 	}
 
-	limit := len(bandEnergy)
-	if limit > h.BandCount {
-		limit = h.BandCount
-	}
-	for i := 0; i < limit; i++ {
+	limit := min(len(bandEnergy), h.BandCount)
+
+	for i := range limit {
 		bin.BandEnergy[i] += bandEnergy[i]
 	}
 }
@@ -77,13 +77,13 @@ func (h *EnergyHistogram) ToLateMono(sampleRate int) *ir.Buffer {
 
 	for binIndex, bin := range h.Bins {
 		start := int(math.Round(float64(binIndex) * h.BinDuration * float64(sampleRate)))
-		end := int(math.Round(float64(binIndex+1) * h.BinDuration * float64(sampleRate)))
-		if end > len(buf.Samples) {
-			end = len(buf.Samples)
-		}
+
+		end := min(int(math.Round(float64(binIndex+1)*h.BinDuration*float64(sampleRate))), len(buf.Samples))
+
 		if start < 0 {
 			start = 0
 		}
+
 		if start >= end {
 			continue
 		}
@@ -92,11 +92,13 @@ func (h *EnergyHistogram) ToLateMono(sampleRate int) *ir.Buffer {
 		for _, bandEnergy := range bin.BandEnergy {
 			totalEnergy += bandEnergy
 		}
+
 		if totalEnergy <= 0 {
 			continue
 		}
 
 		sampleCount := end - start
+
 		scale := math.Sqrt(3 * totalEnergy / float64(sampleCount))
 		for sampleIndex := start; sampleIndex < end; sampleIndex++ {
 			buf.Samples[sampleIndex] += scale * (2*rng.Float64() - 1)

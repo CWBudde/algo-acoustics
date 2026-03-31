@@ -23,7 +23,8 @@ func newRootCommand() *cobra.Command {
 }
 
 func run(cmd *cobra.Command) int {
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		fmt.Fprintln(cmd.ErrOrStderr(), err)
 
 		return 1

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
@@ -23,10 +24,11 @@ func newDumpEventsCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if outputPath == "" {
-				return fmt.Errorf("output path must not be empty")
+				return errors.New("output path must not be empty")
 			}
 
 			scenePath := args[0]
+
 			sc, err := scene.LoadSceneFile(scenePath)
 			if err != nil {
 				return fmt.Errorf("load scene %q: %w", scenePath, err)
@@ -37,6 +39,7 @@ func newDumpEventsCommand() *cobra.Command {
 			}
 
 			solver := ism.ISMSolver{}
+
 			events, err := solver.Solve(sc, ism.ISMConfig{
 				MaxOrder:     maxOrder,
 				SpeedOfSound: acoustics.SpeedOfSound,
@@ -48,11 +51,13 @@ func newDumpEventsCommand() *cobra.Command {
 
 			switch outputFormat {
 			case "json":
-				if err := export.WriteEventsJSON(outputPath, events); err != nil {
+				err := export.WriteEventsJSON(outputPath, events)
+				if err != nil {
 					return fmt.Errorf("write events json: %w", err)
 				}
 			case "csv":
-				if err := export.WriteEventsCSV(outputPath, events); err != nil {
+				err := export.WriteEventsCSV(outputPath, events)
+				if err != nil {
 					return fmt.Errorf("write events csv: %w", err)
 				}
 			default:
@@ -60,6 +65,7 @@ func newDumpEventsCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(cmd.ErrOrStderr(), "dumped %d events to %s (%s)\n", len(events), outputPath, outputFormat)
+
 			return nil
 		},
 	}

@@ -18,7 +18,6 @@ func TestRegressionFixturesMatchGoldenEvents(t *testing.T) {
 
 	fixtures := []string{"shoebox_absorptive.json", "shoebox_livelier.json", "shoebox_symmetric.json"}
 	for _, fixture := range fixtures {
-		fixture := fixture
 		t.Run(fixture, func(t *testing.T) {
 			t.Parallel()
 
@@ -43,6 +42,7 @@ func TestAbsorptiveRoomHasShorterT60ThanLivelierRoom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("T60FromDecaySlope(absorptive) error = %v", err)
 	}
+
 	livelierT60, err := metrics.T60FromDecaySlope(livelier)
 	if err != nil {
 		t.Fatalf("T60FromDecaySlope(livelier) error = %v", err)
@@ -60,6 +60,7 @@ func loadRegressionScene(t *testing.T, path string) *scene.Scene {
 	if err != nil {
 		t.Fatalf("LoadSceneFile(%s) error = %v", path, err)
 	}
+
 	if err := scene.Validate(loaded); err != nil {
 		t.Fatalf("Validate(%s) error = %v", path, err)
 	}
@@ -71,6 +72,7 @@ func solveRegressionScene(t *testing.T, sc *scene.Scene) []ir.Event {
 	t.Helper()
 
 	solver := ISMSolver{}
+
 	events, err := solver.Solve(sc, ISMConfig{MaxOrder: 2, SpeedOfSound: acoustics.SpeedOfSound, BandSpec: sc.BandSpec})
 	if err != nil {
 		t.Fatalf("Solve() error = %v", err)
@@ -84,6 +86,7 @@ func renderRegressionIR(t *testing.T, path string) *ir.Buffer {
 
 	sc := loadRegressionScene(t, path)
 	events := solveRegressionScene(t, sc)
+
 	buf, err := ir.RenderMono(events, ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 1.25, BandSpec: sc.BandSpec})
 	if err != nil {
 		t.Fatalf("RenderMono() error = %v", err)
@@ -126,21 +129,27 @@ func regressionEventClose(got, want ir.Event) bool {
 	if got.Kind != want.Kind {
 		return false
 	}
+
 	if math.Abs(got.TimeSeconds-want.TimeSeconds) > 0.00005 {
 		return false
 	}
+
 	if !regressionAmplitudeClose(got.Amplitude, want.Amplitude) {
 		return false
 	}
+
 	if math.Abs(got.DistanceMeters-want.DistanceMeters) > 1e-9 {
 		return false
 	}
+
 	if math.Abs(got.Direction.X-want.Direction.X) > 1e-9 || math.Abs(got.Direction.Y-want.Direction.Y) > 1e-9 || math.Abs(got.Direction.Z-want.Direction.Z) > 1e-9 {
 		return false
 	}
+
 	if len(got.BandGain) != len(want.BandGain) {
 		return false
 	}
+
 	for index := range got.BandGain {
 		if math.Abs(got.BandGain[index]-want.BandGain[index]) > 1e-9 {
 			return false

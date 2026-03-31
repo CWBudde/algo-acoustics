@@ -24,7 +24,7 @@ func FibonacciSphere(n int) []geometry.Vec3 {
 	phi := (1 + math.Sqrt(5)) / 2
 	denom := phi * phi
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		z := 1 - (2*float64(i)+1)/float64(n)
 		theta := 2 * math.Pi * float64(i) / denom
 		radius := math.Sqrt(math.Max(0, 1-z*z))
@@ -76,6 +76,7 @@ func LaunchRays(src geometry.Vec3, cfg LaunchConfig) []geometry.Ray {
 	}
 
 	directions := FibonacciSphere(cfg.NumRays)
+
 	rays := make([]geometry.Ray, len(directions))
 	for i, dir := range directions {
 		rays[i] = geometry.NewRay(src, dir)

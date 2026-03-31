@@ -21,6 +21,7 @@ func TestNewMeshTracerAllowsWarningOnlyMesh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMeshTracer() error = %v", err)
 	}
+
 	if tracer.BVH == nil {
 		t.Fatal("NewMeshTracer() returned nil BVH")
 	}
@@ -65,15 +66,19 @@ func TestMeshTracerNextHitFindsNearestTriangle(t *testing.T) {
 	if !ok {
 		t.Fatal("NextHit() returned ok=false")
 	}
+
 	if wallIdx != 0 {
 		t.Fatalf("wallIdx = %d, want 0", wallIdx)
 	}
+
 	if diff := math.Abs(hitPoint.Z - 1); diff > 1e-12 {
 		t.Fatalf("hitPoint.Z = %g, want 1", hitPoint.Z)
 	}
+
 	if hitPoint.X != 0 || hitPoint.Y != 0 {
 		t.Fatalf("hitPoint = %#v, want origin-projected hit", hitPoint)
 	}
+
 	if normal != mesh.Triangles[0].Normal() {
 		t.Fatalf("normal = %#v, want %#v", normal, mesh.Triangles[0].Normal())
 	}

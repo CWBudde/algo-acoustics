@@ -16,7 +16,6 @@ func TestDumpEventsCommandWritesJSONAndCSV(t *testing.T) {
 	t.Parallel()
 
 	for _, format := range []string{"json", "csv"} {
-		format := format
 		t.Run(format, func(t *testing.T) {
 			t.Parallel()
 
@@ -26,6 +25,7 @@ func TestDumpEventsCommandWritesJSONAndCSV(t *testing.T) {
 			cmd := newRootCommand()
 			stdout := &bytes.Buffer{}
 			stderr := &bytes.Buffer{}
+
 			cmd.SetOut(stdout)
 			cmd.SetErr(stderr)
 			cmd.SetArgs([]string{
@@ -52,21 +52,27 @@ func TestDumpEventsCommandWritesJSONAndCSV(t *testing.T) {
 			switch format {
 			case "json":
 				var events []ir.Event
-				if err := json.Unmarshal(data, &events); err != nil {
+
+				err := json.Unmarshal(data, &events)
+				if err != nil {
 					t.Fatalf("json.Unmarshal() error = %v", err)
 				}
+
 				if len(events) == 0 {
 					t.Fatal("json output contains no events")
 				}
 			case "csv":
 				reader := csv.NewReader(bytes.NewReader(data))
+
 				rows, err := reader.ReadAll()
 				if err != nil {
 					t.Fatalf("csv.ReadAll() error = %v", err)
 				}
+
 				if len(rows) < 2 {
 					t.Fatalf("csv output rows = %d, want at least 2", len(rows))
 				}
+
 				if rows[0][0] != "index" || rows[0][1] != "timeSeconds" {
 					t.Fatalf("csv header = %v, want events header", rows[0])
 				}

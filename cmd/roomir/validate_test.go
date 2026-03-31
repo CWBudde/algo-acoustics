@@ -17,6 +17,7 @@ func TestValidateCommandAcceptsValidScene(t *testing.T) {
 	cmd := newRootCommand()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
+
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.SetArgs([]string{"validate", filepath.Join("..", "..", "testdata", "rooms", "shoebox_simple.json")})
@@ -34,6 +35,7 @@ func TestValidateCommandReportsInvalidScene(t *testing.T) {
 	t.Parallel()
 
 	fixturePath := filepath.Join("..", "..", "testdata", "rooms", "shoebox_simple.json")
+
 	fixtureBytes, err := os.ReadFile(fixturePath)
 	if err != nil {
 		t.Fatalf("ReadFile() failed: %v", err)
@@ -59,6 +61,7 @@ func TestValidateCommandReportsInvalidScene(t *testing.T) {
 	cmd := newRootCommand()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
+
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.SetArgs([]string{"validate", invalidPath})

@@ -30,16 +30,20 @@ func TestISMSolverValidateAllFirstOrderWallReflectionsForSymmetricShoebox(t *tes
 		}
 
 		event := findSpecularEventForImage(t, events, sc.Receivers[0].Position, image.Position)
+
 		wantDistance := sc.Receivers[0].Position.Distance(image.Position)
 		if math.Abs(event.DistanceMeters-wantDistance) > 1e-12 {
 			t.Fatalf("reflection distance = %v, want %v", event.DistanceMeters, wantDistance)
 		}
+
 		if math.Abs(event.TimeSeconds-wantDistance/acoustics.SpeedOfSound) > 1e-12 {
 			t.Fatalf("reflection time = %v, want %v", event.TimeSeconds, wantDistance/acoustics.SpeedOfSound)
 		}
+
 		if math.Abs(event.Amplitude-1/wantDistance) > 1e-12 {
 			t.Fatalf("reflection amplitude = %v, want %v", event.Amplitude, 1/wantDistance)
 		}
+
 		for bandIndex, gain := range event.BandGain {
 			if math.Abs(gain-1) > 1e-12 {
 				t.Fatalf("reflection BandGain[%d] = %v, want 1", bandIndex, gain)
@@ -67,6 +71,7 @@ func TestISMSolverValidateSecondOrderReflectionEdgeCases(t *testing.T) {
 		}
 
 		event := findSpecularEventForImage(t, events, sc.Receivers[0].Position, image.Position)
+
 		wantDistance := sc.Receivers[0].Position.Distance(image.Position)
 		if math.Abs(event.DistanceMeters-wantDistance) > 1e-12 {
 			t.Fatalf("second-order distance = %v, want %v", event.DistanceMeters, wantDistance)
@@ -120,6 +125,7 @@ func findImageSourceByOrderTriple(t *testing.T, src geometry.Vec3, room *scene.S
 	}
 
 	t.Fatalf("did not find image source for order triple (%d,%d,%d)", orderX, orderY, orderZ)
+
 	return ImageSource{}
 }
 
@@ -128,14 +134,17 @@ func findSpecularEventForImage(t *testing.T, events []ir.Event, receiver geometr
 
 	wantDirection := image.Sub(receiver).Normalize()
 	wantDistance := receiver.Distance(image)
+
 	for index := range events {
 		event := &events[index]
 		if event.Kind != ir.EventSpecular {
 			continue
 		}
+
 		if math.Abs(event.DistanceMeters-wantDistance) > 1e-12 {
 			continue
 		}
+
 		if !directionMatches(event.Direction, wantDirection) {
 			continue
 		}
@@ -144,5 +153,6 @@ func findSpecularEventForImage(t *testing.T, events []ir.Event, receiver geometr
 	}
 
 	t.Fatalf("did not find specular event for image %+v", image)
+
 	return nil
 }

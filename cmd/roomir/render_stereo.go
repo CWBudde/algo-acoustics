@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cwbudde/algo-acoustics/export"
@@ -23,10 +24,11 @@ func newRenderStereoCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if outputPath == "" {
-				return fmt.Errorf("output path must not be empty")
+				return errors.New("output path must not be empty")
 			}
 
 			scenePath := args[0]
+
 			sc, err := scene.LoadSceneFile(scenePath)
 			if err != nil {
 				return fmt.Errorf("load scene %q: %w", scenePath, err)
@@ -51,6 +53,7 @@ func newRenderStereoCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			earlyLeft, earlyRight, err := ir.RenderBinaural(earlyEvents, receiver.HRTF, renderCfg)
 			if err != nil {
 				return fmt.Errorf("render binaural early IR: %w", err)
@@ -69,13 +72,14 @@ func newRenderStereoCommand() *cobra.Command {
 				CrossoverMode:        hybrid.TimeBased,
 				SmoothenCrossover:    true,
 			})
+
 			right := hybrid.CombineBuffers(earlyRight, lateRight, hybrid.HybridConfig{
 				CrossoverTimeSeconds: crossoverTimeSeconds,
 				CrossoverMode:        hybrid.TimeBased,
 				SmoothenCrossover:    true,
 			})
 			if left == nil || right == nil {
-				return fmt.Errorf("combine stereo hybrid buffers")
+				return errors.New("combine stereo hybrid buffers")
 			}
 
 			if err := export.WriteStereoWAV(outputPath, left, right); err != nil {
@@ -83,6 +87,7 @@ func newRenderStereoCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(cmd.ErrOrStderr(), "rendered stereo mode with %d early events, %d rays, and receiver at %v in %.3fs to %s\n", len(earlyEvents), numRays, receiver.Position, durationSeconds, outputPath)
+
 			return nil
 		},
 	}
@@ -103,6 +108,7 @@ func cloneStereoBuffer(buf *ir.Buffer) *ir.Buffer {
 
 	out := ir.NewBuffer(buf.SampleRate, float64(len(buf.Samples))/float64(buf.SampleRate))
 	copy(out.Samples, buf.Samples)
+
 	return out
 }
 
@@ -110,12 +116,12 @@ func firstBinauralReceiver(sc *scene.Scene) (scene.Receiver, error) {
 	for _, receiver := range sc.Receivers {
 		if receiver.Type == scene.ReceiverBinaural {
 			if receiver.HRTF == nil {
-				return scene.Receiver{}, fmt.Errorf("binaural receiver is missing an HRTF")
+				return scene.Receiver{}, errors.New("binaural receiver is missing an HRTF")
 			}
 
 			return receiver, nil
 		}
 	}
 
-	return scene.Receiver{}, fmt.Errorf("scene does not contain a binaural receiver")
+	return scene.Receiver{}, errors.New("scene does not contain a binaural receiver")
 }

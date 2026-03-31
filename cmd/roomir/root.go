@@ -27,7 +27,8 @@ func newRootCommand() *cobra.Command {
 }
 
 func run(cmd *cobra.Command) int {
-	if err := cmd.Execute(); err != nil {
+	err := cmd.Execute()
+	if err != nil {
 		var validationErr *validationError
 		if errors.As(err, &validationErr) {
 			fmt.Fprintln(cmd.OutOrStdout(), validationErr.message)

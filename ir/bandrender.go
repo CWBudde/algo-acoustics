@@ -8,7 +8,8 @@ import (
 
 // RenderBand renders sparse events into a dense mono buffer for one frequency band.
 func RenderBand(events []Event, bandIndex int, cfg RenderConfig) (*Buffer, error) {
-	if err := validateRenderConfig(cfg); err != nil {
+	err := validateRenderConfig(cfg)
+	if err != nil {
 		return nil, err
 	}
 
@@ -16,6 +17,7 @@ func RenderBand(events []Event, bandIndex int, cfg RenderConfig) (*Buffer, error
 	if bandCount <= 0 {
 		return nil, errors.New("band spec must contain at least one band")
 	}
+
 	if bandIndex < 0 || bandIndex >= bandCount {
 		return nil, fmt.Errorf("band index %d out of range [0,%d)", bandIndex, bandCount)
 	}
@@ -51,6 +53,7 @@ func SumBands(bands []*Buffer) *Buffer {
 		if band == nil {
 			continue
 		}
+
 		if out == nil {
 			out = &Buffer{
 				SampleRate: band.SampleRate,
@@ -59,6 +62,7 @@ func SumBands(bands []*Buffer) *Buffer {
 
 			continue
 		}
+
 		if band.SampleRate != out.SampleRate || len(band.Samples) != len(out.Samples) {
 			return nil
 		}
@@ -77,6 +81,7 @@ func RenderHybridBand(earlyEvents, lateEvents []Event, bandIndex int, cfg Render
 	if err != nil {
 		return nil, err
 	}
+
 	late, err := RenderBand(lateEvents, bandIndex, cfg)
 	if err != nil {
 		return nil, err
@@ -93,16 +98,20 @@ func SumBandsWeighted(bands []*Buffer, weights []float64) *Buffer {
 		if band == nil {
 			continue
 		}
+
 		weight := 1.0
 		if index < len(weights) {
 			weight = weights[index]
 		}
+
 		if out == nil {
 			out = &Buffer{SampleRate: band.SampleRate, Samples: make([]float64, len(band.Samples))}
 		}
+
 		if band.SampleRate != out.SampleRate || len(band.Samples) != len(out.Samples) {
 			return nil
 		}
+
 		for sampleIndex, sample := range band.Samples {
 			out.Samples[sampleIndex] += sample * weight
 		}
@@ -124,9 +133,11 @@ func bandGainAt(bandGain []float64, bandIndex, bandCount int) (float64, error) {
 	if bandIndex < 0 || bandIndex >= bandCount {
 		return 0, fmt.Errorf("band index %d out of range [0,%d)", bandIndex, bandCount)
 	}
+
 	if len(bandGain) == 0 {
 		return 1, nil
 	}
+
 	if len(bandGain) != bandCount {
 		return 0, fmt.Errorf("band gain length %d does not match band count %d", len(bandGain), bandCount)
 	}

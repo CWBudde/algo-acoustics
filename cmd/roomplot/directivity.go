@@ -41,6 +41,7 @@ func newSourceDirectivityCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gllPath := args[0]
+
 			model, err := loadGLLModel(gllPath, preset)
 			if err != nil {
 				return fmt.Errorf("load gll %q: %w", gllPath, err)
@@ -49,6 +50,7 @@ func newSourceDirectivityCommand() *cobra.Command {
 			rows := buildSourceDirectivityRows(model, freqHz, elevationDeg, stepDeg)
 
 			writer := io.Writer(cmd.OutOrStdout())
+
 			var file *os.File
 			if outputPath != "" {
 				file, err = os.Create(outputPath)
@@ -56,16 +58,19 @@ func newSourceDirectivityCommand() *cobra.Command {
 					return fmt.Errorf("create output %q: %w", outputPath, err)
 				}
 				defer file.Close()
+
 				writer = file
 			}
 
 			switch format {
 			case "csv":
-				if err := writeSourceDirectivityCSV(writer, rows); err != nil {
+				err := writeSourceDirectivityCSV(writer, rows)
+				if err != nil {
 					return fmt.Errorf("write csv: %w", err)
 				}
 			case "table":
-				if err := writeSourceDirectivityTable(writer, rows); err != nil {
+				err := writeSourceDirectivityTable(writer, rows)
+				if err != nil {
 					return fmt.Errorf("write table: %w", err)
 				}
 			default:
@@ -76,7 +81,9 @@ func newSourceDirectivityCommand() *cobra.Command {
 			if outputPath != "" {
 				destination = outputPath
 			}
+
 			fmt.Fprintf(cmd.ErrOrStderr(), "wrote %d source-directivity rows to %s (%s)\n", len(rows), destination, format)
+
 			return nil
 		},
 	}
@@ -110,6 +117,7 @@ func buildSourceDirectivityRows(model directivity.Model, freqHz, elevationDeg, s
 		}.Normalize()
 
 		gainLinear := model.GainLinear(freqHz, dir)
+
 		gainDB := math.Inf(-1)
 		if gainLinear > 0 {
 			gainDB = 20 * math.Log10(gainLinear)
@@ -127,21 +135,25 @@ func buildSourceDirectivityRows(model directivity.Model, freqHz, elevationDeg, s
 
 func writeSourceDirectivityCSV(w io.Writer, rows []sourceDirectivityRow) error {
 	writer := csv.NewWriter(w)
-	if err := writer.Write([]string{"azimuth_deg", "gain_linear", "gain_db"}); err != nil {
+
+	err := writer.Write([]string{"azimuth_deg", "gain_linear", "gain_db"})
+	if err != nil {
 		return err
 	}
 
 	for _, row := range rows {
-		if err := writer.Write([]string{
+		err := writer.Write([]string{
 			strconv.FormatFloat(row.AzimuthDeg, 'f', 1, 64),
 			strconv.FormatFloat(row.GainLinear, 'g', -1, 64),
 			strconv.FormatFloat(row.GainDB, 'g', -1, 64),
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
 
 	writer.Flush()
+
 	return writer.Error()
 }
 

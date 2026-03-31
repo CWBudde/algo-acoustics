@@ -4,9 +4,8 @@ import (
 	"math"
 	"testing"
 
-	ggll "github.com/cwbudde/gll-tools/pkg/gll"
-
 	"github.com/cwbudde/algo-acoustics/geometry"
+	ggll "github.com/cwbudde/gll-tools/pkg/gll"
 )
 
 type anglePatternBalloon struct{}
@@ -16,6 +15,7 @@ func (anglePatternBalloon) GetResponseAtAngle(theta, phi float64) *ggll.Transfer
 
 	levelDB := patternLevelDB(phi)
 	definition := ggll.LogSpectrumDefinition{BandsPerOctave: 1, StartFreq: 125, PointCount: 1}
+
 	return &ggll.TransferFunction{Definition: definition, Level: []float64{levelDB}}
 }
 
@@ -61,6 +61,7 @@ func TestGLLModelTracksSourceRotationAcrossQuadrants(t *testing.T) {
 	for _, tc := range rotations {
 		t.Run(tc.name, func(t *testing.T) {
 			direction := geometry.Vec3{X: math.Cos(tc.angle), Y: math.Sin(tc.angle), Z: 0}
+
 			got := model.GainLinear(1000, direction)
 			if math.Abs(got-tc.wantGain) > 1e-12 {
 				t.Fatalf("gain = %v, want %v for rotation %v", got, tc.wantGain, tc.angle)

@@ -69,6 +69,7 @@ func (t ShoeboxTracer) NextHit(r geometry.Ray) (geometry.Vec3, geometry.Vec3, in
 	}
 
 	point := r.At(bestT)
+
 	return point, t.Walls[bestIdx].Normal, bestIdx, true
 }
 

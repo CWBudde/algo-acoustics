@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"strings"
 	"time"
@@ -178,7 +179,8 @@ func defaultDemoRequest() demoRequest {
 func runDemoRenderJSON(payload string) (demoResult, error) {
 	request := defaultDemoRequest()
 	if strings.TrimSpace(payload) != "" {
-		if err := json.Unmarshal([]byte(payload), &request); err != nil {
+		err := json.Unmarshal([]byte(payload), &request)
+		if err != nil {
 			return demoResult{}, fmt.Errorf("decode demo request: %w", err)
 		}
 	}
@@ -264,6 +266,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	}
 
 	peak, rms, firstArrivalMs := analyzeSamples(buffer.Samples, buffer.SampleRate)
+
 	floatSamples := make([]float32, len(buffer.Samples))
 	for index, sample := range buffer.Samples {
 		floatSamples[index] = float32(sample)
@@ -289,9 +292,11 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	if request.Room.Width <= 0 {
 		request.Room.Width = defaults.Room.Width
 	}
+
 	if request.Room.Depth <= 0 {
 		request.Room.Depth = defaults.Room.Depth
 	}
+
 	if request.Room.Height <= 0 {
 		request.Room.Height = defaults.Room.Height
 	}
@@ -305,36 +310,44 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 
 	request.Source.Directivity = normalizeDirectivity(request.Source.Directivity, defaults.Source.Directivity)
 	request.Source.GainDB = clamp(request.Source.GainDB, -24, 12)
+
 	request.Source.AzimuthDegrees = clamp(request.Source.AzimuthDegrees, -180, 180)
 	if request.Source.CardioidOrder <= 0 {
 		request.Source.CardioidOrder = defaults.Source.CardioidOrder
 	}
+
 	request.Source.CardioidOrder = clamp(request.Source.CardioidOrder, 0.25, 2.5)
 
 	mode, err := normalizeMode(request.Render.Mode, defaults.Render.Mode)
 	if err != nil {
 		return demoRequest{}, err
 	}
+
 	request.Render.Mode = mode
 	if request.Render.MaxOrder <= 0 {
 		request.Render.MaxOrder = defaults.Render.MaxOrder
 	}
+
 	request.Render.MaxOrder = clampInt(request.Render.MaxOrder, 1, 12)
 	if request.Render.NumRays <= 0 {
 		request.Render.NumRays = defaults.Render.NumRays
 	}
+
 	request.Render.NumRays = clampInt(request.Render.NumRays, 128, 16384)
 	if request.Render.DurationSeconds <= 0 {
 		request.Render.DurationSeconds = defaults.Render.DurationSeconds
 	}
+
 	request.Render.DurationSeconds = clamp(request.Render.DurationSeconds, 0.25, 3)
 	if request.Render.CrossoverTimeSeconds <= 0 {
 		request.Render.CrossoverTimeSeconds = defaults.Render.CrossoverTimeSeconds
 	}
+
 	request.Render.CrossoverTimeSeconds = clamp(request.Render.CrossoverTimeSeconds, 0.03, request.Render.DurationSeconds*0.85)
 	if strings.TrimSpace(request.Render.CrossoverWindow) == "" {
 		request.Render.CrossoverWindow = defaults.Render.CrossoverWindow
 	}
+
 	if err := hybrid.ValidateFadeWindowConfig(hybrid.FadeWindowConfig{
 		Name:  request.Render.CrossoverWindow,
 		Alpha: request.Render.CrossoverWindowAlpha,
@@ -358,13 +371,13 @@ func buildDemoScene(request demoRequest) (*scene.Scene, error) {
 	}
 
 	materials := map[string]scene.Material{}
-	for name, material := range materialLibrary {
-		materials[name] = material
-	}
+	maps.Copy(materials, materialLibrary)
 
 	var directivityModel directivity.Model = directivity.OmniModel{}
+
 	if request.Source.Directivity == "cardioid" {
 		azimuthRadians := request.Source.AzimuthDegrees * math.Pi / 180
+
 		axis := geometry.Vec3{X: math.Cos(azimuthRadians), Y: math.Sin(azimuthRadians)}.Normalize()
 		if axis == geometry.Vec3Zero {
 			axis = geometry.Vec3{X: 1}
@@ -404,7 +417,8 @@ func buildDemoScene(request demoRequest) (*scene.Scene, error) {
 		}},
 	}
 
-	if err := scene.Validate(sc); err != nil {
+	err := scene.Validate(sc)
+	if err != nil {
 		return nil, fmt.Errorf("validate demo scene: %w", err)
 	}
 
@@ -413,6 +427,7 @@ func buildDemoScene(request demoRequest) (*scene.Scene, error) {
 
 func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {
 	solver := ism.ISMSolver{}
+
 	events, err := solver.Solve(sc, ism.ISMConfig{
 		MaxOrder:     maxOrder,
 		SpeedOfSound: acoustics.SpeedOfSound,
@@ -426,10 +441,7 @@ func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {
 }
 
 func renderLateBuffer(sc *scene.Scene, durationSeconds float64, numRays, maxOrder int) (*ir.Buffer, error) {
-	maxBounces := maxOrder * 2
-	if maxBounces < 1 {
-		maxBounces = 1
-	}
+	maxBounces := max(maxOrder*2, 1)
 
 	tracer := raytrace.RayTracer{
 		Config: raytrace.LaunchConfig{
@@ -442,6 +454,7 @@ func renderLateBuffer(sc *scene.Scene, durationSeconds float64, numRays, maxOrde
 		ReceiverRadius:     defaultReceiverRadius,
 		BinDurationSeconds: defaultHistogramBinSecs,
 	}
+
 	histogram, err := tracer.Trace()
 	if err != nil {
 		return nil, fmt.Errorf("trace late field: %w", err)
@@ -454,25 +467,29 @@ func encodeMonoWAVBytes(buf *ir.Buffer) ([]byte, error) {
 	if buf == nil {
 		return nil, errors.New("buffer must not be nil")
 	}
+
 	if buf.SampleRate <= 0 {
 		return nil, errors.New("buffer sample rate must be positive")
 	}
 
 	var output memoryWAVWriter
 	encoder := wav.NewEncoder(&output, buf.SampleRate, pcmBitDepth, pcmMonoChannels, pcmAudioFormat)
+
 	samples := make([]float32, len(buf.Samples))
 	for index, sample := range buf.Samples {
 		samples[index] = float32(sample)
 	}
 
-	if err := encoder.Write(&audio.Float32Buffer{
+	err := encoder.Write(&audio.Float32Buffer{
 		Format: &audio.Format{NumChannels: pcmMonoChannels, SampleRate: buf.SampleRate},
 		Data:   samples,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("write wav data: %w", err)
 	}
 
-	if err := encoder.Close(); err != nil {
+	err = encoder.Close()
+	if err != nil {
 		return nil, fmt.Errorf("close wav encoder: %w", err)
 	}
 
@@ -486,18 +503,22 @@ func analyzeSamples(samples []float64, sampleRate int) (peak, rms, firstArrivalM
 
 	firstArrivalIndex := -1
 	var energySum float64
+
 	for index, sample := range samples {
 		magnitude := math.Abs(sample)
 		if magnitude > peak {
 			peak = magnitude
 		}
+
 		energySum += sample * sample
+
 		if firstArrivalIndex < 0 && magnitude > 1e-9 {
 			firstArrivalIndex = index
 		}
 	}
 
 	rms = math.Sqrt(energySum / float64(len(samples)))
+
 	if firstArrivalIndex >= 0 {
 		firstArrivalMs = float64(firstArrivalIndex) * 1000 / float64(sampleRate)
 	}
@@ -541,9 +562,11 @@ func clamp(value, minValue, maxValue float64) float64 {
 	if maxValue < minValue {
 		maxValue = minValue
 	}
+
 	if value < minValue {
 		return minValue
 	}
+
 	if value > maxValue {
 		return maxValue
 	}
@@ -555,9 +578,11 @@ func clampInt(value, minValue, maxValue int) int {
 	if maxValue < minValue {
 		maxValue = minValue
 	}
+
 	if value < minValue {
 		return minValue
 	}
+
 	if value > maxValue {
 		return maxValue
 	}
@@ -584,11 +609,13 @@ func (w *memoryWAVWriter) Write(p []byte) (int, error) {
 
 	copy(w.data[w.pos:end], p)
 	w.pos = end
+
 	return len(p), nil
 }
 
 func (w *memoryWAVWriter) Seek(offset int64, whence int) (int64, error) {
 	var next int64
+
 	switch whence {
 	case io.SeekStart:
 		next = offset
@@ -605,6 +632,7 @@ func (w *memoryWAVWriter) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	w.pos = next
+
 	return next, nil
 }
 

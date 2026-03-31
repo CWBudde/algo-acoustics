@@ -1,7 +1,7 @@
 package pde
 
 import (
-	"fmt"
+	"errors"
 	"math"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
@@ -13,17 +13,20 @@ import (
 // SweepShoebox computes a frequency response for a shoebox room.
 func SweepShoebox(room *scene.Shoebox, src, rcv geometry.Vec3, cfg SweepConfig) (*TransferFunction, error) {
 	if room == nil {
-		return nil, fmt.Errorf("shoebox room is nil")
+		return nil, errors.New("shoebox room is nil")
 	}
+
 	if cfg.NumPoints <= 0 {
-		return nil, fmt.Errorf("NumPoints must be positive")
+		return nil, errors.New("NumPoints must be positive")
 	}
+
 	if cfg.FreqMin <= 0 || cfg.FreqMax <= 0 || cfg.FreqMax < cfg.FreqMin {
-		return nil, fmt.Errorf("invalid frequency sweep range")
+		return nil, errors.New("invalid frequency sweep range")
 	}
 
 	freqs := make([]float64, cfg.NumPoints)
 	h := make([]complex128, cfg.NumPoints)
+
 	step := 0.0
 	if cfg.NumPoints > 1 {
 		step = (cfg.FreqMax - cfg.FreqMin) / float64(cfg.NumPoints-1)
@@ -31,10 +34,12 @@ func SweepShoebox(room *scene.Shoebox, src, rcv geometry.Vec3, cfg SweepConfig) 
 
 	for i := range freqs {
 		freqs[i] = cfg.FreqMin + float64(i)*step
+
 		value, err := solveAtFrequency(room, src, rcv, freqs[i], cfg.BoundaryCondition)
 		if err != nil {
 			return nil, err
 		}
+
 		h[i] = value
 	}
 
@@ -42,7 +47,7 @@ func SweepShoebox(room *scene.Shoebox, src, rcv geometry.Vec3, cfg SweepConfig) 
 }
 
 func solveAtFrequency(room *scene.Shoebox, src, rcv geometry.Vec3, freqHz float64, boundaryCondition string) (complex128, error) {
-	alpha := math.Pow(2*math.Pi*freqHz/acoustics.SpeedOfSound, 2)
+	alpha := 2 * math.Pi * freqHz / acoustics.SpeedOfSound * (2 * math.Pi * freqHz / acoustics.SpeedOfSound)
 	hx, hy, hz := gridSpacing(room, freqHz)
 	nx := maxInt(4, int(math.Ceil(room.Width/hx)))
 	ny := maxInt(4, int(math.Ceil(room.Depth/hy)))
@@ -53,6 +58,7 @@ func solveAtFrequency(room *scene.Shoebox, src, rcv geometry.Vec3, freqHz float6
 	hz = room.Height / float64(nz)
 
 	bc := boundaryType(boundaryCondition)
+
 	plan, err := poisson.NewHelmholtzPlan(3, []int{nx, ny, nz}, []float64{hx, hy, hz}, []poisson.BCType{bc, bc, bc}, alpha)
 	if err != nil {
 		return 0, err
@@ -76,10 +82,12 @@ func solveAtFrequency(room *scene.Shoebox, src, rcv geometry.Vec3, freqHz float6
 
 func gridSpacing(room *scene.Shoebox, freqHz float64) (float64, float64, float64) {
 	pointsPerWavelength := 8.0
+
 	spacing := acoustics.SpeedOfSound / (pointsPerWavelength * freqHz)
 	if spacing <= 0 {
 		spacing = minPositive(room.Width, room.Depth, room.Height) / 8
 	}
+
 	return spacing, spacing, spacing
 }
 
@@ -101,9 +109,11 @@ func minPositive(values ...float64) float64 {
 			min = value
 		}
 	}
+
 	if math.IsInf(min, 1) {
 		return 1
 	}
+
 	return min
 }
 
@@ -111,5 +121,6 @@ func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
+
 	return b
 }

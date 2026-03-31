@@ -87,12 +87,14 @@ func (m *GLLModel) GainLinear(freqHz float64, dir geometry.Vec3) float64 {
 	}
 
 	theta, phi := directionToAngles(unitDir)
+
 	response := m.balloon.GetResponseAtAngle(theta, phi)
 	if response == nil {
 		return 1
 	}
 
 	onAxis := m.balloon.GetResponseAtAngle(0, 0)
+
 	bandIndex := nearestFrequencyBandIndex(response, freqHz)
 	if bandIndex < 0 || bandIndex >= len(response.Level) {
 		return 1
@@ -161,6 +163,7 @@ func selectSourceDefinition(file *ggll.File, preset string) (*ggll.SourceDefinit
 func directionToAngles(dir geometry.Vec3) (theta, phi float64) {
 	theta = math.Asin(dir.Z)
 	phi = math.Atan2(dir.Y, dir.X)
+
 	return theta, phi
 }
 
@@ -180,7 +183,8 @@ func nearestFrequencyBandIndex(response *ggll.TransferFunction, freqHz float64) 
 
 	bestIndex := 0
 	bestDistance := math.Inf(1)
-	for index := 0; index < bandCount; index++ {
+
+	for index := range bandCount {
 		bandFreq := response.Definition.GetFrequency(index)
 		if bandFreq <= 0 {
 			continue

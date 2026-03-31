@@ -26,6 +26,7 @@ func TestLaunchRaysUsesRequestedCount(t *testing.T) {
 	t.Parallel()
 
 	origin := geometry.Vec3{X: 1, Y: 2, Z: 3}
+
 	rays := LaunchRays(origin, LaunchConfig{NumRays: 11})
 	if got, want := len(rays), 11; got != want {
 		t.Fatalf("len(LaunchRays) = %d, want %d", got, want)
@@ -35,6 +36,7 @@ func TestLaunchRaysUsesRequestedCount(t *testing.T) {
 		if ray.Origin != origin {
 			t.Fatalf("ray %d origin = %#v, want %#v", i, ray.Origin, origin)
 		}
+
 		if diff := math.Abs(ray.Direction.Norm() - 1); diff > 1e-12 {
 			t.Fatalf("ray %d direction norm = %g, want 1", i, ray.Direction.Norm())
 		}

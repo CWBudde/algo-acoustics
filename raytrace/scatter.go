@@ -36,6 +36,7 @@ func DiffuseReflect(normal geometry.Vec3, rng *rand.Rand) geometry.Vec3 {
 	if math.Abs(n.X) > 0.9 {
 		axis = geometry.Vec3{Y: 1}
 	}
+
 	tangent := axis.Cross(n).Normalize()
 	bitangent := n.Cross(tangent)
 
@@ -47,12 +48,15 @@ func SelectReflection(scatterCoeff float64, dir, normal geometry.Vec3, rng *rand
 	if scatterCoeff <= 0 {
 		return SpecularReflect(dir, normal)
 	}
+
 	if scatterCoeff >= 1 {
 		return DiffuseReflect(normal, rng)
 	}
+
 	if rng == nil {
 		rng = rand.New(rand.NewSource(1))
 	}
+
 	if rng.Float64() < scatterCoeff {
 		return DiffuseReflect(normal, rng)
 	}
@@ -68,9 +72,11 @@ func AbsorbedFraction(absorptionByBand []float64) []float64 {
 		if remaining < 0 {
 			remaining = 0
 		}
+
 		if remaining > 1 {
 			remaining = 1
 		}
+
 		out[i] = remaining
 	}
 

@@ -11,7 +11,8 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	err := run()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -46,17 +47,20 @@ func run() error {
 		},
 		Scene: sc,
 	}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("time_seconds,energy")
+
 	for _, bin := range hist.Bins {
 		var total float64
 		for _, bandEnergy := range bin.BandEnergy {
 			total += bandEnergy
 		}
+
 		fmt.Printf("%.3f,%.6f\n", bin.TimeSeconds, total)
 	}
 

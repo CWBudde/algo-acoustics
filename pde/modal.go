@@ -21,12 +21,14 @@ func ShoeboxModes(room *scene.Shoebox, maxOrder int) []ModalFrequency {
 	}
 
 	modes := make([]ModalFrequency, 0)
+
 	for nx := 0; nx <= maxOrder; nx++ {
 		for ny := 0; ny <= maxOrder; ny++ {
 			for nz := 0; nz <= maxOrder; nz++ {
 				if nx == 0 && ny == 0 && nz == 0 {
 					continue
 				}
+
 				freq := acoustics.SpeedOfSound / 2 * math.Sqrt(
 					math.Pow(float64(nx)/room.Width, 2)+
 						math.Pow(float64(ny)/room.Depth, 2)+
@@ -38,5 +40,6 @@ func ShoeboxModes(room *scene.Shoebox, maxOrder int) []ModalFrequency {
 	}
 
 	sortpkg.Slice(modes, func(i, j int) bool { return modes[i].Freq < modes[j].Freq })
+
 	return modes
 }

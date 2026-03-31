@@ -76,9 +76,11 @@ func GenerateImageSources(src geometry.Vec3, room *scene.Shoebox, maxOrder int) 
 		if sources[i].Order != sources[j].Order {
 			return sources[i].Order < sources[j].Order
 		}
+
 		if sources[i].Position.X != sources[j].Position.X {
 			return sources[i].Position.X < sources[j].Position.X
 		}
+
 		if sources[i].Position.Y != sources[j].Position.Y {
 			return sources[i].Position.Y < sources[j].Position.Y
 		}
@@ -113,13 +115,14 @@ func accumulateAxisWallHits(counts *[6]int, order, negativeWall, positiveWall in
 
 	steps := absInt(order)
 	firstWall := positiveWall
+
 	secondWall := negativeWall
 	if order < 0 {
 		firstWall = negativeWall
 		secondWall = positiveWall
 	}
 
-	for step := 0; step < steps; step++ {
+	for step := range steps {
 		if step%2 == 0 {
 			counts[firstWall]++
 			continue
@@ -134,18 +137,23 @@ func wallMaskFromCounts(counts [6]int) uint8 {
 	if counts[wallNegX] > 0 {
 		mask |= wallBitNegX
 	}
+
 	if counts[wallPosX] > 0 {
 		mask |= wallBitPosX
 	}
+
 	if counts[wallNegY] > 0 {
 		mask |= wallBitNegY
 	}
+
 	if counts[wallPosY] > 0 {
 		mask |= wallBitPosY
 	}
+
 	if counts[wallNegZ] > 0 {
 		mask |= wallBitNegZ
 	}
+
 	if counts[wallPosZ] > 0 {
 		mask |= wallBitPosZ
 	}

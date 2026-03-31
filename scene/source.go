@@ -86,7 +86,9 @@ func (s Source) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON restores the interface-backed directivity field.
 func (s *Source) UnmarshalJSON(data []byte) error {
 	var decoded sourceJSON
-	if err := json.Unmarshal(data, &decoded); err != nil {
+
+	err := json.Unmarshal(data, &decoded)
+	if err != nil {
 		return err
 	}
 

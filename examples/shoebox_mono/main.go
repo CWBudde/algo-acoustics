@@ -17,7 +17,8 @@ import (
 const outputFilename = "output.wav"
 
 func main() {
-	if err := run(outputFilename); err != nil {
+	err := run(outputFilename)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -34,6 +35,7 @@ func run(outputPath string) error {
 	}
 
 	solver := ism.ISMSolver{}
+
 	events, err := solver.Solve(sc, ism.ISMConfig{
 		MaxOrder:     3,
 		SpeedOfSound: acoustics.SpeedOfSound,

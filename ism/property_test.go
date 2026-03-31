@@ -23,16 +23,19 @@ func TestISMSolverSolveDirectAmplitudeHalvesWhenDistanceDoubles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Solve(near) error = %v", err)
 	}
+
 	nearDirect := firstEventOfKind(nearEvents, ir.EventDirect)
 	if nearDirect == nil {
 		t.Fatal("expected near direct event")
 	}
 
 	sc.Receivers[0].Position = geometry.Vec3{X: 7, Y: 2, Z: 3}
+
 	farEvents, err := solver.Solve(&sc, ISMConfig{MaxOrder: 0, SpeedOfSound: acoustics.SpeedOfSound, BandSpec: sc.BandSpec})
 	if err != nil {
 		t.Fatalf("Solve(far) error = %v", err)
 	}
+
 	farDirect := firstEventOfKind(farEvents, ir.EventDirect)
 	if farDirect == nil {
 		t.Fatal("expected far direct event")
@@ -56,6 +59,7 @@ func TestISMSolverSolveMonotonicDecayStrengthensWithAbsorption(t *testing.T) {
 
 	for _, level := range levels {
 		buf := renderAbsorptionScene(t, level)
+
 		currentT60, err := metrics.T60FromDecaySlope(buf)
 		if err != nil {
 			t.Fatalf("T60FromDecaySlope(level=%v) error = %v", level, err)
@@ -64,6 +68,7 @@ func TestISMSolverSolveMonotonicDecayStrengthensWithAbsorption(t *testing.T) {
 		if currentT60 >= previousT60 {
 			t.Fatalf("T60 = %v, want strictly below previous %v for higher absorption", currentT60, previousT60)
 		}
+
 		previousT60 = currentT60
 	}
 }
@@ -78,6 +83,7 @@ func renderAbsorptionScene(t *testing.T, absorption float64) *ir.Buffer {
 	}
 
 	solver := ISMSolver{}
+
 	events, err := solver.Solve(&sc, ISMConfig{MaxOrder: 3, SpeedOfSound: acoustics.SpeedOfSound, BandSpec: sc.BandSpec})
 	if err != nil {
 		t.Fatalf("Solve() error = %v", err)

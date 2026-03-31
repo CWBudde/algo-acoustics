@@ -29,17 +29,21 @@ func main() {
 	sc.Receivers[0].Position.Z = 1.0
 
 	tracer := raytrace.RayTracer{Config: raytrace.LaunchConfig{NumRays: 2048, MaxBounces: 6, MaxTimeSeconds: 1.0, SpeedOfSound: acoustics.SpeedOfSound}, Scene: sc, ReceiverRadius: 0.2, BinDurationSeconds: 0.01}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		panic(err)
 	}
+
 	geo := hybrid.HistogramToBuffer(hist, sc.SampleRate)
 
 	transfer, err := pde.SweepShoebox(sc.Room.Shoebox, sc.Sources[0].Position, sc.Receivers[0].Position, pde.SweepConfig{FreqMin: 20, FreqMax: 300, NumPoints: 32, BoundaryCondition: "neumann"})
 	if err != nil {
 		panic(err)
 	}
+
 	low := transfer.ToTimeDomain(sc.SampleRate, len(geo.Samples))
+
 	combined := hybrid.BlendLowFreq(low, geo, 200, sc.SampleRate)
 	if combined == nil {
 		panic("combine failed")
@@ -48,5 +52,6 @@ func main() {
 	if err := export.WriteMonoWAV("output.wav", combined); err != nil {
 		panic(err)
 	}
+
 	fmt.Fprintln(os.Stdout, "wrote output.wav")
 }

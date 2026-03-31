@@ -33,10 +33,12 @@ func Combine(early, late []ir.Event, cfg HybridConfig) []ir.Event {
 
 	out := make([]ir.Event, 0, len(early)+len(late))
 	out = append(out, cloneEvents(early)...)
+
 	for _, event := range late {
 		if event.TimeSeconds < cutoff {
 			continue
 		}
+
 		out = append(out, event)
 	}
 
@@ -44,6 +46,7 @@ func Combine(early, late []ir.Event, cfg HybridConfig) []ir.Event {
 		if out[i].TimeSeconds == out[j].TimeSeconds {
 			return out[i].Kind < out[j].Kind
 		}
+
 		return out[i].TimeSeconds < out[j].TimeSeconds
 	})
 
@@ -55,42 +58,34 @@ func CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer {
 	if early == nil && late == nil {
 		return nil
 	}
+
 	if early == nil {
 		return cloneBuffer(late)
 	}
+
 	if late == nil {
 		return cloneBuffer(early)
 	}
+
 	if early.SampleRate <= 0 || late.SampleRate <= 0 || early.SampleRate != late.SampleRate {
 		return nil
 	}
 
-	cutoffSample := int(cfg.CrossoverTimeSeconds * float64(early.SampleRate))
-	if cutoffSample < 0 {
-		cutoffSample = 0
-	}
-	if cutoffSample > len(early.Samples) {
-		cutoffSample = len(early.Samples)
-	}
+	cutoffSample := min(max(int(cfg.CrossoverTimeSeconds*float64(early.SampleRate)), 0), len(early.Samples))
 
 	windowSamples := crossoverWindowSamples(early.SampleRate)
-	start := cutoffSample - windowSamples/2
-	if start < 0 {
-		start = 0
-	}
-	end := start + windowSamples
-	if end > len(early.Samples) {
-		end = len(early.Samples)
-	}
-	if end > len(late.Samples) {
-		end = len(late.Samples)
-	}
+
+	start := max(cutoffSample-windowSamples/2, 0)
+
+	end := min(min(start+windowSamples, len(early.Samples)), len(late.Samples))
+
 	if start > end {
 		start = end
 	}
 
 	earlyOut := cloneBuffer(early)
 	lateIn := cloneBuffer(late)
+
 	if cfg.SmoothenCrossover {
 		earlyOut = ApplyFadeWithWindow(earlyOut, start, end, false, cfg.CrossoverWindow)
 		lateIn = ApplyFadeWithWindow(lateIn, start, end, true, cfg.CrossoverWindow)
@@ -106,6 +101,7 @@ func CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer {
 	for i := end; i < len(earlyOut.Samples); i++ {
 		earlyOut.Samples[i] = 0
 	}
+
 	for i := 0; i < start && i < len(lateIn.Samples); i++ {
 		lateIn.Samples[i] = 0
 	}
@@ -116,10 +112,12 @@ func CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer {
 		copy(resized.Samples, out.Samples)
 		out = resized
 	}
+
 	for i := range lateIn.Samples {
 		if i >= len(out.Samples) {
 			break
 		}
+
 		out.Samples[i] += lateIn.Samples[i]
 	}
 
@@ -132,30 +130,36 @@ func effectiveCrossoverTime(early []ir.Event, cfg HybridConfig) float64 {
 		if cfg.CrossoverOrder <= 0 || len(early) == 0 {
 			return cfg.CrossoverTimeSeconds
 		}
+
 		sorted := cloneEvents(early)
 		sort.Slice(sorted, func(i, j int) bool { return sorted[i].TimeSeconds < sorted[j].TimeSeconds })
-		index := cfg.CrossoverOrder - 1
-		if index < 0 {
-			index = 0
-		}
+
+		index := max(cfg.CrossoverOrder-1, 0)
+
 		if index >= len(sorted) {
 			index = len(sorted) - 1
 		}
+
 		return sorted[index].TimeSeconds
 	case EnergyBased:
 		if len(early) == 0 {
 			return cfg.CrossoverTimeSeconds
 		}
+
 		sorted := cloneEvents(early)
 		sort.Slice(sorted, func(i, j int) bool { return sorted[i].TimeSeconds < sorted[j].TimeSeconds })
+
 		var total float64
 		for _, event := range sorted {
 			total += event.Amplitude * event.Amplitude
 		}
+
 		if total <= 0 {
 			return cfg.CrossoverTimeSeconds
 		}
+
 		threshold := 0.9 * total
+
 		var running float64
 		for _, event := range sorted {
 			running += event.Amplitude * event.Amplitude
@@ -163,6 +167,7 @@ func effectiveCrossoverTime(early []ir.Event, cfg HybridConfig) float64 {
 				return event.TimeSeconds
 			}
 		}
+
 		return sorted[len(sorted)-1].TimeSeconds
 	default:
 		return cfg.CrossoverTimeSeconds
@@ -170,10 +175,8 @@ func effectiveCrossoverTime(early []ir.Event, cfg HybridConfig) float64 {
 }
 
 func crossoverWindowSamples(sampleRate int) int {
-	window := int(0.01 * float64(sampleRate))
-	if window < 2 {
-		window = 2
-	}
+	window := max(int(0.01*float64(sampleRate)), 2)
+
 	return window
 }
 
@@ -181,8 +184,10 @@ func cloneEvents(events []ir.Event) []ir.Event {
 	if len(events) == 0 {
 		return nil
 	}
+
 	out := make([]ir.Event, len(events))
 	copy(out, events)
+
 	return out
 }
 
@@ -190,8 +195,10 @@ func cloneBuffer(buf *ir.Buffer) *ir.Buffer {
 	if buf == nil {
 		return nil
 	}
+
 	out := &ir.Buffer{SampleRate: buf.SampleRate, Samples: make([]float64, len(buf.Samples))}
 	copy(out.Samples, buf.Samples)
+
 	return out
 }
 
@@ -199,5 +206,6 @@ func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
+
 	return b
 }

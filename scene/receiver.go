@@ -94,7 +94,9 @@ func (r Receiver) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON restores the interface-backed HRTF field.
 func (r *Receiver) UnmarshalJSON(data []byte) error {
 	var decoded receiverJSON
-	if err := json.Unmarshal(data, &decoded); err != nil {
+
+	err := json.Unmarshal(data, &decoded)
+	if err != nil {
 		return err
 	}
 

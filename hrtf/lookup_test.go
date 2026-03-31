@@ -26,10 +26,12 @@ func TestNearestNeighborDatasetLookupStub(t *testing.T) {
 	t.Parallel()
 
 	dataset := NearestNeighborDataset{SampleRateHz: 48000}
+
 	left, right, delaySeconds, err := dataset.Lookup(geometry.Vec3{X: 1, Y: 0, Z: 0})
 	if err != nil {
 		t.Fatalf("Lookup() returned error: %v", err)
 	}
+
 	if len(left) != 1 || len(right) != 1 || left[0] != 1 || right[0] != 1 || delaySeconds != 0 {
 		t.Fatalf("Lookup() = (%v, %v, %v), want identity impulse", left, right, delaySeconds)
 	}
@@ -69,6 +71,7 @@ func TestLookupNearestReturnsPositiveDelayForLeftDirection(t *testing.T) {
 	if len(left) != 1 || len(right) != 1 {
 		t.Fatalf("LookupNearest() = (%v, %v, %v), want unit HRIRs", left, right, delay)
 	}
+
 	if delay <= 0 {
 		t.Fatalf("LookupNearest() delay = %v, want positive delay for sound from the left", delay)
 	}

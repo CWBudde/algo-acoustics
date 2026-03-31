@@ -21,9 +21,11 @@ func TestRenderHybridBandSumsEarlyAndLate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderHybridBand() error = %v", err)
 	}
+
 	if got, want := buf.Samples[1], 1.0; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[1] = %v, want %v", got, want)
 	}
+
 	if got, want := buf.Samples[2], 2.0; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("Samples[2] = %v, want %v", got, want)
 	}
@@ -39,6 +41,7 @@ func TestSumBandsWeighted(t *testing.T) {
 	if result == nil {
 		t.Fatal("SumBandsWeighted() = nil")
 	}
+
 	if got, want := result.Samples[0], 4.5; math.Abs(got-want) > 1e-12 {
 		t.Fatalf("weighted sum = %v, want %v", got, want)
 	}

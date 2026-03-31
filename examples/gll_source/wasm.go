@@ -41,6 +41,7 @@ func runWASMWithOptions(gllBytes []byte, opts exampleOptions) (wasmResult, error
 	if err != nil {
 		return wasmResult{}, err
 	}
+
 	if err := validateComparisons(result); err != nil {
 		return wasmResult{}, err
 	}
@@ -61,27 +62,32 @@ func encodeMonoWAVBytes(buf *ir.Buffer) ([]byte, error) {
 	if buf == nil {
 		return nil, errors.New("buffer must not be nil")
 	}
+
 	if buf.SampleRate <= 0 {
 		return nil, errors.New("buffer sample rate must be positive")
 	}
 
 	var output memoryWAVWriter
 	encoder := wav.NewEncoder(&output, buf.SampleRate, 16, 1, 1)
+
 	samples := make([]float32, len(buf.Samples))
 	for index, sample := range buf.Samples {
 		samples[index] = float32(sample)
 	}
-	if err := encoder.Write(&audio.Float32Buffer{
+
+	err := encoder.Write(&audio.Float32Buffer{
 		Format: &audio.Format{
 			NumChannels: 1,
 			SampleRate:  buf.SampleRate,
 		},
 		Data: samples,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("write wav data: %w", err)
 	}
 
-	if err := encoder.Close(); err != nil {
+	err = encoder.Close()
+	if err != nil {
 		return nil, fmt.Errorf("close wav encoder: %w", err)
 	}
 
@@ -107,11 +113,13 @@ func (w *memoryWAVWriter) Write(p []byte) (int, error) {
 
 	copy(w.data[w.pos:end], p)
 	w.pos = end
+
 	return len(p), nil
 }
 
 func (w *memoryWAVWriter) Seek(offset int64, whence int) (int64, error) {
 	var next int64
+
 	switch whence {
 	case io.SeekStart:
 		next = offset
@@ -128,6 +136,7 @@ func (w *memoryWAVWriter) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	w.pos = next
+
 	return next, nil
 }
 
