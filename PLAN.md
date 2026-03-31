@@ -800,9 +800,9 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 10.5 Integration test
 
-- [ ] Load a simple cube OBJ file
-- [ ] Trace 1000 rays — verify all bounces stay inside bounding box
-- [ ] Compare late-field decay to equivalent shoebox: should be similar for cube mesh
+- [x] Load a simple cube OBJ file
+- [x] Trace 1000 rays — verify all bounces stay inside bounding box
+- [x] Compare late-field decay to equivalent shoebox: should be similar for cube mesh
 
 ---
 
