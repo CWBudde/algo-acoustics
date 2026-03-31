@@ -30,7 +30,8 @@ func run(outputPath string) error {
 	}
 
 	sc := shoeboxScene()
-	if err := scene.Validate(sc); err != nil {
+	err := scene.Validate(sc)
+	if err != nil {
 		return err
 	}
 
@@ -54,7 +55,8 @@ func run(outputPath string) error {
 		return err
 	}
 
-	if err := export.WriteMonoWAV(outputPath, buffer); err != nil {
+	err = export.WriteMonoWAV(outputPath, buffer)
+	if err != nil {
 		return err
 	}
 

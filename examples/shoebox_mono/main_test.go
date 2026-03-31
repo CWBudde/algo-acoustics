@@ -16,7 +16,8 @@ func TestRunProducesNonSilentOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	outputPath := filepath.Join(tmpDir, outputFilename)
-	if err := run(outputPath); err != nil {
+	err := run(outputPath)
+	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 

@@ -47,7 +47,8 @@ func loadMetricResults(path string) ([]metrics.MetricResult, error) {
 	}
 
 	var results []metrics.MetricResult
-	if err := json.Unmarshal(data, &results); err != nil {
+	err = json.Unmarshal(data, &results)
+	if err != nil {
 		return nil, err
 	}
 

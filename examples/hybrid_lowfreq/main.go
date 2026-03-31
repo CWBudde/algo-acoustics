@@ -49,7 +49,8 @@ func main() {
 		panic("combine failed")
 	}
 
-	if err := export.WriteMonoWAV("output.wav", combined); err != nil {
+	err = export.WriteMonoWAV("output.wav", combined)
+	if err != nil {
 		panic(err)
 	}
 

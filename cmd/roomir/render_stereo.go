@@ -34,7 +34,8 @@ func newRenderStereoCommand() *cobra.Command {
 				return fmt.Errorf("load scene %q: %w", scenePath, err)
 			}
 
-			if err := scene.Validate(sc); err != nil {
+			err = scene.Validate(sc)
+			if err != nil {
 				return &validationError{message: err.Error()}
 			}
 
@@ -82,7 +83,8 @@ func newRenderStereoCommand() *cobra.Command {
 				return errors.New("combine stereo hybrid buffers")
 			}
 
-			if err := export.WriteStereoWAV(outputPath, left, right); err != nil {
+			err = export.WriteStereoWAV(outputPath, left, right)
+			if err != nil {
 				return fmt.Errorf("write stereo WAV: %w", err)
 			}
 

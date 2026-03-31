@@ -71,7 +71,8 @@ func newRenderCommand() *cobra.Command {
 				return fmt.Errorf("load scene %q: %w", scenePath, err)
 			}
 
-			if err := scene.Validate(sc); err != nil {
+			err = scene.Validate(sc)
+			if err != nil {
 				return &validationError{message: err.Error()}
 			}
 
@@ -162,7 +163,8 @@ func newRenderCommand() *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "applied low-frequency blend at %.1f Hz\n", engine.CrossoverHz())
 			}
 
-			if err := export.WriteMonoWAV(outputPath, buffer); err != nil {
+			err = export.WriteMonoWAV(outputPath, buffer)
+			if err != nil {
 				return fmt.Errorf("write WAV: %w", err)
 			}
 

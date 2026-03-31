@@ -94,7 +94,8 @@ func buildCorpusReport(fixtureDir string, maxOrder int) ([]corpusRow, error) {
 			return nil, fmt.Errorf("load fixture %s: %w", fixturePath, err)
 		}
 
-		if err := scene.Validate(sc); err != nil {
+		err = scene.Validate(sc)
+		if err != nil {
 			return nil, fmt.Errorf("validate fixture %s: %w", fixturePath, err)
 		}
 
@@ -161,11 +162,13 @@ func writeCorpusMarkdown(path string, rows []corpusRow) error {
 	}
 	defer file.Close()
 
-	if _, err := fmt.Fprintln(file, "| Room | T60 | EDT | C80 | Expected range | Pass |"); err != nil {
+	_, err = fmt.Fprintln(file, "| Room | T60 | EDT | C80 | Expected range | Pass |")
+	if err != nil {
 		return fmt.Errorf("write report header: %w", err)
 	}
 
-	if _, err := fmt.Fprintln(file, "| --- | ---: | ---: | ---: | --- | --- |"); err != nil {
+	_, err = fmt.Fprintln(file, "| --- | ---: | ---: | ---: | --- | --- |")
+	if err != nil {
 		return fmt.Errorf("write report header: %w", err)
 	}
 
@@ -175,7 +178,8 @@ func writeCorpusMarkdown(path string, rows []corpusRow) error {
 			status = "PASS"
 		}
 
-		if _, err := fmt.Fprintf(file, "| %s | %.3f | %.3f | %.3f | %s | %s |\n", escapeMarkdown(row.name), row.t60, row.edt, row.c80, escapeMarkdown(row.rangeStr), status); err != nil {
+		_, err = fmt.Fprintf(file, "| %s | %.3f | %.3f | %.3f | %s | %s |\n", escapeMarkdown(row.name), row.t60, row.edt, row.c80, escapeMarkdown(row.rangeStr), status)
+		if err != nil {
 			return fmt.Errorf("write report row: %w", err)
 		}
 	}

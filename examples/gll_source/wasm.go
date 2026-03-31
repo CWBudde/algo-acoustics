@@ -42,7 +42,8 @@ func runWASMWithOptions(gllBytes []byte, opts exampleOptions) (wasmResult, error
 		return wasmResult{}, err
 	}
 
-	if err := validateComparisons(result); err != nil {
+	err = validateComparisons(result)
+	if err != nil {
 		return wasmResult{}, err
 	}
 

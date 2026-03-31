@@ -20,7 +20,8 @@ func WriteEventsCSV(path string, events []ir.Event) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	if err := writer.Write([]string{"index", "timeSeconds", "amplitude", "directionX", "directionY", "directionZ", "distanceMeters", "bandGain", "phaseRadians", "kind"}); err != nil {
+	err = writer.Write([]string{"index", "timeSeconds", "amplitude", "directionX", "directionY", "directionZ", "distanceMeters", "bandGain", "phaseRadians", "kind"})
+	if err != nil {
 		return fmt.Errorf("write csv header: %w", err)
 	}
 
@@ -43,14 +44,16 @@ func WriteEventsCSV(path string, events []ir.Event) error {
 			strconv.Itoa(int(event.Kind)),
 		}
 
-		if err := writer.Write(row); err != nil {
+		err = writer.Write(row)
+		if err != nil {
 			return fmt.Errorf("write csv row: %w", err)
 		}
 	}
 
 	writer.Flush()
 
-	if err := writer.Error(); err != nil {
+	err = writer.Error()
+	if err != nil {
 		return fmt.Errorf("flush csv writer: %w", err)
 	}
 
@@ -66,7 +69,8 @@ func WriteMetricsCSV(path string, results []metrics.MetricResult) error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	if err := writer.Write([]string{"name", "expected", "actual", "tolerance", "pass"}); err != nil {
+	err = writer.Write([]string{"name", "expected", "actual", "tolerance", "pass"})
+	if err != nil {
 		return fmt.Errorf("write csv header: %w", err)
 	}
 
@@ -87,7 +91,8 @@ func WriteMetricsCSV(path string, results []metrics.MetricResult) error {
 
 	writer.Flush()
 
-	if err := writer.Error(); err != nil {
+	err = writer.Error()
+	if err != nil {
 		return fmt.Errorf("flush csv writer: %w", err)
 	}
 

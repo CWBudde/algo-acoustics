@@ -27,7 +27,8 @@ func TestBenchmarkCorpusSmoke(t *testing.T) {
 				t.Fatalf("LoadSceneFile() error = %v", err)
 			}
 
-			if err := scene.Validate(sc); err != nil {
+			err = scene.Validate(sc)
+			if err != nil {
 				t.Fatalf("Validate() error = %v", err)
 			}
 
@@ -41,15 +42,18 @@ func TestBenchmarkCorpusSmoke(t *testing.T) {
 				t.Fatalf("RenderMono() error = %v", err)
 			}
 
-			if _, err := metrics.T60FromDecaySlope(buf); err != nil {
+			_, err = metrics.T60FromDecaySlope(buf)
+			if err != nil {
 				t.Fatalf("T60FromDecaySlope() error = %v", err)
 			}
 
-			if _, err := metrics.EDT(buf); err != nil {
+			_, err = metrics.EDT(buf)
+			if err != nil {
 				t.Fatalf("EDT() error = %v", err)
 			}
 
-			if _, err := metrics.C80(buf); err != nil {
+			_, err = metrics.C80(buf)
+			if err != nil {
 				t.Fatalf("C80() error = %v", err)
 			}
 		})
@@ -68,7 +72,8 @@ func roomFixturePath(name string) string {
 			continue
 		}
 
-		if _, err := os.Stat(absCandidate); err == nil {
+		_, err = os.Stat(absCandidate)
+		if err == nil {
 			return absCandidate
 		}
 	}

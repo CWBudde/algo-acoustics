@@ -35,11 +35,13 @@ func TestReportCommandWritesMarkdownReport(t *testing.T) {
 		_ = os.Chdir(currentDir)
 	})
 
-	if err := os.Chdir(tempDir); err != nil {
+	err = os.Chdir(tempDir)
+	if err != nil {
 		t.Fatalf("Chdir() error = %v", err)
 	}
 
-	if err := command.Execute(); err != nil {
+	err = command.Execute()
+	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 

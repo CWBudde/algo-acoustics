@@ -28,7 +28,8 @@ func newValidateCommand() *cobra.Command {
 				return fmt.Errorf("load scene %q: %w", sceneFile, err)
 			}
 
-			if err := scene.Validate(sc); err != nil {
+			err = scene.Validate(sc)
+			if err != nil {
 				return &validationError{message: err.Error()}
 			}
 

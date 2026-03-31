@@ -27,7 +27,8 @@ func TestWriteEventsJSONAndCSV(t *testing.T) {
 	}}
 
 	jsonPath := filepath.Join(tmpDir, "events.json")
-	if err := WriteEventsJSON(jsonPath, events); err != nil {
+	err := WriteEventsJSON(jsonPath, events)
+	if err != nil {
 		t.Fatalf("WriteEventsJSON() error = %v", err)
 	}
 
@@ -37,7 +38,8 @@ func TestWriteEventsJSONAndCSV(t *testing.T) {
 	}
 
 	var decodedEvents []ir.Event
-	if err := json.Unmarshal(jsonData, &decodedEvents); err != nil {
+	err = json.Unmarshal(jsonData, &decodedEvents)
+	if err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 
@@ -46,7 +48,8 @@ func TestWriteEventsJSONAndCSV(t *testing.T) {
 	}
 
 	csvPath := filepath.Join(tmpDir, "events.csv")
-	if err := WriteEventsCSV(csvPath, events); err != nil {
+	err = WriteEventsCSV(csvPath, events)
+	if err != nil {
 		t.Fatalf("WriteEventsCSV() error = %v", err)
 	}
 
@@ -73,7 +76,8 @@ func TestWriteMetricsJSONAndCSV(t *testing.T) {
 	results := []metrics.MetricResult{{Name: "T60", Expected: 1, Actual: 0.98, Tolerance: 0.05, Pass: true}}
 
 	jsonPath := filepath.Join(tmpDir, "metrics.json")
-	if err := WriteMetricsJSON(jsonPath, results); err != nil {
+	err := WriteMetricsJSON(jsonPath, results)
+	if err != nil {
 		t.Fatalf("WriteMetricsJSON() error = %v", err)
 	}
 
@@ -83,7 +87,8 @@ func TestWriteMetricsJSONAndCSV(t *testing.T) {
 	}
 
 	var decodedResults []metrics.MetricResult
-	if err := json.Unmarshal(jsonData, &decodedResults); err != nil {
+	err = json.Unmarshal(jsonData, &decodedResults)
+	if err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 
@@ -92,13 +97,16 @@ func TestWriteMetricsJSONAndCSV(t *testing.T) {
 	}
 
 	csvPath := filepath.Join(tmpDir, "metrics.csv")
-	if err := WriteMetricsCSV(csvPath, results); err != nil {
+	err = WriteMetricsCSV(csvPath, results)
+	if err != nil {
 		t.Fatalf("WriteMetricsCSV() error = %v", err)
 	}
 
-	if data, err := os.ReadFile(csvPath); err != nil {
+	data, err := os.ReadFile(csvPath)
+	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
-	} else if len(data) == 0 {
+	}
+	if len(data) == 0 {
 		t.Fatal("metrics CSV is empty")
 	}
 }

@@ -158,12 +158,14 @@ func writeSourceDirectivityCSV(w io.Writer, rows []sourceDirectivityRow) error {
 }
 
 func writeSourceDirectivityTable(w io.Writer, rows []sourceDirectivityRow) error {
-	if _, err := fmt.Fprintln(w, "azimuth_deg gain_linear gain_db"); err != nil {
+	_, err := fmt.Fprintln(w, "azimuth_deg gain_linear gain_db")
+	if err != nil {
 		return err
 	}
 
 	for _, row := range rows {
-		if _, err := fmt.Fprintf(w, "%10.1f %11.6g %8.3f\n", row.AzimuthDeg, row.GainLinear, row.GainDB); err != nil {
+		_, err = fmt.Fprintf(w, "%10.1f %11.6g %8.3f\n", row.AzimuthDeg, row.GainLinear, row.GainDB)
+		if err != nil {
 			return err
 		}
 	}

@@ -68,11 +68,13 @@ func runWithOptions(outputPath string, opts exampleOptions) error {
 		return err
 	}
 
-	if err := validateComparisons(result); err != nil {
+	err = validateComparisons(result)
+	if err != nil {
 		return err
 	}
 
-	if err := export.WriteMonoWAV(outputPath, result.OutputBuffer); err != nil {
+	err = export.WriteMonoWAV(outputPath, result.OutputBuffer)
+	if err != nil {
 		return fmt.Errorf("write wav: %w", err)
 	}
 
@@ -177,7 +179,8 @@ func compareToOmni(model directivity.Model, receiver geometry.Vec3, opts example
 
 func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3, opts exampleOptions) (*ir.Buffer, error) {
 	sc := shoeboxScene(sourceDirectivity, receiver)
-	if err := scene.Validate(sc); err != nil {
+	err := scene.Validate(sc)
+	if err != nil {
 		return nil, err
 	}
 

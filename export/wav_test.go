@@ -38,7 +38,8 @@ func TestWriteMonoWAVRoundTrip(t *testing.T) {
 		input.Samples[index] = math.Sin(float64(index) * 0.05)
 	}
 
-	if err := WriteMonoWAV(path, input); err != nil {
+	err := WriteMonoWAV(path, input)
+	if err != nil {
 		t.Fatalf("WriteMonoWAV() error = %v", err)
 	}
 
@@ -83,7 +84,8 @@ func TestWriteStereoWAVRoundTrip(t *testing.T) {
 	left := &ir.Buffer{SampleRate: 44100, Samples: []float64{0, 0.25, 0.5, 0.75}}
 	right := &ir.Buffer{SampleRate: 44100, Samples: []float64{1, 0.5, 0, -0.5}}
 
-	if err := WriteStereoWAV(path, left, right); err != nil {
+	err := WriteStereoWAV(path, left, right)
+	if err != nil {
 		t.Fatalf("WriteStereoWAV() error = %v", err)
 	}
 

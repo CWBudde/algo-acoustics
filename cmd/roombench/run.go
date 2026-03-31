@@ -49,7 +49,8 @@ func newRunCommand() *cobra.Command {
 					return fmt.Errorf("load fixture %s: %w", fixtureName, err)
 				}
 
-				if err := scene.Validate(sc); err != nil {
+				err = scene.Validate(sc)
+				if err != nil {
 					return fmt.Errorf("validate fixture %s: %w", fixtureName, err)
 				}
 
@@ -101,7 +102,8 @@ func loadEventsJSON(path string) ([]ir.Event, error) {
 	}
 
 	var events []ir.Event
-	if err := json.Unmarshal(data, &events); err != nil {
+	err = json.Unmarshal(data, &events)
+	if err != nil {
 		return nil, err
 	}
 
