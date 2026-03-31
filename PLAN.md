@@ -749,9 +749,9 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 9.6 Report generator
 
-- [ ] `roombench report --format markdown` — writes `bench_report.md`
-- [ ] Include: room name, T60, EDT, C80, expected range, pass/fail
-- [ ] Add report generation as optional CI artifact
+- [x] `roombench report --format markdown` — writes `bench_report.md`
+- [x] Include: room name, T60, EDT, C80, expected range, pass/fail
+- [x] Add report generation as optional CI artifact
 
 ---
 
