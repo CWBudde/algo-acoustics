@@ -22,6 +22,7 @@ const (
 	defaultRenderNumRays      = 4096
 	defaultRenderCrossoverSec = 0.25
 	defaultRenderWindowName   = "hann"
+	renderModeHybrid          = "hybrid"
 )
 
 func newRenderCommand() *cobra.Command {
@@ -49,7 +50,7 @@ func newRenderCommand() *cobra.Command {
 				return errors.New("output path must not be empty")
 			}
 
-			if mode != "early" && mode != "late" && mode != "hybrid" {
+			if mode != "early" && mode != "late" && mode != renderModeHybrid {
 				return fmt.Errorf("unsupported mode %q", mode)
 			}
 
@@ -57,7 +58,7 @@ func newRenderCommand() *cobra.Command {
 				Name:  crossoverWindowName,
 				Alpha: crossoverWindowAlpha,
 			}
-			if mode == "hybrid" {
+			if mode == renderModeHybrid {
 				err := hybrid.ValidateFadeWindowConfig(crossoverWindow)
 				if err != nil {
 					return fmt.Errorf("invalid crossover window: %w", err)
@@ -104,7 +105,7 @@ func newRenderCommand() *cobra.Command {
 				}
 
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered late mode with %d rays in %.3fs to %s\n", numRays, durationSeconds, outputPath)
-			case "hybrid":
+			case renderModeHybrid:
 				earlyEvents, err := solveEarly(sc, maxOrder)
 				if err != nil {
 					return err

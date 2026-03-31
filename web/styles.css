@@ -498,7 +498,7 @@ audio {
 
 .studio-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.85fr);
+  grid-template-columns: 1fr;
   gap: 18px;
 }
 
@@ -530,9 +530,12 @@ audio {
   font-size: 1.2rem;
 }
 
-.viewport-card,
+.viewport-card {
+  min-height: 520px;
+}
+
 .response-card {
-  min-height: 640px;
+  min-height: auto;
 }
 
 .viewport-shell {
@@ -626,12 +629,7 @@ audio {
     grid-template-columns: 1fr;
   }
 
-  .studio-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .viewport-card,
-  .response-card {
+  .viewport-card {
     min-height: auto;
   }
 }

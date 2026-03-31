@@ -31,8 +31,6 @@ type directivityJSON struct {
 
 func directivityJSONFromModel(model directivity.Model) (*directivityJSON, error) {
 	switch typed := model.(type) {
-	case nil:
-		return nil, nil
 	case directivity.OmniModel:
 		return &directivityJSON{Type: "omni"}, nil
 	case *directivity.OmniModel:

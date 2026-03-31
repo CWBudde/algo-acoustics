@@ -40,8 +40,6 @@ type hrtfJSON struct {
 
 func hrtfJSONFromDataset(dataset hrtf.Dataset) (*hrtfJSON, error) {
 	switch typed := dataset.(type) {
-	case nil:
-		return nil, nil
 	case hrtf.NoopDataset:
 		return &hrtfJSON{Type: "noop", SampleRateHz: typed.SampleRateHz}, nil
 	case *hrtf.NoopDataset:

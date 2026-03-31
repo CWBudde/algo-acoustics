@@ -834,7 +834,6 @@ function updateSceneView() {
   roomGroup.add(createMarkerSphere(state.source, 0xff6b4a, 0.12));
   roomGroup.add(createMarkerSphere(state.receiver, 0x0f9d92, 0.14));
   roomGroup.add(createDirectPathLine(palette));
-  roomGroup.add(createCornerFanLines(palette));
 
   if (state.source.directivity === "cardioid") {
     roomGroup.add(createDirectivityCone(palette));
@@ -890,34 +889,6 @@ function createDirectPathLine(palette) {
   );
 }
 
-function createCornerFanLines(palette) {
-  const corners = [
-    [0, 0, 0],
-    [state.room.width, 0, 0],
-    [0, 0, state.room.depth],
-    [state.room.width, 0, state.room.depth],
-    [0, state.room.height, 0],
-    [state.room.width, state.room.height, 0],
-    [0, state.room.height, state.room.depth],
-    [state.room.width, state.room.height, state.room.depth],
-  ];
-  const points = [];
-  corners.forEach(([x, y, z]) => {
-    points.push(
-      new THREE.Vector3(state.source.x, state.source.z, state.source.y),
-    );
-    points.push(new THREE.Vector3(x, y, z));
-  });
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  return new THREE.LineSegments(
-    geometry,
-    new THREE.LineBasicMaterial({
-      color: palette.ray,
-      transparent: true,
-      opacity: 1,
-    }),
-  );
-}
 
 function createDirectivityCone(palette) {
   const cone = new THREE.Mesh(
@@ -983,12 +954,24 @@ function drawWaveform(samples = null) {
     1e-6,
   );
 
+  const pad = 12;
+  const mid = height / 2;
+
+  // zero-line
+  context.strokeStyle = palette.grid;
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.moveTo(0, mid);
+  context.lineTo(width, mid);
+  context.stroke();
+
+  // waveform trace using ~90% of vertical range
   context.strokeStyle = palette.trace;
-  context.lineWidth = 2;
+  context.lineWidth = 1.5;
   context.beginPath();
   downsampled.forEach((sample, index) => {
     const x = (index / Math.max(1, downsampled.length - 1)) * width;
-    const y = height / 2 - (sample / maxAmplitude) * height * 0.36;
+    const y = mid - (sample / maxAmplitude) * (mid - pad);
     if (index === 0) {
       context.moveTo(x, y);
     } else {
