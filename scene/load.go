@@ -17,11 +17,16 @@ func LoadScene(r io.Reader) (*Scene, error) {
 
 func loadScene(r io.Reader, baseDir string) (*Scene, error) {
 	var sc Scene
+
 	decoder := json.NewDecoder(r)
-	if err := decoder.Decode(&sc); err != nil {
+
+	err := decoder.Decode(&sc)
+	if err != nil {
 		return nil, err
 	}
-	if err := resolveRoomMesh(&sc, baseDir); err != nil {
+
+	err = resolveRoomMesh(&sc, baseDir)
+	if err != nil {
 		return nil, err
 	}
 
@@ -55,5 +60,6 @@ func resolveRoomMesh(sc *Scene, baseDir string) error {
 	}
 
 	sc.Room.Mesh = mesh
+
 	return nil
 }

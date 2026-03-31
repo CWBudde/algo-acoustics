@@ -110,6 +110,7 @@ func TestRayTracerLoadedCubeMeshKeepsBouncesInsideBounds(t *testing.T) {
 	t.Parallel()
 
 	sc := loadMeshCubeScene(t)
+
 	bounds, ok := sc.Room.Bounds()
 	if !ok {
 		t.Fatal("mesh room bounds unavailable")
@@ -140,6 +141,7 @@ func TestRayTracerLoadedCubeMeshKeepsBouncesInsideBounds(t *testing.T) {
 			}
 
 			nextDir := SelectReflection(0, currentRay.Direction, hitNormal, nil)
+
 			nextOrigin := hitPoint.Add(nextDir.Scale(wallEpsilon))
 			if !boxContainsWithin(bounds, nextOrigin, 1e-5) {
 				t.Fatalf("ray %d bounce %d next origin %#v outside bounds %#v", rayIndex, bounce, nextOrigin, bounds)
@@ -168,6 +170,7 @@ func TestRayTracerLoadedCubeMeshDecayMatchesShoebox(t *testing.T) {
 	}
 
 	meshDecay := normalizedTailEnergy(meshHist)
+
 	shoeboxDecay := normalizedTailEnergy(shoeboxHist)
 	if len(meshDecay) != len(shoeboxDecay) {
 		t.Fatalf("tail energy length mismatch: mesh=%d shoebox=%d", len(meshDecay), len(shoeboxDecay))
@@ -186,6 +189,7 @@ func loadMeshCubeScene(t *testing.T) *scene.Scene {
 	t.Helper()
 
 	path := filepath.Join("..", "testdata", "rooms", "mesh_cube.json")
+
 	sc, err := scene.LoadSceneFile(path)
 	if err != nil {
 		t.Fatalf("LoadSceneFile(%q) error = %v", path, err)
@@ -266,6 +270,7 @@ func meanAbsDifference(a, b []float64) float64 {
 	}
 
 	var sum float64
+
 	for i := range a {
 		delta := a[i] - b[i]
 		if delta < 0 {
@@ -284,6 +289,7 @@ func maxAbsDifference(a, b []float64) float64 {
 	}
 
 	var max float64
+
 	for i := range a {
 		delta := a[i] - b[i]
 		if delta < 0 {

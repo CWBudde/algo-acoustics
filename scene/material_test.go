@@ -16,7 +16,9 @@ func TestMaterialUnmarshalSupportsScatteringField(t *testing.T) {
 	}`)
 
 	var material scene.Material
-	if err := json.Unmarshal(data, &material); err != nil {
+
+	err := json.Unmarshal(data, &material)
+	if err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 
@@ -50,9 +52,11 @@ func TestMaterialScatteringRoundTrip(t *testing.T) {
 	if decoded.Name != original.Name {
 		t.Fatalf("Name = %q, want %q", decoded.Name, original.Name)
 	}
+
 	if !reflect.DeepEqual(decoded.AbsorptionByBand, original.AbsorptionByBand) {
 		t.Fatalf("AbsorptionByBand = %#v, want %#v", decoded.AbsorptionByBand, original.AbsorptionByBand)
 	}
+
 	if decoded.Scattering != original.Scattering {
 		t.Fatalf("Scattering = %#v, want %#v", decoded.Scattering, original.Scattering)
 	}
@@ -60,7 +64,7 @@ func TestMaterialScatteringRoundTrip(t *testing.T) {
 
 func TestEstimateScatteringFromDepthMonotonic(t *testing.T) {
 	scattering := scene.EstimateScatteringFromDepth(0.1)
-	for i := 0; i < len(scattering); i++ {
+	for i := range scattering {
 		if scattering[i] < 0 || scattering[i] > 1 {
 			t.Fatalf("scattering[%d] = %f, want within [0, 1]", i, scattering[i])
 		}

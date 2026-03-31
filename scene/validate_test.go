@@ -49,6 +49,7 @@ func validMeshScene() scene.Scene {
 	}
 	sc.Sources[0].Position = geometry.Vec3{X: 1, Y: 1, Z: 1}
 	sc.Receivers[0].Position = geometry.Vec3{X: 3, Y: 3, Z: 1.2}
+
 	return sc
 }
 
@@ -92,7 +93,9 @@ func validScene() scene.Scene {
 
 func TestValidateValidScene(t *testing.T) {
 	sc := validScene()
-	if err := scene.Validate(&sc); err != nil {
+
+	err := scene.Validate(&sc)
+	if err != nil {
 		t.Fatalf("Validate() returned error for valid scene: %v", err)
 	}
 }
@@ -102,6 +105,7 @@ func TestRoomHelpersForMesh(t *testing.T) {
 	if !room.IsMesh() {
 		t.Fatal("IsMesh() = false, want true")
 	}
+
 	if room.IsValid() {
 		t.Fatal("IsValid() = true, want false when mesh is nil")
 	}
@@ -114,29 +118,38 @@ func TestRoomHelpersForMesh(t *testing.T) {
 
 func TestValidateAcceptsMeshRoom(t *testing.T) {
 	sc := validMeshScene()
-	if err := scene.Validate(&sc); err != nil {
+
+	err := scene.Validate(&sc)
+	if err != nil {
 		t.Fatalf("Validate() returned error for valid mesh scene: %v", err)
 	}
 }
 
 func TestValidateNilScene(t *testing.T) {
-	if err := scene.Validate(nil); err == nil || err.Error() != "scene is nil" {
+	err := scene.Validate(nil)
+	if err == nil || err.Error() != "scene is nil" {
 		t.Fatalf("Validate(nil) = %v, want scene is nil", err)
 	}
 }
 
 func TestValidateReportsRoomErrors(t *testing.T) {
 	sc := validScene()
+
 	sc.Room.Shoebox.Width = 0
-	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "shoebox width") {
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "shoebox width") {
 		t.Fatalf("expected shoebox width validation error, got %v", err)
 	}
 }
 
 func TestValidateReportsMissingMaterial(t *testing.T) {
 	sc := validScene()
+
 	sc.Room.Shoebox.WallMaterials[0] = "unknown"
-	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "unknown") {
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Fatalf("expected missing material validation error, got %v", err)
 	}
 }
@@ -145,8 +158,11 @@ func TestValidateReportsMaterialBandMismatch(t *testing.T) {
 	sc := validScene()
 	material := sc.Materials["plaster"]
 	material.AbsorptionByBand = []float64{0.1}
+
 	sc.Materials["plaster"] = material
-	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "absorption band count") {
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "absorption band count") {
 		t.Fatalf("expected band mismatch validation error, got %v", err)
 	}
 }
@@ -171,45 +187,59 @@ func TestValidateAllowsNonMonotonicScattering(t *testing.T) {
 	material.ScatteringByBand = nil
 	sc.Materials["plaster"] = material
 
-	if err := scene.Validate(&sc); err != nil {
+	err := scene.Validate(&sc)
+	if err != nil {
 		t.Fatalf("non-monotonic scattering should emit warning only, got %v", err)
 	}
 }
 
 func TestValidateReportsSourceOutsideRoom(t *testing.T) {
 	sc := validScene()
+
 	sc.Sources[0].Position = geometry.Vec3{X: 7, Y: 2, Z: 1.2}
-	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "source[0]") {
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "source[0]") {
 		t.Fatalf("expected source position validation error, got %v", err)
 	}
 }
 
 func TestValidateReportsReceiverOutsideRoom(t *testing.T) {
 	sc := validScene()
+
 	sc.Receivers[0].Position = geometry.Vec3{X: 7, Y: 2, Z: 1.2}
-	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "receiver[0] position") {
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "receiver[0] position") {
 		t.Fatalf("expected receiver position validation error, got %v", err)
 	}
 }
 
 func TestValidateReportsMissingHRTF(t *testing.T) {
 	sc := validScene()
+
 	sc.Receivers[0].HRTF = nil
-	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "binaural receivers require an HRTF") {
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "binaural receivers require an HRTF") {
 		t.Fatalf("expected HRTF validation error, got %v", err)
 	}
 }
 
 func TestValidateReportsSampleRate(t *testing.T) {
 	sc := validScene()
+
 	sc.SampleRate = 0
-	if err := scene.Validate(&sc); err == nil || !strings.Contains(err.Error(), "sample rate") {
+
+	err := scene.Validate(&sc)
+	if err == nil || !strings.Contains(err.Error(), "sample rate") {
 		t.Fatalf("expected sample rate validation error, got %v", err)
 	}
 }
 
 func TestSceneJSONRoundTrip(t *testing.T) {
 	original := validScene()
+
 	encoded, err := json.Marshal(original)
 	if err != nil {
 		t.Fatalf("Marshal() failed: %v", err)
@@ -227,6 +257,7 @@ func TestSceneJSONRoundTrip(t *testing.T) {
 
 func TestLoadSceneFile(t *testing.T) {
 	path := filepath.Join("..", "testdata", "rooms", "shoebox_simple.json")
+
 	sc, err := scene.LoadSceneFile(path)
 	if err != nil {
 		t.Fatalf("LoadSceneFile() failed: %v", err)
@@ -239,19 +270,24 @@ func TestLoadSceneFile(t *testing.T) {
 
 func TestLoadSceneFileLoadsMeshOBJ(t *testing.T) {
 	path := filepath.Join("..", "testdata", "rooms", "mesh_cube.json")
+
 	sc, err := scene.LoadSceneFile(path)
 	if err != nil {
 		t.Fatalf("LoadSceneFile() failed: %v", err)
 	}
+
 	if !sc.Room.IsMesh() {
 		t.Fatal("loaded room is not marked as mesh")
 	}
+
 	if sc.Room.Mesh == nil {
 		t.Fatal("loaded mesh room has nil Mesh")
 	}
+
 	if len(sc.Room.Mesh.Triangles) != 12 {
 		t.Fatalf("loaded mesh triangle count = %d, want 12", len(sc.Room.Mesh.Triangles))
 	}
+
 	if err := scene.Validate(sc); err != nil {
 		t.Fatalf("loaded mesh scene should validate: %v", err)
 	}

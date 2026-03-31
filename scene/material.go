@@ -44,12 +44,15 @@ func (m Material) MarshalJSON() ([]byte, error) {
 // "scatteringByBand" scenes.
 func (m *Material) UnmarshalJSON(data []byte) error {
 	var payload materialJSON
-	if err := json.Unmarshal(data, &payload); err != nil {
+
+	err := json.Unmarshal(data, &payload)
+	if err != nil {
 		return err
 	}
 
 	m.Name = payload.Name
 	m.AbsorptionByBand = append([]float64(nil), payload.AbsorptionByBand...)
+
 	m.ScatteringByBand = nil
 	for i := range m.Scattering {
 		m.Scattering[i] = 0
@@ -90,6 +93,7 @@ func (m Material) ScatteringCoefficients(bandCount int) []float64 {
 
 	if len(m.ScatteringByBand) > 0 {
 		out := make([]float64, bandCount)
+
 		copied := copy(out, m.ScatteringByBand)
 		if copied > 0 {
 			fill := out[copied-1]
@@ -102,6 +106,7 @@ func (m Material) ScatteringCoefficients(bandCount int) []float64 {
 	}
 
 	out := make([]float64, bandCount)
+
 	copied := copy(out, m.Scattering[:])
 	if copied > 0 {
 		fill := out[copied-1]
@@ -129,10 +134,12 @@ func EstimateScatteringFromDepthWithK(depthMeters, k float64) [NumBands]float64 
 	f0 := acoustics.SpeedOfSound / (2 * depthMeters)
 	for i, f := range acoustics.Octave6.CenterFreqs {
 		ratio := f / f0
+
 		s := 1 - math.Exp(-k*ratio*ratio)
 		if s < 0 {
 			s = 0
 		}
+
 		if s > 1 {
 			s = 1
 		}

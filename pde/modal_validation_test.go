@@ -145,6 +145,7 @@ func localSweepPeak(room *scene.Shoebox, src, rcv geometry.Vec3, centerFreq floa
 	}
 
 	closestIndex := 0
+
 	closestDistance := math.Abs(tf.Freqs[0] - centerFreq)
 	for index := 1; index < len(tf.Freqs); index++ {
 		distance := math.Abs(tf.Freqs[index] - centerFreq)
