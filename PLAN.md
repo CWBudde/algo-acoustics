@@ -838,17 +838,17 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 11.4 Energy splitting at reflections (`raytrace/`)
 
-- [ ] Extend ray struct to carry energy per frequency band (`Energy [NumBands]float64`)
-- [ ] At each reflection, per band: `E_specular(f) = (1 - alpha(f)) * (1 - s(f)) * E_in(f)`, `E_diffuse(f) = (1 - alpha(f)) * s(f) * E_in(f)`
-- [ ] Implement hybrid direction strategy: use mean scattering coefficient across bands to decide ray direction (specular vs. Lambert), then weight energy per-band independently
-- [ ] Add configurable strategy: probabilistic split, deterministic blend, or full ray splitting with Russian roulette
-- [ ] Update ray termination: kill ray when max energy across all bands drops below threshold
+- [x] Extend ray struct to carry energy per frequency band (`Energy [NumBands]float64`)
+- [x] At each reflection, per band: `E_specular(f) = (1 - alpha(f)) * (1 - s(f)) * E_in(f)`, `E_diffuse(f) = (1 - alpha(f)) * s(f) * E_in(f)`
+- [x] Implement hybrid direction strategy: use mean scattering coefficient across bands to decide ray direction (specular vs. Lambert), then weight energy per-band independently
+- [x] Add configurable strategy: probabilistic split, deterministic blend, or full ray splitting with Russian roulette
+- [x] Update ray termination: kill ray when max energy across all bands drops below threshold
 
 ### 11.5 Air absorption per frequency band (`raytrace/`)
 
-- [ ] Implement ISO 9613-1 atmospheric absorption: `alpha_air(f, T, h)` in dB/m as a function of frequency, temperature, and relative humidity
-- [ ] Apply per-band air absorption to ray energy after each path segment: `E(f) *= 10^(-alpha_air(f) * dist / 10)`
-- [ ] Unit test: attenuation at 4 kHz over 50 m at 20°C / 50% RH matches published ISO tables within 5%
+- [x] Implement ISO 9613-1 atmospheric absorption: `alpha_air(f, T, h)` in dB/m as a function of frequency, temperature, and relative humidity
+- [x] Apply per-band air absorption to ray energy after each path segment: `E(f) *= 10^(-alpha_air(f) * dist / 10)`
+- [x] Unit test: attenuation at 4 kHz over 50 m at 20°C / 50% RH matches published ISO tables within 5%
 
 ### 11.6 Validation and sensitivity testing
 

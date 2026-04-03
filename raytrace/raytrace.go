@@ -89,27 +89,28 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 
 	launchEnergy := calibratedRayLaunchEnergy(source.GainDB, source.Position, receiverData.Position, receiverRadius, len(rays))
 	maxPathLength := r.Config.MaxTimeSeconds * r.Config.SpeedOfSound
+	energyThreshold := r.Config.EnergyTerminationThreshold
 
+	states := make([]RayState, 0, len(rays))
 	for _, ray := range rays {
-		currentRay := ray
-		pathLength := 0.0
+		states = append(states, RayState{
+			Ray:    ray,
+			Energy: initialRayEnergy(source, ray.Direction, launchEnergy, bandCount, r.Scene.BandSpec.CenterFreqs),
+		})
+	}
 
-		bandEnergy := make([]float64, bandCount)
-		for bandIndex := range bandEnergy {
-			freqHz := float64(bandIndex)
-			if bandIndex < len(r.Scene.BandSpec.CenterFreqs) {
-				freqHz = r.Scene.BandSpec.CenterFreqs[bandIndex]
-			}
+	for len(states) > 0 {
+		state := states[len(states)-1]
+		states = states[:len(states)-1]
 
-			gain := 1.0
-			if source.Directivity != nil {
-				gain = source.Directivity.GainLinear(freqHz, currentRay.Direction)
-			}
-
-			bandEnergy[bandIndex] = launchEnergy * gain * gain
+		if maxEnergy(state.Energy) <= energyThreshold {
+			continue
 		}
 
-		for bounce := 0; bounce <= r.Config.MaxBounces; bounce++ {
+		currentRay := state.Ray
+		pathLength := state.PathLength
+
+		for bounce := state.Bounces; bounce <= r.Config.MaxBounces; bounce++ {
 			if pathLength >= maxPathLength {
 				break
 			}
@@ -127,10 +128,10 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 			if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit {
 				arrivalTime := (pathLength + tHit) / r.Config.SpeedOfSound
 				if arrivalTime <= r.Config.MaxTimeSeconds {
-					hitEnergy := make([]float64, bandCount)
+					hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit, defaultAirTemperatureC, defaultRelativeHumidity)
 					capture := receiver.AngularWeight(currentRay.Direction)
 					for bandIndex := range hitEnergy {
-						hitEnergy[bandIndex] = bandEnergy[bandIndex] * capture
+						hitEnergy[bandIndex] *= capture
 					}
 
 					hist.Add(arrivalTime, hitEnergy)
@@ -142,33 +143,77 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				break
 			}
 
+			state.Energy = attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, segmentLength, defaultAirTemperatureC, defaultRelativeHumidity)
+
 			material := r.sceneMaterialForWall(wallIdx)
-			for bandIndex := range bandEnergy {
-				absorption := material.AbsorptionAt(bandIndex)
-
-				remaining := 1 - absorption
-				if remaining < 0 {
-					remaining = 0
-				}
-
-				if remaining > 1 {
-					remaining = 1
-				}
-
-				bandEnergy[bandIndex] *= remaining
+			absorption := make([]float64, bandCount)
+			for bandIndex := range absorption {
+				absorption[bandIndex] = material.AbsorptionAt(bandIndex)
 			}
 
-			scatterCoeff := averageCoeff(material.ScatteringCoefficients(bandCount))
-			nextDir := SelectReflection(scatterCoeff, currentRay.Direction, hitNormal, rng)
-			currentRay = geometry.NewRay(hitPoint.Add(nextDir.Scale(wallEpsilon)), nextDir)
+			scattering := material.ScatteringCoefficients(bandCount)
+			specEnergy, diffuseEnergy, remainingEnergy := splitReflectionEnergy(state.Energy, absorption, scattering)
+			scatterCoeff := averageCoeff(scattering)
+			specularDir := SpecularReflect(currentRay.Direction, hitNormal)
+			diffuseDir := LambertDirection(hitNormal, rng)
 
-			if totalEnergy(bandEnergy) <= 0 {
+			switch r.Config.ReflectionStrategy {
+			case ReflectionStrategyDeterministicBlend:
+				nextDir := chooseBlendDirection(specularDir, diffuseDir, scatterCoeff)
+				currentRay = geometry.NewRay(hitPoint.Add(nextDir.Scale(wallEpsilon)), nextDir)
+				state.Energy = remainingEnergy
+			case ReflectionStrategyRussianRoulette:
+				specBranch, ok := russianRouletteEnergy(specEnergy, energyThreshold, rng)
+				if ok {
+					specRay := geometry.NewRay(hitPoint.Add(specularDir.Scale(wallEpsilon)), specularDir)
+					states = append(states, RayState{Ray: specRay, Energy: specBranch, PathLength: pathLength, Bounces: bounce + 1})
+				}
+
+				diffBranch, ok := russianRouletteEnergy(diffuseEnergy, energyThreshold, rng)
+				if ok {
+					diffRay := geometry.NewRay(hitPoint.Add(diffuseDir.Scale(wallEpsilon)), diffuseDir)
+					states = append(states, RayState{Ray: diffRay, Energy: diffBranch, PathLength: pathLength, Bounces: bounce + 1})
+				}
+
+				currentRay = geometry.Ray{}
+				state.Energy = nil
+				break
+			default:
+				if scatterCoeff >= 1 || (scatterCoeff > 0 && rng.Float64() < scatterCoeff) {
+					state.Energy = diffuseEnergy
+					currentRay = geometry.NewRay(hitPoint.Add(diffuseDir.Scale(wallEpsilon)), diffuseDir)
+				} else {
+					state.Energy = specEnergy
+					currentRay = geometry.NewRay(hitPoint.Add(specularDir.Scale(wallEpsilon)), specularDir)
+				}
+			}
+
+			if len(state.Energy) > 0 && maxEnergy(state.Energy) <= energyThreshold {
 				break
 			}
 		}
 	}
 
 	return hist, nil
+}
+
+func initialRayEnergy(source scene.Source, dir geometry.Vec3, launchEnergy float64, bandCount int, centerFreqs []float64) []float64 {
+	energy := make([]float64, bandCount)
+	for bandIndex := range energy {
+		freqHz := float64(bandIndex)
+		if bandIndex < len(centerFreqs) {
+			freqHz = centerFreqs[bandIndex]
+		}
+
+		gain := 1.0
+		if source.Directivity != nil {
+			gain = source.Directivity.GainLinear(freqHz, dir)
+		}
+
+		energy[bandIndex] = launchEnergy * gain * gain
+	}
+
+	return energy
 }
 
 func (r *RayTracer) sceneMaterialForWall(wallIdx int) scene.Material {
