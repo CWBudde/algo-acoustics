@@ -146,11 +146,11 @@ func fresnelCSSmall(x float64) (c, s float64) {
 	c = ax * cSum
 
 	// S(x) power series.
-	sSum := t / 3.0
-	term = t / 3.0
+	term = t
+	sSum := term / 3.0
 
 	for n := 1; n <= 25; n++ {
-		term *= -t2 / float64(2*n*(2*n+1))
+		term *= -t2 / float64((2*n)*(2*n+1))
 		contribution := term / float64(4*n+3)
 
 		sSum += contribution

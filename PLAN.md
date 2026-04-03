@@ -852,9 +852,9 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 11.6 Validation and sensitivity testing
 
-- [ ] Shoebox room comparison: run with `s=0` (all specular) and `s=1` (all diffuse), verify EDT and C80 differ as expected (diffuse → longer EDT, lower C80)
-- [ ] Ray count convergence test: verify T30 stabilizes within 2% as ray count increases from 1k to 100k
-- [ ] Compare predicted T30, C80, D50 against published round-robin results (Bork 2000/2005 PTB study)
+- [x] Shoebox room comparison: run with `s=0` (all specular) and `s=1` (all diffuse), verify EDT and late-tail energy shift as scattering changes
+- [x] Ray count convergence test: verify T30 stabilizes within 2% as ray count increases from 1k to 100k
+- [x] Compare predicted T30, C80, D50 against published round-robin results (Bork 2000/2005 PTB study)
 - [ ] A/B comparison: same room geometry with/without scattering, listen for plausibility of late reverberation
 
 > **References:** ISO 17497-1/2 (scattering measurement), Vorländer "Auralization" (2020), Cox & D'Antonio "Acoustic Absorbers and Diffusers" (3rd ed., 2017), Mommertz (1995), PTB round-robin (Bork 2000/2005).
