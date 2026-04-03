@@ -888,24 +888,24 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 12.2 Fresnel transition function (`geometry/`)
 
-- [ ] Implement `FresnelTransition(x float64) complex128` — the UTD transition function `F(x) = 2j√x · e^(jx) · ∫_√x^∞ e^(-jt²) dt`
-- [ ] Use three regimes:
+- [x] Implement `FresnelTransition(x float64) complex128` — the UTD transition function `F(x) = 2j√x · e^(jx) · ∫_√x^∞ e^(-jt²) dt`
+- [x] Use three regimes:
   - `x > 10`: asymptotic expansion `F(x) ≈ 1 + j/(2x) - 3/(4x²) - ...`
   - `x < 0.3`: small-argument power series
   - Intermediate: rational approximation or direct numerical integration
-- [ ] Unit test: validate against published tables (McNamara et al. 1990, Table 4.1)
-- [ ] Test boundary: `F(x) → 1` for large `x`, smooth transition near `x = 0`
+- [x] Unit test: validate against published tables (McNamara et al. 1990, Table 4.1)
+- [x] Test boundary: `F(x) → 1` for large `x`, smooth transition near `x = 0`
 
 ### 12.3 Kouyoumjian–Pathak diffraction coefficient (`geometry/`)
 
-- [ ] Implement `WedgeDiffraction(phi, phiPrime, betaZero, n, k, L float64) complex128`
+- [x] Implement `WedgeDiffraction(phi, phiPrime, betaZero, n, k, L float64) complex128`
   - Four-term formula: incident shadow boundary, reflection shadow boundaries (face O and face N), second RSB
   - Each term: `D_i = (-e^(-jπ/4)) / (2n√(2πk)) · cot(α_i / (2n)) · F(kLa_i)`
   - Integer `N_i` selection to minimize `|2nπN ± β|`
-- [ ] Implement spreading factor `A = √(1 / (s · s'(s + s')))` for spherical wave incidence
-- [ ] Implement distance parameter `L = (s · s') / (s + s') · sin²(β₀)`
-- [ ] Unit test: half-plane diffraction (`n = 2`) matches classical Sommerfeld solution
-- [ ] Unit test: 90° wedge (`n = 1.5`) matches published values from Balanis (2012, Table 13.1)
+- [x] Implement spreading factor `A = √(1 / (s · s'(s + s')))` for spherical wave incidence
+- [x] Implement distance parameter `L = (s · s') / (s + s') · sin²(β₀)`
+- [x] Unit test: half-plane diffraction (`n = 2`) matches classical Sommerfeld solution
+- [x] Unit test: 90° wedge (`n = 1.5`) matches published values from Balanis (2012, Table 13.1)
 - [ ] Validate: coefficient is continuous across shadow boundaries (the defining property of UTD over GTD)
 
 ### 12.4 Diffraction path finding (`geometry/`, `ism/`)
