@@ -199,6 +199,7 @@ func TestIBMSource_FDTDWithGaussianPulse(t *testing.T) {
 
 	// Energy should have been injected.
 	finalEnergy := totalEnergy(g, pCur)
+
 	if maxEnergy == 0 {
 		t.Error("no energy was injected")
 	}
@@ -251,6 +252,7 @@ func TestIBMSource_HardSourceReflects(t *testing.T) {
 
 	// Verify some energy propagated to other nodes.
 	otherEnergy := 0.0
+
 	for i, v := range pCur {
 		if i != src.NodeIdx && g.Class[i] != Exterior {
 			otherEnergy += v * v

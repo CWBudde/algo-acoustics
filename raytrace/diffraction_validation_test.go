@@ -12,6 +12,7 @@ func TestRayTracerDiffractionBranchSmoke(t *testing.T) {
 	t.Parallel()
 
 	mesh := loadValidationMeshCubeScene(t).Room.Mesh
+
 	index := NewDiffractionEdgeIndex(mesh)
 	if index == nil {
 		t.Fatal("NewDiffractionEdgeIndex() returned nil")
@@ -50,7 +51,8 @@ func BenchmarkDiffractionBranchSpawn(b *testing.B) {
 	state := RayState{Ray: ray, Energy: []float64{1, 1}}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for range b.N {
 		_ = spawnDiffractionBranches(
 			state,
 			ray,
@@ -70,6 +72,7 @@ func loadValidationMeshCubeScene(tb testing.TB) *scene.Scene {
 	tb.Helper()
 
 	path := "../testdata/rooms/mesh_cube.json"
+
 	sc, err := scene.LoadSceneFile(path)
 	if err != nil {
 		tb.Fatalf("LoadSceneFile(%q) error = %v", path, err)

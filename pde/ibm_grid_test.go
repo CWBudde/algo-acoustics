@@ -49,6 +49,7 @@ func TestClassifyGrid_RectangularRoom(t *testing.T) {
 
 	// Count classes.
 	var nInt, nBnd, nExt int
+
 	for _, c := range g.Class {
 		switch c {
 		case Interior:
@@ -123,6 +124,7 @@ func TestClassifyGrid_RectangularRoom(t *testing.T) {
 				}
 
 				hasExt := false
+
 				for _, o := range offsets {
 					ni, nj, nk := ix+o[0], iy+o[1], iz+o[2]
 					if ni < 0 || ni >= g.Nx || nj < 0 || nj >= g.Ny || nk < 0 || nk >= g.Nz {
@@ -195,18 +197,23 @@ func TestClassifyGrid_RectangularMatchesShoebox(t *testing.T) {
 					if ix < activeMin[0] {
 						activeMin[0] = ix
 					}
+
 					if iy < activeMin[1] {
 						activeMin[1] = iy
 					}
+
 					if iz < activeMin[2] {
 						activeMin[2] = iz
 					}
+
 					if ix > activeMax[0] {
 						activeMax[0] = ix
 					}
+
 					if iy > activeMax[1] {
 						activeMax[1] = iy
 					}
+
 					if iz > activeMax[2] {
 						activeMax[2] = iz
 					}

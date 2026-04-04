@@ -24,6 +24,7 @@ func AlphaAirISO9613_1(frequencyHz, temperatureC, relativeHumidity float64) floa
 	}
 
 	relativeHumidity = clamp01(relativeHumidity)
+
 	pressureKPa := defaultAirPressureKPa
 	if pressureKPa <= 0 {
 		pressureKPa = referencePressureKPa

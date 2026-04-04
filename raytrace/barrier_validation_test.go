@@ -32,6 +32,7 @@ func maekawaInsertionLossDb(fresnelNumber float64) float64 {
 	}
 
 	x := math.Sqrt(2 * math.Pi * fresnelNumber)
+
 	return 5 + 20*math.Log10(x/math.Tanh(x))
 }
 

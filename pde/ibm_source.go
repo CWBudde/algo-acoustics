@@ -70,11 +70,16 @@ func NewIBMSource(room *ConvexRoom, grid *IBMGrid, pos geometry.Vec3, mode Sourc
 // Inject adds or sets the source signal value into the pressure field
 // at the source node, depending on the source mode.
 func (s *IBMSource) Inject(field []float64, signal float64) {
+	idx := s.NodeIdx
+	if s.Grid.Compressed {
+		idx = s.Grid.CompactMap[idx]
+	}
+
 	switch s.Mode {
 	case SoftSource:
-		field[s.NodeIdx] += signal
+		field[idx] += signal
 	case HardSource:
-		field[s.NodeIdx] = signal
+		field[idx] = signal
 	}
 }
 
@@ -157,6 +162,7 @@ func SineBurst(t, freqHz float64, nCycles int) float64 {
 
 	// Hann window.
 	w := 0.5 * (1 - math.Cos(2*math.Pi*t/duration))
+
 	return math.Sin(2*math.Pi*freqHz*t) * w
 }
 
@@ -164,9 +170,11 @@ func clampInt(v, lo, hi int) int {
 	if v < lo {
 		return lo
 	}
+
 	if v > hi {
 		return hi
 	}
+
 	return v
 }
 
@@ -174,5 +182,6 @@ func abs(x int) int {
 	if x < 0 {
 		return -x
 	}
+
 	return x
 }

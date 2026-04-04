@@ -77,6 +77,7 @@ func wedgeTransitionArgumentPlus(beta, n float64) float64 {
 	N := math.Round(target)
 
 	c := math.Cos((period*N - beta) / 2)
+
 	return 2 * c * c
 }
 
@@ -90,6 +91,7 @@ func wedgeTransitionArgumentMinus(beta, n float64) float64 {
 	N := math.Round(target)
 
 	c := math.Cos((period*N - beta) / 2)
+
 	return 2 * c * c
 }
 

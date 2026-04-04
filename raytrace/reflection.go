@@ -35,7 +35,7 @@ func splitReflectionEnergy(in, absorption, scattering []float64) (specular, diff
 	diffuse = make([]float64, limit)
 	remaining = make([]float64, limit)
 
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		absorbed := 0.0
 		if i < len(absorption) {
 			absorbed = clamp01(absorption[i])
@@ -76,6 +76,7 @@ func cloneEnergy(values []float64) []float64 {
 
 func chooseBlendDirection(specularDir, diffuseDir geometry.Vec3, scatter float64) geometry.Vec3 {
 	scatter = clamp01(scatter)
+
 	dir := specularDir.Scale(1 - scatter).Add(diffuseDir.Scale(scatter))
 	if dir == geometry.Vec3Zero {
 		return specularDir
@@ -113,6 +114,7 @@ func russianRouletteEnergy(energy []float64, threshold float64, rng *rand.Rand) 
 	}
 
 	out := cloneEnergy(energy)
+
 	scale := 1 / survival
 	for i := range out {
 		out[i] *= scale

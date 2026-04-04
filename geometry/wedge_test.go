@@ -12,12 +12,14 @@ func TestWedgeDiffractionHelpers(t *testing.T) {
 	const betaZero = math.Pi / 3
 
 	gotSpread := WedgeSpreadingFactor(s, sPrime)
+
 	wantSpread := 1 / math.Sqrt(84)
 	if math.Abs(gotSpread-wantSpread) > 1e-12 {
 		t.Fatalf("wedgeSpreadingFactor(%g, %g) = %g, want %g", s, sPrime, gotSpread, wantSpread)
 	}
 
 	gotL := WedgeDistanceParameter(s, sPrime, betaZero)
+
 	wantL := 9.0 / 7.0
 	if math.Abs(gotL-wantL) > 1e-12 {
 		t.Fatalf("wedgeDistanceParameter(%g, %g, %g) = %g, want %g", s, sPrime, betaZero, gotL, wantL)

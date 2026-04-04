@@ -11,6 +11,7 @@ func TestDiffractionEdgeIndexFindsNearbyEdges(t *testing.T) {
 	t.Parallel()
 
 	sc := loadMeshCubeScene(t)
+
 	index := NewDiffractionEdgeIndex(sc.Room.Mesh)
 	if index == nil {
 		t.Fatal("NewDiffractionEdgeIndex() returned nil")
@@ -32,6 +33,7 @@ func TestSpawnDiffractionBranchesProducesConeSamples(t *testing.T) {
 	sc := loadMeshCubeScene(t)
 	mesh := sc.Room.Mesh
 	index := NewDiffractionEdgeIndex(mesh)
+
 	edges := geometry.ExtractDiffractionEdges(mesh)
 	if len(edges) == 0 {
 		t.Fatal("ExtractDiffractionEdges() returned no edges")

@@ -30,6 +30,14 @@ type BoundaryInfo struct {
 	WallIdx int           // index into ConvexRoom.Walls
 }
 
+// boundaryNodeRef stores a boundary node's flat index, grid coordinates,
+// and geometry info for efficient sparse iteration without map lookups.
+type boundaryNodeRef struct {
+	Idx        int
+	Ix, Iy, Iz int
+	Info       BoundaryInfo
+}
+
 // IBMGrid is an immersed-boundary grid that classifies regular Cartesian
 // nodes relative to a convex room geometry.
 type IBMGrid struct {
@@ -39,6 +47,19 @@ type IBMGrid struct {
 
 	Class    []NodeClass          // flat array [Nx*Ny*Nz], row-major
 	Boundary map[int]BoundaryInfo // keyed by flat index, only for Boundary nodes
+
+	// Pre-computed active node lists for sparse iteration.
+	// These skip exterior nodes entirely, avoiding wasted compute on
+	// bounding-box padding.
+	InteriorIdx []int             // flat indices of Interior nodes
+	BoundaryIdx []boundaryNodeRef // flat index + grid coords for Boundary nodes
+
+	// Compressed storage for low-fill-ratio grids.
+	// When Compressed is true, pressure fields are sized NumActive()
+	// instead of Nx*Ny*Nz. CompactMap translates flat grid indices to
+	// compact indices (-1 for exterior nodes).
+	Compressed bool
+	CompactMap []int // flat index → compact index; -1 = exterior
 }
 
 // nodeIndex returns the flat index for grid coordinates (ix,iy,iz).
@@ -56,22 +77,72 @@ func (g *IBMGrid) nodePos(ix, iy, iz int) geometry.Vec3 {
 }
 
 // NumInterior returns the number of interior nodes.
-func (g *IBMGrid) NumInterior() int {
-	n := 0
-	for _, c := range g.Class {
-		if c == Interior {
-			n++
-		}
-	}
-
-	return n
-}
+func (g *IBMGrid) NumInterior() int { return len(g.InteriorIdx) }
 
 // NumBoundary returns the number of boundary nodes.
 func (g *IBMGrid) NumBoundary() int { return len(g.Boundary) }
 
 // NumActive returns interior + boundary (nodes that participate in the solve).
 func (g *IBMGrid) NumActive() int { return g.NumInterior() + g.NumBoundary() }
+
+// FillRatio returns the fraction of grid nodes that are active (interior + boundary).
+func (g *IBMGrid) FillRatio() float64 {
+	total := g.Nx * g.Ny * g.Nz
+	if total == 0 {
+		return 0
+	}
+
+	return float64(g.NumActive()) / float64(total)
+}
+
+// EnableCompression switches the grid to compressed storage mode.
+// Pressure fields allocated via NewField will be sized NumActive()
+// instead of Nx*Ny*Nz. The stencil automatically adapts.
+func (g *IBMGrid) EnableCompression() {
+	if g.Compressed {
+		return
+	}
+
+	total := g.Nx * g.Ny * g.Nz
+	g.CompactMap = make([]int, total)
+
+	for i := range total {
+		g.CompactMap[i] = -1
+	}
+
+	ci := 0
+
+	for _, idx := range g.InteriorIdx {
+		g.CompactMap[idx] = ci
+		ci++
+	}
+
+	for _, ref := range g.BoundaryIdx {
+		g.CompactMap[ref.Idx] = ci
+		ci++
+	}
+
+	g.Compressed = true
+}
+
+// NewField allocates a zero-initialized pressure field for this grid.
+// Returns a compact field if compression is enabled, otherwise a full grid.
+func (g *IBMGrid) NewField() []float64 {
+	if g.Compressed {
+		return make([]float64, g.NumActive())
+	}
+
+	return make([]float64, g.Nx*g.Ny*g.Nz)
+}
+
+// FieldSize returns the length of pressure arrays for this grid.
+func (g *IBMGrid) FieldSize() int {
+	if g.Compressed {
+		return g.NumActive()
+	}
+
+	return g.Nx * g.Ny * g.Nz
+}
 
 // ClassifyGrid builds an IBMGrid for the given convex room on a uniform
 // Cartesian grid with spacing h.  The grid covers the room's bounding box
@@ -113,6 +184,7 @@ func ClassifyGrid(room *ConvexRoom, h float64) *IBMGrid {
 		for iy := range ny {
 			for iz := range nz {
 				p := g.nodePos(ix, iy, iz)
+
 				idx := g.nodeIndex(ix, iy, iz)
 				if room.PointInside(p) {
 					inside[idx] = true
@@ -143,6 +215,7 @@ func ClassifyGrid(room *ConvexRoom, h float64) *IBMGrid {
 				}
 
 				hasExterior := false
+
 				for _, o := range offsets {
 					ni, nj, nk := ix+o[0], iy+o[1], iz+o[2]
 					if ni < 0 || ni >= nx || nj < 0 || nj >= ny || nk < 0 || nk >= nz {
@@ -204,7 +277,37 @@ func ClassifyGrid(room *ConvexRoom, h float64) *IBMGrid {
 		}
 	}
 
+	// Build sparse iteration lists.
+	g.buildActiveNodeLists()
+
 	return g
+}
+
+// buildActiveNodeLists populates InteriorIdx and BoundaryIdx from the
+// Class array for sparse iteration.
+func (g *IBMGrid) buildActiveNodeLists() {
+	nyNz := g.Ny * g.Nz
+
+	g.InteriorIdx = g.InteriorIdx[:0]
+	g.BoundaryIdx = g.BoundaryIdx[:0]
+
+	for ix := range g.Nx {
+		for iy := range g.Ny {
+			for iz := range g.Nz {
+				idx := ix*nyNz + iy*g.Nz + iz
+
+				switch g.Class[idx] {
+				case Interior:
+					g.InteriorIdx = append(g.InteriorIdx, idx)
+				case Boundary:
+					g.BoundaryIdx = append(g.BoundaryIdx, boundaryNodeRef{
+						Idx: idx, Ix: ix, Iy: iy, Iz: iz,
+						Info: g.Boundary[idx],
+					})
+				}
+			}
+		}
+	}
 }
 
 // fracToWall finds the fractional distance (in 0,1] from point p along

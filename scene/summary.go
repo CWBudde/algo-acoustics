@@ -40,6 +40,7 @@ func Summary(sc *Scene) string {
 		for name := range sc.Materials {
 			names = append(names, name)
 		}
+
 		sort.Strings(names)
 		b.WriteString(" [")
 		b.WriteString(strings.Join(names, ", "))
@@ -55,12 +56,15 @@ func Summary(sc *Scene) string {
 
 	if count := sc.BandSpec.BandCount(); count > 0 {
 		b.WriteString(" [")
+
 		for i, freq := range sc.BandSpec.CenterFreqs {
 			if i > 0 {
 				b.WriteString(", ")
 			}
+
 			b.WriteString(fmt.Sprintf("%.0f", freq))
 		}
+
 		b.WriteString(" Hz]")
 	}
 

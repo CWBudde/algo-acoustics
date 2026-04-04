@@ -14,3 +14,5 @@ Mesh rooms use `"kind": "mesh"` and reference a Wavefront OBJ file via `"meshPat
   }
 }
 ```
+
+See [external-tool-compatibility.md](external-tool-compatibility.md) for the scene conventions and validation workflow used for desktop authoring tools.

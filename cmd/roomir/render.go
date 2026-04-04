@@ -129,6 +129,7 @@ func newRenderCommand() *cobra.Command {
 				}
 
 				lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, hybridCfg)
+
 				buffer = hybrid.CombineBuffers(earlyBuffer, lateBuffer, hybridCfg)
 				if buffer == nil {
 					return errors.New("combine hybrid buffers")

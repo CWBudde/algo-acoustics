@@ -1,0 +1,74 @@
+{
+  "room": {
+    "kind": "shoebox",
+    "shoebox": {
+      "width": 8.5,
+      "depth": 6.2,
+      "height": 3.1,
+      "wallMaterials": [
+        "plaster",
+        "plaster",
+        "curtain",
+        "glass",
+        "carpet",
+        "ceiling_tile"
+      ]
+    }
+  },
+  "materials": {
+    "plaster": {
+      "name": "plaster",
+      "absorptionByBand": [0.08, 0.09, 0.11, 0.14, 0.16, 0.2],
+      "scatteringByBand": [0.02, 0.02, 0.03, 0.04, 0.05, 0.06]
+    },
+    "curtain": {
+      "name": "curtain",
+      "absorptionByBand": [0.1, 0.15, 0.3, 0.55, 0.7, 0.75],
+      "scatteringByBand": [0.05, 0.05, 0.06, 0.06, 0.07, 0.07]
+    },
+    "glass": {
+      "name": "glass",
+      "absorptionByBand": [0.02, 0.02, 0.03, 0.04, 0.05, 0.05],
+      "scatteringByBand": [0.01, 0.01, 0.01, 0.02, 0.02, 0.02]
+    },
+    "carpet": {
+      "name": "carpet",
+      "absorptionByBand": [0.04, 0.08, 0.25, 0.45, 0.6, 0.68],
+      "scatteringByBand": [0.03, 0.03, 0.04, 0.05, 0.05, 0.05]
+    },
+    "ceiling_tile": {
+      "name": "ceiling_tile",
+      "absorptionByBand": [0.15, 0.18, 0.22, 0.27, 0.3, 0.32],
+      "scatteringByBand": [0.04, 0.05, 0.05, 0.06, 0.06, 0.07]
+    }
+  },
+  "sources": [
+    {
+      "position": { "X": 2.1, "Y": 1.7, "Z": 1.45 },
+      "orientation": { "W": 1, "X": 0, "Y": 0, "Z": 0 },
+      "gainDb": -1.5,
+      "directivity": {
+        "type": "cardioid",
+        "axis": { "X": 1, "Y": 0, "Z": 0 },
+        "orderN": 1
+      }
+    }
+  ],
+  "receivers": [
+    {
+      "position": { "X": 6.7, "Y": 3.6, "Z": 1.25 },
+      "orientation": { "W": 1, "X": 0, "Y": 0, "Z": 0 },
+      "type": "binaural",
+      "hrtf": {
+        "type": "nearestNeighbor",
+        "sampleRate": 48000
+      }
+    }
+  ],
+  "bandSpec": {
+    "CenterFreqs": [125, 250, 500, 1000, 2000, 4000],
+    "LowerEdges": [88.38834764831843, 176.7766952966369, 353.5533905932738, 707.1067811865476, 1414.213562373095, 2828.42712474619],
+    "UpperEdges": [176.7766952966369, 353.5533905932738, 707.1067811865476, 1414.213562373095, 2828.42712474619, 5656.85424949238]
+  },
+  "sampleRate": 48000
+}

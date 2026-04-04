@@ -38,6 +38,7 @@ func newMaterialsCommand() *cobra.Command {
 			rows := buildMaterialBandRows(material)
 
 			writer := cmd.OutOrStdout()
+
 			if outputPath != "" {
 				file, err := os.Create(outputPath)
 				if err != nil {
@@ -139,7 +140,8 @@ func writeMaterialTable(w io.Writer, source string, material scene.Material, row
 func writeMaterialCSV(w io.Writer, source string, rows []materialBandRow) error {
 	writer := csv.NewWriter(w)
 
-	if err := writer.Write([]string{"name", "band", "center_hz", "absorption", "scattering"}); err != nil {
+	err := writer.Write([]string{"name", "band", "center_hz", "absorption", "scattering"})
+	if err != nil {
 		return err
 	}
 
@@ -149,17 +151,19 @@ func writeMaterialCSV(w io.Writer, source string, rows []materialBandRow) error 
 	}
 
 	for _, row := range rows {
-		if err := writer.Write([]string{
+		err := writer.Write([]string{
 			name,
 			strconv.Itoa(row.BandIndex),
 			strconv.FormatFloat(row.CenterHz, 'f', -1, 64),
 			strconv.FormatFloat(row.Absorption, 'g', -1, 64),
 			strconv.FormatFloat(row.Scattering, 'g', -1, 64),
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
 
 	writer.Flush()
+
 	return writer.Error()
 }

@@ -44,6 +44,7 @@ func TestRayTracerScatteringChangesLateDecay(t *testing.T) {
 	}
 
 	specTail := tailEnergyAfter(specular, config, 4.0, 0.08)
+
 	diffTail := tailEnergyAfter(diffuse, config, 4.0, 0.08)
 	if math.Abs(diffTail-specTail) <= 1e-6 {
 		t.Fatalf("late-tail energy unchanged between specular and diffuse cases: spec=%g diffuse=%g", specTail, diffTail)
@@ -95,11 +96,11 @@ func TestCorpusMetricsStayInExpectedRanges(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			fixture := filepath.Join("..", "testdata", "rooms", tt.fixture)
+
 			sc, err := scene.LoadSceneFile(fixture)
 			if err != nil {
 				t.Fatalf("LoadSceneFile(%q) error = %v", fixture, err)
@@ -149,6 +150,7 @@ func traceSceneMetrics(t *testing.T, sc *scene.Scene, cfg LaunchConfig, receiver
 	t.Helper()
 
 	tracer := &RayTracer{Config: cfg, Scene: sc, ReceiverRadius: receiverRadius}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		t.Fatalf("Trace() error = %v", err)
@@ -181,12 +183,14 @@ func traceSceneMetrics(t *testing.T, sc *scene.Scene, cfg LaunchConfig, receiver
 
 func tailEnergyAfter(sc *scene.Scene, cfg LaunchConfig, receiverRadius float64, earlySeconds float64) float64 {
 	tracer := &RayTracer{Config: cfg, Scene: sc, ReceiverRadius: receiverRadius}
+
 	hist, err := tracer.Trace()
 	if err != nil {
 		return math.NaN()
 	}
 
 	var tail float64
+
 	for binIndex, bin := range hist.Bins {
 		binTime := float64(binIndex) * hist.BinDuration
 		if binTime <= earlySeconds {

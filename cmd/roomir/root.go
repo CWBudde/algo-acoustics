@@ -23,6 +23,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newRenderCommand())
 	cmd.AddCommand(newRenderStereoCommand())
 	cmd.AddCommand(newDumpEventsCommand())
+	cmd.AddCommand(newCompareCommand())
 
 	return cmd
 }

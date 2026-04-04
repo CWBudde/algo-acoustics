@@ -61,9 +61,11 @@ func TestDiffractionPathEnumerationFindsBarrierTopEdge(t *testing.T) {
 
 	wantPoint := Vec3{X: -0.1, Y: -1, Z: 1.526258714882967}
 	found := false
+
 	for _, path := range paths {
 		if path.Point.Distance(wantPoint) <= 1e-9 {
 			found = true
+
 			if !PathVisible(mesh, source, path.Point, receiver) {
 				t.Fatalf("EnumerateDiffractionPaths() returned an occluded path: %#v", path)
 			}

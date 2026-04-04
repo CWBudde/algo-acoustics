@@ -189,6 +189,7 @@ func BenchmarkLambertDirection(b *testing.B) {
 	normal := geometry.Vec3{Z: 1}
 
 	b.ResetTimer()
+
 	for range b.N {
 		_ = LambertDirection(normal, rng)
 	}

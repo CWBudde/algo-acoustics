@@ -46,6 +46,7 @@ func (s ISMSolver) SolveWithDiffraction(sc *scene.Scene, cfg ISMConfig) ([]ir.Ev
 	}
 
 	sortIR(events)
+
 	return events, nil
 }
 
@@ -64,6 +65,7 @@ func DiffractionEvents(source scene.Source, receiver scene.Receiver, edges []geo
 	}
 
 	sortIR(events)
+
 	return events
 }
 
@@ -89,11 +91,13 @@ func diffractionEventsForPath(source scene.Source, receiver scene.Receiver, path
 
 	sourceBandGain := directivityBandGain(source, bandSpec, path.Point)
 	receiverBandGain := directivityBandGain(source, bandSpec, receiver.Position)
+
 	if bandGainSilent(sourceBandGain) {
 		return nil
 	}
 
 	phi, phiPrime, betaZero := diffractionAngles(path)
+
 	spreadingFactor := geometry.WedgeSpreadingFactor(path.SourceDistance, path.ReceiverDistance)
 	if spreadingFactor <= 0 {
 		return nil
@@ -125,6 +129,7 @@ func diffractionEventsForPath(source scene.Source, receiver scene.Receiver, path
 
 		k := 2 * math.Pi * centerFreq / speedOfSound
 		l := geometry.WedgeDistanceParameter(path.SourceDistance, path.ReceiverDistance, betaZero)
+
 		diffraction := geometry.WedgeDiffraction(phi, phiPrime, betaZero, path.Edge.WedgeIndex, k, l)
 		if math.IsNaN(real(diffraction)) || math.IsNaN(imag(diffraction)) || math.IsInf(real(diffraction), 0) || math.IsInf(imag(diffraction), 0) {
 			continue
@@ -195,6 +200,7 @@ func edgeAngle(edge geometry.DiffractionEdge, vector geometry.Vec3) float64 {
 
 	x := transverse.Dot(reference)
 	y := transverse.Dot(basis)
+
 	angle := math.Atan2(y, x)
 	if angle < 0 {
 		angle += 2 * math.Pi
@@ -223,12 +229,4 @@ func sortIR(events []ir.Event) {
 
 		return events[i].PhaseRadians < events[j].PhaseRadians
 	})
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-
-	return b
 }

@@ -131,6 +131,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				arrivalTime := (pathLength + tHit) / r.Config.SpeedOfSound
 				if arrivalTime <= r.Config.MaxTimeSeconds {
 					hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit, defaultAirTemperatureC, defaultRelativeHumidity)
+
 					capture := receiver.AngularWeight(currentRay.Direction)
 					for bandIndex := range hitEnergy {
 						hitEnergy[bandIndex] *= capture
@@ -153,6 +154,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 			state.Energy = attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, segmentLength, defaultAirTemperatureC, defaultRelativeHumidity)
 
 			material := r.sceneMaterialForWall(wallIdx)
+
 			absorption := make([]float64, bandCount)
 			for bandIndex := range absorption {
 				absorption[bandIndex] = material.AbsorptionAt(bandIndex)
@@ -184,6 +186,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 
 				currentRay = geometry.Ray{}
 				state.Energy = nil
+
 				break
 			default:
 				if scatterCoeff >= 1 || (scatterCoeff > 0 && rng.Float64() < scatterCoeff) {
@@ -287,6 +290,7 @@ func calibratedRayLaunchEnergy(sourceGainDB float64, sourcePosition, receiverPos
 	}
 
 	sourceIntensity := math.Pow(10, sourceGainDB/10)
+
 	distance := sourcePosition.Distance(receiverPosition)
 	if distance <= receiverRadius {
 		return sourceIntensity / float64(rayCount)
@@ -302,6 +306,7 @@ func calibratedRayLaunchEnergy(sourceGainDB float64, sourcePosition, receiverPos
 	}
 
 	cosGamma := math.Sqrt(1 - ratio*ratio)
+
 	denominator := 2 * math.Pi * distance * distance * float64(rayCount) * (1 - cosGamma)
 	if denominator <= 0 {
 		return sourceIntensity / float64(rayCount)

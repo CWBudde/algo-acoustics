@@ -54,7 +54,7 @@ func spawnDiffractionBranches(state RayState, ray geometry.Ray, hitPoint geometr
 			continue
 		}
 
-		for sampleIndex := 0; sampleIndex < cfg.DiffractionConeSamples; sampleIndex++ {
+		for sampleIndex := range cfg.DiffractionConeSamples {
 			dir := sampleKellerConeDirection(ray.Direction, edge.Direction, sampleIndex, cfg.DiffractionConeSamples, rng)
 			if dir == geometry.Vec3Zero {
 				continue
@@ -105,6 +105,7 @@ func sampleKellerConeDirection(incidentDir, edgeDir geometry.Vec3, sampleIndex, 
 	}
 
 	u := radial.Normalize()
+
 	v := axis.Cross(u).Normalize()
 	if v == geometry.Vec3Zero {
 		v = orthogonalBasis(axis).Cross(axis).Normalize()
@@ -151,6 +152,7 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 	} else {
 		sN = b*e - c*d
 		tN = a*e - b*d
+
 		if sN < 0 {
 			sN = 0
 			tN = e
@@ -164,6 +166,7 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 
 	if tN < 0 {
 		tN = 0
+
 		if -d < 0 {
 			sN = 0
 		} else if -d > a {
@@ -174,6 +177,7 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 		}
 	} else if tN > tD {
 		tN = tD
+
 		if (-d + b) < 0 {
 			sN = 0
 		} else if (-d + b) > a {
@@ -204,6 +208,7 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 	rayT = pointOnRay.Sub(rayStart).Norm()
 	edgeT = tc * v.Norm()
 	distance = pointOnRay.Distance(pointOnEdge)
+
 	return closest, rayT, edgeT, distance, true
 }
 

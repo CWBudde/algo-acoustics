@@ -26,6 +26,7 @@ func setInterior(g *IBMGrid, field []float64, val float64) {
 // totalEnergy returns the sum of p² over active nodes.
 func totalEnergy(g *IBMGrid, field []float64) float64 {
 	e := 0.0
+
 	for i, c := range g.Class {
 		if c != Exterior {
 			e += field[i] * field[i]
@@ -133,6 +134,7 @@ func TestIBMStencil_ImpedanceAbsorption(t *testing.T) {
 
 	// At least some boundary nodes should have nonzero Laplacian (absorption).
 	nonzero := 0
+
 	for i, c := range g.Class {
 		if c == Boundary && math.Abs(dst[i]) > 1e-10 {
 			nonzero++
@@ -189,8 +191,10 @@ func TestIBMStencil_CornerNode(t *testing.T) {
 
 	// Count boundary nodes with walls on ≥ 2 axes (corners).
 	corners := 0
+
 	for _, bi := range g.Boundary {
 		axesWithWall := 0
+
 		for a := range 3 {
 			for d := range 2 {
 				if bi.Frac[a][d] > 0 {
@@ -450,5 +454,148 @@ func TestIBMStencil_RotatedRoom_CFL(t *testing.T) {
 
 	if eFinal > 2.0*e0 {
 		t.Errorf("energy blew up in rotated room: ratio=%.1f", eFinal/e0)
+	}
+}
+
+func TestIBMStencil_CompressedMatchesFull(t *testing.T) {
+	// Verify that compressed and full modes produce identical Laplacian results.
+	room := rectRoom(3, 3, 3)
+
+	gFull := ClassifyGrid(room, 0.25)
+	gComp := ClassifyGrid(room, 0.25)
+	gComp.EnableCompression()
+
+	sFull := NewIBMStencil(gFull, RigidWallBC())
+	sComp := NewIBMStencil(gComp, RigidWallBC())
+
+	// Non-uniform field.
+	srcFull := makeField(gFull)
+	srcComp := gComp.NewField()
+
+	for ix := range gFull.Nx {
+		for iy := range gFull.Ny {
+			for iz := range gFull.Nz {
+				idx := gFull.nodeIndex(ix, iy, iz)
+				if gFull.Class[idx] == Exterior {
+					continue
+				}
+
+				p := gFull.nodePos(ix, iy, iz)
+				val := math.Sin(p.X) * math.Cos(p.Y) * p.Z
+				srcFull[idx] = val
+				srcComp[gComp.CompactMap[idx]] = val
+			}
+		}
+	}
+
+	dstFull := makeField(gFull)
+	dstComp := gComp.NewField()
+
+	sFull.ApplyLaplacian(dstFull, srcFull)
+	sComp.ApplyLaplacian(dstComp, srcComp)
+
+	// Compare results.
+	for ix := range gFull.Nx {
+		for iy := range gFull.Ny {
+			for iz := range gFull.Nz {
+				flatIdx := gFull.nodeIndex(ix, iy, iz)
+				if gFull.Class[flatIdx] == Exterior {
+					continue
+				}
+
+				fullVal := dstFull[flatIdx]
+				compVal := dstComp[gComp.CompactMap[flatIdx]]
+
+				if math.Abs(fullVal-compVal) > 1e-12 {
+					t.Errorf("node (%d,%d,%d): full=%.15g, compact=%.15g",
+						ix, iy, iz, fullVal, compVal)
+				}
+			}
+		}
+	}
+}
+
+func TestIBMStencil_CompressedFDTDMatchesFull(t *testing.T) {
+	// Verify that FDTD steps produce identical results in both modes.
+	room := rectRoom(3, 3, 3)
+
+	gFull := ClassifyGrid(room, 0.25)
+	gComp := ClassifyGrid(room, 0.25)
+	gComp.EnableCompression()
+
+	sFull := NewIBMStencil(gFull, RigidWallBC())
+	sComp := NewIBMStencil(gComp, RigidWallBC())
+
+	c := 343.0
+	dt := 0.95 * sFull.CFLLimit(c)
+
+	// Gaussian initial condition.
+	curFull := makeField(gFull)
+	curComp := gComp.NewField()
+	centre := geometry.Vec3{X: 1.5, Y: 1.5, Z: 1.5}
+	sigma := 0.3
+
+	for ix := range gFull.Nx {
+		for iy := range gFull.Ny {
+			for iz := range gFull.Nz {
+				idx := gFull.nodeIndex(ix, iy, iz)
+				if gFull.Class[idx] == Exterior {
+					continue
+				}
+
+				p := gFull.nodePos(ix, iy, iz)
+				r2 := (p.X-centre.X)*(p.X-centre.X) +
+					(p.Y-centre.Y)*(p.Y-centre.Y) +
+					(p.Z-centre.Z)*(p.Z-centre.Z)
+				val := math.Exp(-r2 / (2 * sigma * sigma))
+				curFull[idx] = val
+				curComp[gComp.CompactMap[idx]] = val
+			}
+		}
+	}
+
+	prevFull := makeField(gFull)
+	prevComp := gComp.NewField()
+	copy(prevFull, curFull)
+	copy(prevComp, curComp)
+
+	nextFull := makeField(gFull)
+	nextComp := gComp.NewField()
+
+	// Run 50 steps.
+	for range 50 {
+		sFull.FDTDStep(nextFull, curFull, prevFull, c, dt)
+		sComp.FDTDStep(nextComp, curComp, prevComp, c, dt)
+
+		prevFull, curFull, nextFull = curFull, nextFull, prevFull
+		prevComp, curComp, nextComp = curComp, nextComp, prevComp
+	}
+
+	// Compare final state.
+	maxDiff := 0.0
+
+	for ix := range gFull.Nx {
+		for iy := range gFull.Ny {
+			for iz := range gFull.Nz {
+				flatIdx := gFull.nodeIndex(ix, iy, iz)
+				if gFull.Class[flatIdx] == Exterior {
+					continue
+				}
+
+				fullVal := curFull[flatIdx]
+				compVal := curComp[gComp.CompactMap[flatIdx]]
+				diff := math.Abs(fullVal - compVal)
+
+				if diff > maxDiff {
+					maxDiff = diff
+				}
+			}
+		}
+	}
+
+	t.Logf("max difference after 50 FDTD steps: %.3e", maxDiff)
+
+	if maxDiff > 1e-10 {
+		t.Errorf("compressed FDTD diverged from full: max diff = %.3e", maxDiff)
 	}
 }

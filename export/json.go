@@ -2,6 +2,7 @@ package export
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -42,7 +43,7 @@ func WriteSceneJSON(path string, sc *scene.Scene) error {
 // SceneJSON returns canonical JSON bytes for a scene.
 func SceneJSON(sc *scene.Scene) ([]byte, error) {
 	if sc == nil {
-		return nil, fmt.Errorf("scene is nil")
+		return nil, errors.New("scene is nil")
 	}
 
 	canonical := *sc

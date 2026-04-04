@@ -40,6 +40,7 @@ func FindDiffractionPoint(source, receiver Vec3, edge DiffractionEdge) (point Ve
 	receiverPerp := receiverRel.Sub(direction.Scale(receiverParallel))
 
 	sourcePerpDistance := sourcePerp.Norm()
+
 	receiverPerpDistance := receiverPerp.Norm()
 	if sourcePerpDistance <= diffractionPathEpsilon || receiverPerpDistance <= diffractionPathEpsilon {
 		return Vec3{}, 0, false
@@ -52,6 +53,7 @@ func FindDiffractionPoint(source, receiver Vec3, edge DiffractionEdge) (point Ve
 
 	point = edge.Start.Add(direction.Scale(edgeCoordinate))
 	t = edgeCoordinate / edge.Length
+
 	return point, t, true
 }
 
@@ -63,6 +65,7 @@ func PathVisible(mesh *Mesh, source, point, receiver Vec3) bool {
 	}
 
 	bvh := BuildBVH(mesh)
+
 	return segmentVisible(bvh, source, point) && segmentVisible(bvh, point, receiver)
 }
 
@@ -74,6 +77,7 @@ func EnumerateDiffractionPaths(source, receiver Vec3, edges []DiffractionEdge, m
 	}
 
 	bvh := BuildBVH(mesh)
+
 	paths := make([]DiffractionPath, 0, len(edges))
 	for _, edge := range edges {
 		point, _, ok := FindDiffractionPoint(source, receiver, edge)
@@ -123,12 +127,14 @@ func segmentVisible(bvh *BVHNode, start, end Vec3) bool {
 	}
 
 	direction := end.Sub(start)
+
 	distance := direction.Norm()
 	if distance <= diffractionPathEpsilon {
 		return false
 	}
 
 	ray := Ray{Origin: start, Direction: direction.Scale(1 / distance)}
+
 	t, _, hit := bvh.Intersect(ray)
 	if !hit {
 		return true

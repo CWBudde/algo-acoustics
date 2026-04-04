@@ -1,0 +1,41 @@
+{
+  "room": {
+    "kind": "mesh",
+    "meshPath": "../rooms/cube.obj"
+  },
+  "materials": {
+    "plaster": {
+      "name": "plaster",
+      "absorptionByBand": [0.07, 0.08, 0.1, 0.13, 0.15, 0.19],
+      "scatteringByBand": [0.02, 0.02, 0.02, 0.03, 0.03, 0.04]
+    },
+    "wood": {
+      "name": "wood",
+      "absorptionByBand": [0.1, 0.1, 0.11, 0.13, 0.14, 0.16],
+      "scatteringByBand": [0.03, 0.04, 0.05, 0.06, 0.06, 0.07]
+    }
+  },
+  "sources": [
+    {
+      "position": { "X": 1.2, "Y": 1.4, "Z": 1.1 },
+      "orientation": { "W": 1, "X": 0, "Y": 0, "Z": 0 },
+      "gainDb": 0,
+      "directivity": {
+        "type": "omni"
+      }
+    }
+  ],
+  "receivers": [
+    {
+      "position": { "X": 3.1, "Y": 2.6, "Z": 1.3 },
+      "orientation": { "W": 1, "X": 0, "Y": 0, "Z": 0 },
+      "type": "omni"
+    }
+  ],
+  "bandSpec": {
+    "CenterFreqs": [125, 250, 500, 1000, 2000, 4000],
+    "LowerEdges": [88.38834764831843, 176.7766952966369, 353.5533905932738, 707.1067811865476, 1414.213562373095, 2828.42712474619],
+    "UpperEdges": [176.7766952966369, 353.5533905932738, 707.1067811865476, 1414.213562373095, 2828.42712474619, 5656.85424949238]
+  },
+  "sampleRate": 48000
+}

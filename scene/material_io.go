@@ -3,6 +3,7 @@ package scene
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -41,7 +42,8 @@ func LoadMaterialFile(path string) (Material, error) {
 // LoadMaterialJSON loads a material definition from JSON.
 func LoadMaterialJSON(r io.Reader) (Material, error) {
 	var material Material
-	if err := json.NewDecoder(r).Decode(&material); err != nil {
+	err := json.NewDecoder(r).Decode(&material)
+	if err != nil {
 		return Material{}, fmt.Errorf("decode material JSON: %w", err)
 	}
 
@@ -51,13 +53,14 @@ func LoadMaterialJSON(r io.Reader) (Material, error) {
 // LoadMaterialCSV loads a single material table from CSV.
 func LoadMaterialCSV(r io.Reader) (Material, error) {
 	reader := csv.NewReader(r)
+
 	records, err := reader.ReadAll()
 	if err != nil {
 		return Material{}, fmt.Errorf("read material CSV: %w", err)
 	}
 
 	if len(records) == 0 {
-		return Material{}, fmt.Errorf("material CSV is empty")
+		return Material{}, errors.New("material CSV is empty")
 	}
 
 	header := make(map[string]int, len(records[0]))
@@ -67,9 +70,10 @@ func LoadMaterialCSV(r io.Reader) (Material, error) {
 
 	idxBand, okBand := header["band"]
 	idxAbsorption, okAbsorption := header["absorption"]
+
 	idxScattering, okScattering := header["scattering"]
 	if !okBand || !okAbsorption || !okScattering {
-		return Material{}, fmt.Errorf("material CSV requires band, absorption, and scattering columns")
+		return Material{}, errors.New("material CSV requires band, absorption, and scattering columns")
 	}
 
 	material := Material{

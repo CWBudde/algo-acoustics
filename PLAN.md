@@ -994,16 +994,16 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 13.5 Validation against analytical solutions
 
-- [ ] **Rectangular room regression**: run IBM solver on a rectangular room, compare eigenfrequencies and IR against existing shoebox solver — must match within 0.1% for first 20 modes
-- [ ] **Equilateral triangle (2D)**: compare against analytical eigenfrequencies `f_{m,n} = (c / 3L) · √(m² + mn + n²)` — target < 0.5% error for well-resolved modes
-- [ ] **Circular room (2D)**: compare against Bessel function modes — tests curved-boundary IBM accuracy
-- [ ] **Energy decay**: verify energy decay rate in convex room matches Sabine prediction within 10% for a room with known absorption
+- [x] **Rectangular room regression**: run IBM solver on a rectangular room, compare eigenfrequencies and IR against existing shoebox solver — must match within 0.1% for first 20 modes
+- [x] **Equilateral triangle (2D)**: compare against analytical eigenfrequencies `f_{m,n} = (c / 3L) · √(m² + mn + n²)` — target < 0.5% error for well-resolved modes
+- [x] **Circular room (2D)**: compare against Bessel function modes — tests curved-boundary IBM accuracy
+- [x] **Energy decay**: verify energy decay rate in convex room matches Sabine prediction within 10% for a room with known absorption
 
 ### 13.6 Performance optimization
 
-- [ ] Sparse active-node iteration: only update interior + boundary nodes, skip exterior (avoid wasting compute on bounding-box padding)
-- [ ] Profile: compare IBM solver throughput to shoebox solver — target < 15% overhead from boundary handling
-- [ ] Memory: for rooms filling < 50% of bounding box, implement compressed storage of active nodes
+- [x] Sparse active-node iteration: only update interior + boundary nodes, skip exterior (avoid wasting compute on bounding-box padding)
+- [x] Profile: compare IBM solver throughput to shoebox solver — target < 15% overhead from boundary handling
+- [x] Memory: for rooms filling < 50% of bounding box, implement compressed storage of active nodes
 
 > **References:** Botteldooren (1995) FDTD for room acoustics, Hamilton & Bilbao (2017) immersed boundary FDTD, Savioja & Svensson (2015) overview, Bilbao (2004) "Wave and Scattering Methods", Erlangga et al. (2004) shifted-Laplacian preconditioner.
 >
@@ -1228,31 +1228,31 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 17.1 Scene schema and import/export (`scene/`, `export/`)
 
-- [ ] Define a machine-readable JSON Schema for `scene.Scene` and publish it in `docs/`
-- [ ] Add `scene.ValidateSchema` support for structure-level checks before rendering
-- [ ] Add `roomir inspect <scene.json>` to print a normalized summary: room kind, materials, sources, receivers, bands, and sample rate
-- [ ] Add `export/json.go` helpers for canonical scene dumps with stable key ordering
-- [ ] Add round-trip tests for shoebox, mesh, and binaural scenes
+- [x] Define a machine-readable JSON Schema for `scene.Scene` and publish it in `docs/`
+- [x] Add `scene.ValidateSchema` support for structure-level checks before rendering
+- [x] Add `roomir inspect <scene.json>` to print a normalized summary: room kind, materials, sources, receivers, bands, and sample rate
+- [x] Add `export/json.go` helpers for canonical scene dumps with stable key ordering
+- [x] Add round-trip tests for shoebox, mesh, and binaural scenes
 
 ### 17.2 Material and asset library interchange (`scene/`, `cmd/roomplot/`)
 
-- [ ] Add import helpers for simple material tables in JSON/CSV form so external editors can reuse the same absorption/scattering data
-- [ ] Add `roomplot materials <file>` to print band tables for a material library entry
-- [ ] Add `roomplot scene-summary <scene.json>` for quick visual and textual inspection of scene metadata
-- [ ] Add fixtures for a mesh-authored room with named materials, source placement, and listener placement
+- [x] Add import helpers for simple material tables in JSON/CSV form so external editors can reuse the same absorption/scattering data
+- [x] Add `roomplot materials <file>` to print band tables for a material library entry
+- [x] Add `roomplot scene-summary <scene.json>` for quick visual and textual inspection of scene metadata
+- [x] Add fixtures for a mesh-authored room with named materials, source placement, and listener placement
 
 ### 17.3 Comparison exports and regression bundles (`metrics/`, `export/`)
 
-- [ ] Add `roomir compare <a.wav> <b.wav>` to print peak, RMS, correlation, and bandwise deltas
-- [ ] Export comparison tables as CSV and Markdown for sharing with GUI-based workflows
-- [ ] Add golden tests for scene summaries and comparison reports so the textual output stays stable
-- [ ] Add a small corpus of externally authored scenes to `testdata/interop/`
+- [x] Add `roomir compare <a.wav> <b.wav>` to print peak, RMS, correlation, and bandwise deltas
+- [x] Export comparison tables as CSV and Markdown for sharing with GUI-based workflows
+- [x] Add golden tests for scene summaries and comparison reports so the textual output stays stable
+- [x] Add a small corpus of externally authored scenes to `testdata/interop/`
 
 ### 17.4 External tool compatibility pass
 
-- [ ] Document the expected scene conventions for mesh-based authoring tools: coordinate system, units, material bands, and listener orientation
-- [ ] Add one end-to-end fixture that can be authored in an external GUI, rendered here, and compared against a known reference IR
-- [ ] Verify that exported metadata is sufficient for a desktop client to reconstruct the same room, sources, and receivers
+- [x] Document the expected scene conventions for mesh-based authoring tools: coordinate system, units, material bands, and listener orientation
+- [x] Add one end-to-end fixture that can be authored in an external GUI, rendered here, and compared against a known reference IR
+- [x] Verify that exported metadata is sufficient for a desktop client to reconstruct the same room, sources, and receivers
 
 ## Phase 18 — Release Engineering and Long-Run Maintenance
 

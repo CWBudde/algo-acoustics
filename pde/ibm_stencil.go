@@ -86,38 +86,61 @@ func NewIBMStencil(g *IBMGrid, bc WallBC) *IBMStencil {
 // The sign convention matches algo-pde/fd.Apply3D: positive-definite
 // negative Laplacian, so eigenvalues are positive.
 func (s *IBMStencil) ApplyLaplacian(dst, src []float64) {
+	if s.Grid.Compressed {
+		s.applyLaplacianCompact(dst, src)
+
+		return
+	}
+
 	g := s.Grid
 	invH2 := 1.0 / (g.H * g.H)
 	nyNz := g.Ny * g.Nz
 
-	for ix := range g.Nx {
-		for iy := range g.Ny {
-			for iz := range g.Nz {
-				idx := ix*nyNz + iy*g.Nz + iz
+	// Interior nodes: standard 7-point stencil. All 6 neighbors are guaranteed
+	// interior or boundary (never exterior or out-of-bounds).
+	for _, idx := range g.InteriorIdx {
+		u := src[idx]
+		xm := src[idx-nyNz]
+		xp := src[idx+nyNz]
+		ym := src[idx-g.Nz]
+		yp := src[idx+g.Nz]
+		zm := src[idx-1]
+		zp := src[idx+1]
 
-				switch g.Class[idx] {
-				case Exterior:
-					dst[idx] = 0
+		dst[idx] = (6*u - xm - xp - ym - yp - zm - zp) * invH2
+	}
 
-				case Interior:
-					u := src[idx]
-					// Standard 7-point stencil. All 6 neighbors are guaranteed
-					// interior or boundary (never exterior or out-of-bounds)
-					// because interior nodes have no exterior neighbors.
-					xm := src[idx-nyNz]
-					xp := src[idx+nyNz]
-					ym := src[idx-g.Nz]
-					yp := src[idx+g.Nz]
-					zm := src[idx-1]
-					zp := src[idx+1]
+	// Boundary nodes: Hamilton–Bilbao modified stencil.
+	for i := range g.BoundaryIdx {
+		ref := &g.BoundaryIdx[i]
+		s.applyBoundaryStencilFull(dst, src, ref)
+	}
+}
 
-					dst[idx] = (6*u - xm - xp - ym - yp - zm - zp) * invH2
+// applyLaplacianCompact operates on compact (compressed) pressure arrays
+// where field indices are obtained via CompactMap.
+func (s *IBMStencil) applyLaplacianCompact(dst, src []float64) {
+	g := s.Grid
+	cm := g.CompactMap
+	invH2 := 1.0 / (g.H * g.H)
+	nyNz := g.Ny * g.Nz
 
-				case Boundary:
-					s.applyBoundaryStencil(dst, src, idx, ix, iy, iz)
-				}
-			}
-		}
+	for _, flatIdx := range g.InteriorIdx {
+		ci := cm[flatIdx]
+		u := src[ci]
+		xm := src[cm[flatIdx-nyNz]]
+		xp := src[cm[flatIdx+nyNz]]
+		ym := src[cm[flatIdx-g.Nz]]
+		yp := src[cm[flatIdx+g.Nz]]
+		zm := src[cm[flatIdx-1]]
+		zp := src[cm[flatIdx+1]]
+
+		dst[ci] = (6*u - xm - xp - ym - yp - zm - zp) * invH2
+	}
+
+	for i := range g.BoundaryIdx {
+		ref := &g.BoundaryIdx[i]
+		s.applyBoundaryStencilCompact(dst, src, ref)
 	}
 }
 
@@ -136,9 +159,10 @@ func (s *IBMStencil) ApplyLaplacian(dst, src []float64) {
 //
 // Corner nodes (walls on multiple axes) are handled naturally: each axis
 // is treated independently with its own α/β.
-func (s *IBMStencil) applyBoundaryStencil(dst, src []float64, idx, ix, iy, iz int) {
+func (s *IBMStencil) applyBoundaryStencilFull(dst, src []float64, ref *boundaryNodeRef) {
 	g := s.Grid
-	bi := g.Boundary[idx]
+	bi := &ref.Info
+	idx := ref.Idx
 	u := src[idx]
 	invH2 := 1.0 / (g.H * g.H)
 
@@ -148,7 +172,7 @@ func (s *IBMStencil) applyBoundaryStencil(dst, src []float64, idx, ix, iy, iz in
 		{-1, 1},
 	}
 
-	coords := [3]int{ix, iy, iz}
+	coords := [3]int{ref.Ix, ref.Iy, ref.Iz}
 	sizes := [3]int{g.Nx, g.Ny, g.Nz}
 
 	var lap float64
@@ -168,7 +192,7 @@ func (s *IBMStencil) applyBoundaryStencil(dst, src []float64, idx, ix, iy, iz in
 			} else {
 				// Interior/boundary neighbor at distance 1.
 				dist[d] = 1.0
-				pVal[d] = s.neighborValue(src, idx, deltas[a][d], coords[a], sizes[a], d)
+				pVal[d] = s.neighborValueFull(src, idx, deltas[a][d], coords[a], sizes[a], d)
 			}
 		}
 
@@ -184,9 +208,54 @@ func (s *IBMStencil) applyBoundaryStencil(dst, src []float64, idx, ix, iy, iz in
 	dst[idx] = lap
 }
 
-// neighborValue reads the pressure at the neighbor of idx along the given
-// delta, returning 0 if the neighbor is exterior or out-of-bounds.
-func (s *IBMStencil) neighborValue(src []float64, idx, delta, coord, size, dir int) float64 {
+// applyBoundaryStencilCompact is the compact-field variant.
+func (s *IBMStencil) applyBoundaryStencilCompact(dst, src []float64, ref *boundaryNodeRef) {
+	g := s.Grid
+	cm := g.CompactMap
+	bi := &ref.Info
+	flatIdx := ref.Idx
+	ci := cm[flatIdx]
+	u := src[ci]
+	invH2 := 1.0 / (g.H * g.H)
+
+	deltas := [3][2]int{
+		{-g.Ny * g.Nz, g.Ny * g.Nz},
+		{-g.Nz, g.Nz},
+		{-1, 1},
+	}
+
+	coords := [3]int{ref.Ix, ref.Iy, ref.Iz}
+	sizes := [3]int{g.Nx, g.Ny, g.Nz}
+
+	var lap float64
+
+	for a := range 3 {
+		var dist [2]float64
+		var pVal [2]float64
+
+		for d := range 2 {
+			theta := bi.Frac[a][d]
+
+			if theta > 0 {
+				dist[d] = theta
+				pVal[d] = s.ghostValue(u, flatIdx, a, d)
+			} else {
+				dist[d] = 1.0
+				pVal[d] = s.neighborValueCompact(src, cm, flatIdx, deltas[a][d], coords[a], sizes[a], d)
+			}
+		}
+
+		alpha := dist[0]
+		beta := dist[1]
+
+		lap += 2.0 * invH2 * (u/(alpha*beta) - pVal[0]/(alpha*(alpha+beta)) - pVal[1]/(beta*(alpha+beta)))
+	}
+
+	dst[ci] = lap
+}
+
+// neighborValueFull reads the pressure at a neighbor in a full (uncompressed) field.
+func (s *IBMStencil) neighborValueFull(src []float64, idx, delta, coord, size, dir int) float64 {
 	nc := coord
 	if dir == 0 {
 		nc--
@@ -207,6 +276,29 @@ func (s *IBMStencil) neighborValue(src []float64, idx, delta, coord, size, dir i
 	return src[nIdx]
 }
 
+// neighborValueCompact reads the pressure at a neighbor in a compact field.
+func (s *IBMStencil) neighborValueCompact(src []float64, cm []int, flatIdx, delta, coord, size, dir int) float64 {
+	nc := coord
+	if dir == 0 {
+		nc--
+	} else {
+		nc++
+	}
+
+	if nc < 0 || nc >= size {
+		return 0
+	}
+
+	nFlat := flatIdx + delta
+
+	ci := cm[nFlat]
+	if ci < 0 {
+		return 0 // exterior
+	}
+
+	return src[ci]
+}
+
 // ghostValue returns the ghost pressure at the wall for a given boundary
 // node, axis, and direction.
 func (s *IBMStencil) ghostValue(pNode float64, idx, axis, dir int) float64 {
@@ -216,7 +308,7 @@ func (s *IBMStencil) ghostValue(pNode float64, idx, axis, dir int) float64 {
 		return pNode
 
 	case WallImpedance:
-		// p_ghost = R · p_node.
+		// p_ghost = R · p_node (static impedance BC).
 		return s.BC.R * pNode
 
 	case WallADE:
@@ -268,7 +360,12 @@ func (s *IBMStencil) UpdateADE(src []float64, dt float64) {
 
 		// Estimate ∂p/∂n at the wall using the nearest-wall normal.
 		// Use one-sided difference toward the wall.
-		pNode := src[idx]
+		fieldIdx := idx
+		if g.Compressed {
+			fieldIdx = g.CompactMap[idx]
+		}
+
+		pNode := src[fieldIdx]
 
 		// Find the axis/direction with the smallest wall fraction (closest wall).
 		minFrac := math.Inf(1)
@@ -333,28 +430,101 @@ func (s *IBMStencil) CFLLimit(soundSpeed float64) float64 {
 //	p^{n+1} = 2·p^n − p^{n-1} − (c·dt)² · L(p^n)
 //
 // where L is the negative Laplacian (positive-definite).
-// pCur, pPrev, and pNext are all sized Nx·Ny·Nz.
+// pCur, pPrev, and pNext are all sized FieldSize().
 // The caller is responsible for ensuring dt ≤ CFLLimit(c).
 func (s *IBMStencil) FDTDStep(pNext, pCur, pPrev []float64, c, dt float64) {
-	n := s.Grid.Nx * s.Grid.Ny * s.Grid.Nz
+	g := s.Grid
 
 	// Compute −∇²(pCur) into pNext (used as scratch).
 	s.ApplyLaplacian(pNext, pCur)
 
 	cdt2 := c * c * dt * dt
 
-	for i := range n {
-		if s.Grid.Class[i] == Exterior {
-			pNext[i] = 0
-
-			continue
-		}
-
-		pNext[i] = 2*pCur[i] - pPrev[i] - cdt2*pNext[i]
+	if g.Compressed {
+		s.fdtdUpdateCompact(pNext, pCur, pPrev, c, dt, cdt2)
+	} else {
+		s.fdtdUpdateFull(pNext, pCur, pPrev, c, dt, cdt2)
 	}
 
 	// Update ADE state if applicable.
 	if s.BC.Type == WallADE {
 		s.UpdateADE(pCur, dt)
+	}
+}
+
+func (s *IBMStencil) fdtdUpdateFull(pNext, pCur, pPrev []float64, c, dt, cdt2 float64) {
+	g := s.Grid
+
+	// Update interior nodes (no impedance damping).
+	for _, i := range g.InteriorIdx {
+		pNext[i] = 2*pCur[i] - pPrev[i] - cdt2*pNext[i]
+	}
+
+	// Update boundary nodes with optional impedance damping.
+	if s.BC.Type == WallImpedance && s.BC.R < 1 {
+		s.fdtdBoundaryImpedance(pNext, pCur, pPrev, c, dt, cdt2, func(ref *boundaryNodeRef) int {
+			return ref.Idx
+		})
+	} else {
+		for i := range g.BoundaryIdx {
+			idx := g.BoundaryIdx[i].Idx
+			pNext[idx] = 2*pCur[idx] - pPrev[idx] - cdt2*pNext[idx]
+		}
+	}
+}
+
+func (s *IBMStencil) fdtdUpdateCompact(pNext, pCur, pPrev []float64, c, dt, cdt2 float64) {
+	g := s.Grid
+	cm := g.CompactMap
+
+	for _, flatIdx := range g.InteriorIdx {
+		ci := cm[flatIdx]
+		pNext[ci] = 2*pCur[ci] - pPrev[ci] - cdt2*pNext[ci]
+	}
+
+	if s.BC.Type == WallImpedance && s.BC.R < 1 {
+		s.fdtdBoundaryImpedance(pNext, pCur, pPrev, c, dt, cdt2, func(ref *boundaryNodeRef) int {
+			return cm[ref.Idx]
+		})
+	} else {
+		for i := range g.BoundaryIdx {
+			ci := cm[g.BoundaryIdx[i].Idx]
+			pNext[ci] = 2*pCur[ci] - pPrev[ci] - cdt2*pNext[ci]
+		}
+	}
+}
+
+// fdtdBoundaryImpedance applies the impedance-damped FDTD update to boundary nodes.
+// The idxFn maps a boundary node ref to its index in the pressure arrays.
+func (s *IBMStencil) fdtdBoundaryImpedance(
+	pNext, pCur, pPrev []float64, c, dt, cdt2 float64,
+	idxFn func(*boundaryNodeRef) int,
+) {
+	g := s.Grid
+	R := s.BC.R
+	coeff := (1 - R) * c * dt / ((1 + R) * g.H)
+
+	for i := range g.BoundaryIdx {
+		ref := &g.BoundaryIdx[i]
+		idx := idxFn(ref)
+		lap := pNext[idx]
+
+		minTheta := 1.0
+		nWalls := 0
+
+		for a := range 3 {
+			for d := range 2 {
+				if f := ref.Info.Frac[a][d]; f > 0 {
+					if f < minTheta {
+						minTheta = f
+					}
+
+					nWalls++
+				}
+			}
+		}
+
+		sigma := float64(nWalls) * coeff / minTheta
+		pNext[idx] = (2*pCur[idx] - (1-sigma)*pPrev[idx] - cdt2*lap) / (1 + sigma)
 	}
 }

@@ -24,6 +24,7 @@ func newSceneSummaryCommand() *cobra.Command {
 			}
 
 			_, err = fmt.Fprint(cmd.OutOrStdout(), scene.Summary(sc))
+
 			return err
 		},
 	}
