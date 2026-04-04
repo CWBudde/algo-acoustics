@@ -6,6 +6,11 @@
 *.so
 *.dylib
 
+# GPU build artefacts (compiled by nvcc, not part of source)
+gpu/fdtd/fdtd_bench
+gpu/raytrace/ray_bench
+gpu/server/algo-acoustics-gpu
+
 # Build output
 dist/
 out/
