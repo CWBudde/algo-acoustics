@@ -14,6 +14,8 @@ type LaunchConfig struct {
 	SpeedOfSound               float64
 	ReflectionStrategy         ReflectionStrategy
 	EnergyTerminationThreshold float64
+	DiffractionAngularThreshold float64
+	DiffractionConeSamples      int
 }
 
 // FibonacciSphere returns near-uniform unit vectors on the sphere.

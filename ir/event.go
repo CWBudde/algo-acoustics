@@ -9,6 +9,7 @@ const (
 	EventDirect EventKind = iota
 	EventSpecular
 	EventDiffuse
+	EventDiffraction
 	EventPDE
 )
 

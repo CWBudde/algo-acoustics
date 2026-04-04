@@ -80,8 +80,8 @@ func TestFresnelTransitionSmoothNearRegimeBoundaries(t *testing.T) {
 		jump := cmplx.Abs(above - below)
 
 		if jump > 0.002 {
-			t.Errorf("discontinuity at x=%g: F(%g)=%v, F(%g)=%v, jump=%g",
-				boundary, boundary-delta, below, boundary+delta, above, jump)
+			t.Errorf("discontinuity at x=%g: below=%v, above=%v, jump=%g",
+				boundary, below, above, jump)
 		}
 	}
 

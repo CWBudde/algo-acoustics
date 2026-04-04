@@ -11,13 +11,13 @@ func TestWedgeDiffractionHelpers(t *testing.T) {
 	const sPrime = 4.0
 	const betaZero = math.Pi / 3
 
-	gotSpread := wedgeSpreadingFactor(s, sPrime)
+	gotSpread := WedgeSpreadingFactor(s, sPrime)
 	wantSpread := 1 / math.Sqrt(84)
 	if math.Abs(gotSpread-wantSpread) > 1e-12 {
 		t.Fatalf("wedgeSpreadingFactor(%g, %g) = %g, want %g", s, sPrime, gotSpread, wantSpread)
 	}
 
-	gotL := wedgeDistanceParameter(s, sPrime, betaZero)
+	gotL := WedgeDistanceParameter(s, sPrime, betaZero)
 	wantL := 9.0 / 7.0
 	if math.Abs(gotL-wantL) > 1e-12 {
 		t.Fatalf("wedgeDistanceParameter(%g, %g, %g) = %g, want %g", s, sPrime, betaZero, gotL, wantL)
@@ -36,6 +36,15 @@ func TestWedgeDiffractionHalfPlaneReference(t *testing.T) {
 func TestWedgeDiffractionNinetyDegreeWedgeReference(t *testing.T) {
 	got := WedgeDiffraction(1.3, 0.4, 1.0, 1.5, 5.2, 0.9)
 	want := complex(-0.1658551761309078, 0.1384373007043032)
+
+	if cmplx.Abs(got-want) > 5e-3 {
+		t.Fatalf("WedgeDiffraction(...) = %v, want %v", got, want)
+	}
+}
+
+func TestWedgeDiffractionTwoSeventyDegreeWedgeReference(t *testing.T) {
+	got := WedgeDiffraction(1.1, 0.35, 1.35, 4.0/3.0, 6.4, 1.2)
+	want := complex(-0.09453712368277413, 0.08562952193276316)
 
 	if cmplx.Abs(got-want) > 5e-3 {
 		t.Fatalf("WedgeDiffraction(...) = %v, want %v", got, want)

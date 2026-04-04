@@ -70,6 +70,8 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 		return nil, err
 	}
 
+	diffractionIndex := r.diffractionEdgeIndex()
+
 	source := r.Scene.Sources[0]
 	receiverData := r.Scene.Receivers[0]
 
@@ -136,6 +138,11 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 
 					hist.Add(arrivalTime, hitEnergy)
 				}
+			}
+
+			if diffractionIndex != nil && r.Config.DiffractionAngularThreshold > 0 {
+				branches := spawnDiffractionBranches(state, currentRay, hitPoint, segmentLength, diffractionIndex.edges, diffractionIndex, r.Config, rng, launchEnergy, r.Scene.BandSpec.CenterFreqs)
+				states = append(states, branches...)
 			}
 
 			pathLength += segmentLength
@@ -255,6 +262,14 @@ func (r *RayTracer) sceneTracer() (Tracer, error) {
 	default:
 		return nil, errors.New("raytrace requires a shoebox or mesh room")
 	}
+}
+
+func (r *RayTracer) diffractionEdgeIndex() *DiffractionEdgeIndex {
+	if r == nil || r.Scene == nil || r.Scene.Room.Mesh == nil || r.Config.DiffractionAngularThreshold <= 0 {
+		return nil
+	}
+
+	return NewDiffractionEdgeIndex(r.Scene.Room.Mesh)
 }
 
 func totalEnergy(values []float64) float64 {

@@ -11,7 +11,8 @@ func TestEventKindOrdering(t *testing.T) {
 		{name: "direct", kind: EventDirect, want: 0},
 		{name: "specular", kind: EventSpecular, want: 1},
 		{name: "diffuse", kind: EventDiffuse, want: 2},
-		{name: "pde", kind: EventPDE, want: 3},
+		{name: "diffraction", kind: EventDiffraction, want: 3},
+		{name: "pde", kind: EventPDE, want: 4},
 	}
 
 	for _, tc := range tests {

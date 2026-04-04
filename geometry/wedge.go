@@ -55,6 +55,18 @@ func wedgeDistanceParameter(s, sPrime, betaZero float64) float64 {
 	return (s * sPrime / (s + sPrime)) * sinBetaZero * sinBetaZero
 }
 
+// WedgeSpreadingFactor returns the geometric spreading factor used by the UTD
+// diffraction contribution.
+func WedgeSpreadingFactor(s, sPrime float64) float64 {
+	return wedgeSpreadingFactor(s, sPrime)
+}
+
+// WedgeDistanceParameter returns the path-dependent distance parameter used by
+// the UTD transition functions.
+func WedgeDistanceParameter(s, sPrime, betaZero float64) float64 {
+	return wedgeDistanceParameter(s, sPrime, betaZero)
+}
+
 func wedgeTransitionArgumentPlus(beta, n float64) float64 {
 	if n <= 0 {
 		return 0

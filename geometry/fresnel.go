@@ -221,7 +221,7 @@ func fresnelAuxFG(x float64) (f, g float64) {
 	fSum := 1.0
 	fTerm := 1.0
 
-	for n := 0; n < 25; n++ {
+	for n := range 25 {
 		prev := fTerm
 		fTerm *= -float64((4*n+1)*(4*n+3)) * invPix2 * invPix2
 
@@ -238,7 +238,7 @@ func fresnelAuxFG(x float64) (f, g float64) {
 	gSum := 1.0
 	gTerm := 1.0
 
-	for n := 0; n < 25; n++ {
+	for n := range 25 {
 		prev := gTerm
 		gTerm *= -float64((4*n+3)*(4*n+5)) * invPix2 * invPix2
 
