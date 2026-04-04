@@ -962,28 +962,28 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 13.2 Grid classification and boundary mapping (`pde/`)
 
-- [ ] Add `ibm_grid.go`:
+- [x] Add `ibm_grid.go`:
   - For each grid node: classify as interior, boundary, or exterior
   - Boundary nodes: nodes inside the room with at least one exterior neighbor
   - For each boundary node: store fractional distance to wall along each axis, wall normal vector
-- [ ] Implement efficient classification using the convex half-plane tests (avoid per-node ray casting)
-- [ ] Store classification as a compact bitmask or enum grid (memory-efficient for large grids)
-- [ ] Unit test: rectangular room classification matches existing shoebox solver exactly
-- [ ] Unit test: 45° rotated square room produces correct boundary node pattern
+- [x] Implement efficient classification using the convex half-plane tests (avoid per-node ray casting)
+- [x] Store classification as a compact bitmask or enum grid (memory-efficient for large grids)
+- [x] Unit test: rectangular room classification matches existing shoebox solver exactly
+- [x] Unit test: 45° rotated square room produces correct boundary node pattern
 
 ### 13.3 Modified FDTD stencil for boundary nodes (`pde/`)
 
-- [ ] Implement interpolated boundary scheme: adjust FD coefficients based on sub-cell wall position
+- [x] Implement interpolated boundary scheme: adjust FD coefficients based on sub-cell wall position
   - Option A (baseline): weighted reflection — mirror pressure at wall with appropriate reflection coefficient
   - Option B (higher accuracy): Hamilton–Bilbao coefficient modification based on fractional cell distances
-- [ ] Handle corner nodes where two walls meet (only convex corners for convex rooms)
-- [ ] Set exterior nodes to zero pressure (inactive)
-- [ ] Verify no stencil reads from uninitialized exterior data
-- [ ] Implement configurable wall boundary condition:
+- [x] Handle corner nodes where two walls meet (only convex corners for convex rooms)
+- [x] Set exterior nodes to zero pressure (inactive)
+- [x] Verify no stencil reads from uninitialized exterior data
+- [x] Implement configurable wall boundary condition:
   - Rigid walls: `∂p/∂n = 0` (Neumann)
   - Impedance walls: frequency-independent real-valued reflection coefficient
   - Frequency-dependent impedance: auxiliary differential equation (ADE) approach at boundary nodes
-- [ ] CFL stability verification: empirically test that modified boundary stencils do not reduce stability limit below usable threshold
+- [x] CFL stability verification: empirically test that modified boundary stencils do not reduce stability limit below usable threshold
 
 ### 13.4 Source injection for arbitrary positions (`pde/`)
 
@@ -1220,22 +1220,89 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ---
 
+## Phase 17 — Interoperability and Asset Exchange
+
+### Milestone M: exchange scenes and assets with external authoring tools
+
+> Make `algo-acoustics` a better computational backend for desktop authoring tools by hardening scene interchange, material libraries, and comparison exports.
+
+### 17.1 Scene schema and import/export (`scene/`, `export/`)
+
+- [ ] Define a machine-readable JSON Schema for `scene.Scene` and publish it in `docs/`
+- [ ] Add `scene.ValidateSchema` support for structure-level checks before rendering
+- [ ] Add `roomir inspect <scene.json>` to print a normalized summary: room kind, materials, sources, receivers, bands, and sample rate
+- [ ] Add `export/json.go` helpers for canonical scene dumps with stable key ordering
+- [ ] Add round-trip tests for shoebox, mesh, and binaural scenes
+
+### 17.2 Material and asset library interchange (`scene/`, `cmd/roomplot/`)
+
+- [ ] Add import helpers for simple material tables in JSON/CSV form so external editors can reuse the same absorption/scattering data
+- [ ] Add `roomplot materials <file>` to print band tables for a material library entry
+- [ ] Add `roomplot scene-summary <scene.json>` for quick visual and textual inspection of scene metadata
+- [ ] Add fixtures for a mesh-authored room with named materials, source placement, and listener placement
+
+### 17.3 Comparison exports and regression bundles (`metrics/`, `export/`)
+
+- [ ] Add `roomir compare <a.wav> <b.wav>` to print peak, RMS, correlation, and bandwise deltas
+- [ ] Export comparison tables as CSV and Markdown for sharing with GUI-based workflows
+- [ ] Add golden tests for scene summaries and comparison reports so the textual output stays stable
+- [ ] Add a small corpus of externally authored scenes to `testdata/interop/`
+
+### 17.4 External tool compatibility pass
+
+- [ ] Document the expected scene conventions for mesh-based authoring tools: coordinate system, units, material bands, and listener orientation
+- [ ] Add one end-to-end fixture that can be authored in an external GUI, rendered here, and compared against a known reference IR
+- [ ] Verify that exported metadata is sufficient for a desktop client to reconstruct the same room, sources, and receivers
+
+## Phase 18 — Release Engineering and Long-Run Maintenance
+
+### Milestone N: reproducible binaries, demos, and regression history
+
+> Turn the toolkit into something that is easy to ship, easy to verify, and hard to regress.
+
+### 18.1 Release artifacts
+
+- [ ] Add release targets for CLI binaries, web demo assets, and regression bundles
+- [ ] Publish versioned tarball/zip archives with example scenes and docs
+- [ ] Add build metadata to binaries so users can report exact version, commit, and build date
+
+### 18.2 CI and test coverage gaps
+
+- [ ] Add CI jobs for all supported platforms with a split between unit tests, integration tests, and formatting checks
+- [ ] Add a dedicated regression job for `testdata/regression/` and `cmd/roombench`
+- [ ] Add a smoke test for the WASM demo build so browser regressions fail fast
+- [ ] Add a smoke test that renders at least one mono, stereo, and low-frequency scene in CI
+
+### 18.3 Documentation and examples
+
+- [ ] Add one page each for scene authoring, HRTF usage, directivity usage, hybrid rendering, and regression workflow
+- [ ] Add a short "compare against another tool" guide that explains the expected output formats and validation workflow
+- [ ] Keep the example scenes in sync with the current CLI flags and library interfaces
+
+### 18.4 Maintenance budget
+
+- [ ] Add a quarterly dependency audit for `algo-dsp`, `algo-fft`, `algo-pde`, `gll-tools`, and `wav`
+- [ ] Add a benchmark baseline update procedure so performance improvements do not accidentally become regressions
+- [ ] Track any new format or solver feature with a small fixture before expanding it into a full phase
+
 ## Milestone Summary
 
-| Milestone                        | Phases  | Deliverable                              |
-| -------------------------------- | ------- | ---------------------------------------- |
-| **A — First audible result**     | 0, 1, 2 | Mono WAV IR from shoebox scene           |
-| **B — Useful room simulator**    | 3, 4, 5 | Hybrid mono IR + metrics + regression    |
-| **C — Loudspeaker-aware**        | 6       | GLL directivity source model             |
-| **D — Binaural simulator**       | 7       | Stereo BRIR WAV export                   |
-| **E — Physics-enhanced low end** | 8       | `algo-pde` crossover hybrid IR           |
-| **F — Geometry expansion**       | 9, 10   | Mesh scenes + validation corpus          |
-| **G — Accurate scattering**      | 11      | Per-band scattering + air absorption     |
-| **H — Diffraction**              | 12      | UTD edge diffraction in ISM + ray tracer |
-| **I — Convex room wave solver**  | 13      | IBM-FDTD for non-rectangular rooms       |
-| **J — GPU acceleration**         | 14      | GPU-offloaded FDTD + ray tracing         |
-| **K — Interactive preview**      | 15      | Sub-second parameter feedback            |
-| **L — Browser demo**             | 16      | WASM + Three.js + Web Audio demo         |
+| Milestone                          | Phases  | Deliverable                              |
+| ---------------------------------- | ------- | ---------------------------------------- |
+| **A — First audible result**       | 0, 1, 2 | Mono WAV IR from shoebox scene           |
+| **B — Useful room simulator**      | 3, 4, 5 | Hybrid mono IR + metrics + regression    |
+| **C — Loudspeaker-aware**          | 6       | GLL directivity source model             |
+| **D — Binaural simulator**         | 7       | Stereo BRIR WAV export                   |
+| **E — Physics-enhanced low end**   | 8       | `algo-pde` crossover hybrid IR           |
+| **F — Geometry expansion**         | 9, 10   | Mesh scenes + validation corpus          |
+| **G — Accurate scattering**        | 11      | Per-band scattering + air absorption     |
+| **H — Diffraction**                | 12      | UTD edge diffraction in ISM + ray tracer |
+| **I — Convex room wave solver**    | 13      | IBM-FDTD for non-rectangular rooms       |
+| **J — GPU acceleration**           | 14      | GPU-offloaded FDTD + ray tracing         |
+| **K — Interactive preview**        | 15      | Sub-second parameter feedback            |
+| **L — Browser demo**               | 16      | WASM + Three.js + Web Audio demo         |
+| **M — Interop and asset exchange** | 17      | External authoring tool compatibility    |
+| **N — Release engineering**        | 18      | Reproducible artifacts + maintenance     |
 
 ---
 

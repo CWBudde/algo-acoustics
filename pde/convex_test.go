@@ -50,7 +50,6 @@ func wedgeRoom() (*ConvexRoom, error) {
 	// Edge (4,0)→(2,3): direction (−2,3). Outward normal points right: (3,2)/√13.
 	//   Inward normal: (−3,−2)/√13. Plane passes through (4,0,0).
 	// Edge (0,0)→(4,0): z=0, inward normal +Z. Already covered.
-
 	s := 1.0 / math.Sqrt(13)
 
 	walls := []geometry.Plane{
@@ -87,7 +86,6 @@ func truncatedPyramidRoom() (*ConvexRoom, error) {
 	//   Two edge vectors: (4,0,0) and (1,1,3). Normal = cross = (0·3−0·1, 0·1−4·3, 4·1−0·1) = (0,−12,4).
 	//   Inward (toward +Y): (0,12,4). Normalise: len=√(144+16)=√160=4√10.
 	//   n = (0, 3/√10, 1/√10). d = n·(0,0,0) = 0.
-
 	s10 := 1.0 / math.Sqrt(10)
 
 	walls := []geometry.Plane{
@@ -141,6 +139,7 @@ func TestConvexRoom_Construction(t *testing.T) {
 			if err != nil {
 				t.Fatalf("construction failed: %v", err)
 			}
+
 			if r == nil {
 				t.Fatal("room is nil")
 			}
@@ -273,6 +272,7 @@ func TestConvexRoom_DistanceToNearestWall(t *testing.T) {
 			if math.Abs(wd.Dist-tt.wantDist) > tt.wantTol {
 				t.Errorf("dist = %v, want %v (±%v)", wd.Dist, tt.wantDist, tt.wantTol)
 			}
+
 			if wd.WallIdx < 0 || wd.WallIdx >= len(r.Walls) {
 				t.Errorf("wallIdx = %d, out of range", wd.WallIdx)
 			}
@@ -346,6 +346,7 @@ func TestConvexRoom_BoundingBox(t *testing.T) {
 			if !vec3Near(bb.Min, tt.wantMin, 1e-12) {
 				t.Errorf("Min = %v, want %v", bb.Min, tt.wantMin)
 			}
+
 			if !vec3Near(bb.Max, tt.wantMax, 1e-12) {
 				t.Errorf("Max = %v, want %v", bb.Max, tt.wantMax)
 			}
