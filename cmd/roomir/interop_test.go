@@ -56,6 +56,7 @@ func TestExternalToolMeshSceneLateRenderMatchesReferenceIR(t *testing.T) {
 	compareCmd := newRootCommand()
 	compareStdout := &bytes.Buffer{}
 	compareStderr := &bytes.Buffer{}
+
 	compareCmd.SetOut(compareStdout)
 	compareCmd.SetErr(compareStderr)
 	compareCmd.SetArgs([]string{

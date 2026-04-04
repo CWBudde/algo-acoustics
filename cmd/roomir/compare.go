@@ -131,7 +131,7 @@ func loadComparisonBuffer(path string) (*ir.Buffer, error) {
 	buffer := ir.NewBuffer(sampleRate, float64(frames)/float64(sampleRate))
 	for frame := range frames {
 		sum := 0.0
-		for channel := 0; channel < channels; channel++ {
+		for channel := range channels {
 			sum += float64(decoded.Data[frame*channels+channel])
 		}
 

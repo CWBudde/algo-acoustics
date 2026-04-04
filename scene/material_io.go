@@ -42,6 +42,7 @@ func LoadMaterialFile(path string) (Material, error) {
 // LoadMaterialJSON loads a material definition from JSON.
 func LoadMaterialJSON(r io.Reader) (Material, error) {
 	var material Material
+
 	err := json.NewDecoder(r).Decode(&material)
 	if err != nil {
 		return Material{}, fmt.Errorf("decode material JSON: %w", err)

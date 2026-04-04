@@ -556,6 +556,7 @@ func TestIBMStencil_CompressedFDTDMatchesFull(t *testing.T) {
 
 	prevFull := makeField(gFull)
 	prevComp := gComp.NewField()
+
 	copy(prevFull, curFull)
 	copy(prevComp, curComp)
 
