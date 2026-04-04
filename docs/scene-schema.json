@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "algo-acoustics scene schema",
+  "type": "object",
+  "required": ["room", "bandSpec", "sampleRate"],
+  "properties": {
+    "room": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["shoebox", "mesh"]
+        },
+        "shoebox": {
+          "type": "object",
+          "required": ["width", "depth", "height", "wallMaterials"],
+          "properties": {
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "depth": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 },
+            "wallMaterials": {
+              "type": "array",
+              "minItems": 6,
+              "maxItems": 6,
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "meshPath": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "shoebox" } }
+          },
+          "then": {
+            "required": ["shoebox"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "mesh" } }
+          },
+          "then": {
+            "required": ["meshPath"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "materials": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "absorptionByBand"],
+        "properties": {
+          "name": { "type": "string" },
+          "absorptionByBand": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "scatteringByBand": {
+            "type": "array",
+            "items": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "scattering": {
+            "type": "array",
+            "items": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["position", "orientation", "gainDb"],
+        "properties": {
+          "position": { "$ref": "#/$defs/vec3" },
+          "orientation": { "$ref": "#/$defs/quaternion" },
+          "gainDb": { "type": "number" },
+          "directivity": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "type": "string", "enum": ["omni", "cardioid"] },
+              "axis": { "$ref": "#/$defs/vec3" },
+              "orderN": { "type": "number", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "receivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["position", "orientation", "type"],
+        "properties": {
+          "position": { "$ref": "#/$defs/vec3" },
+          "orientation": { "$ref": "#/$defs/quaternion" },
+          "type": { "type": "string", "enum": ["omni", "binaural"] },
+          "hrtf": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "type": "string", "enum": ["noop", "nearestNeighbor"] },
+              "sampleRate": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "bandSpec": {
+      "type": "object",
+      "required": ["CenterFreqs", "LowerEdges", "UpperEdges"],
+      "properties": {
+        "CenterFreqs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "exclusiveMinimum": 0 }
+        },
+        "LowerEdges": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "exclusiveMinimum": 0 }
+        },
+        "UpperEdges": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sampleRate": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "vec3": {
+      "type": "object",
+      "required": ["X", "Y", "Z"],
+      "properties": {
+        "X": { "type": "number" },
+        "Y": { "type": "number" },
+        "Z": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "quaternion": {
+      "type": "object",
+      "required": ["W", "X", "Y", "Z"],
+      "properties": {
+        "W": { "type": "number" },
+        "X": { "type": "number" },
+        "Y": { "type": "number" },
+        "Z": { "type": "number" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

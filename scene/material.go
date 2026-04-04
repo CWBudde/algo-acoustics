@@ -33,11 +33,14 @@ func (m Material) MarshalJSON() ([]byte, error) {
 	payload := materialJSON{
 		Name:             m.Name,
 		AbsorptionByBand: m.AbsorptionByBand,
-		ScatteringByBand: m.ScatteringByBand,
 	}
 
 	if hasNonZeroScattering(m.Scattering) {
 		payload.Scattering = append([]float64(nil), m.Scattering[:]...)
+	}
+
+	if hasNonZeroFloatSlice(m.ScatteringByBand) {
+		payload.ScatteringByBand = append([]float64(nil), m.ScatteringByBand...)
 	}
 
 	encoded, err := json.Marshal(payload)
@@ -160,6 +163,16 @@ func EstimateScatteringFromDepthWithK(depthMeters, k float64) [NumBands]float64 
 
 func hasNonZeroScattering(scattering [NumBands]float64) bool {
 	for _, coeff := range scattering {
+		if coeff != 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasNonZeroFloatSlice(values []float64) bool {
+	for _, coeff := range values {
 		if coeff != 0 {
 			return true
 		}
