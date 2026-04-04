@@ -18,6 +18,8 @@ func newRootCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(newSourceDirectivityCommand())
+	cmd.AddCommand(newMaterialsCommand())
+	cmd.AddCommand(newSceneSummaryCommand())
 
 	return cmd
 }

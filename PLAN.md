@@ -987,10 +987,10 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 13.4 Source injection for arbitrary positions (`pde/`)
 
-- [ ] Point source injection at arbitrary position inside convex room
-- [ ] Verify source position is inside geometry before injection
-- [ ] Support both soft source (additive) and hard source (overwrite) modes
-- [ ] Gaussian pulse and sine burst source signals (reuse from shoebox solver)
+- [x] Point source injection at arbitrary position inside convex room
+- [x] Verify source position is inside geometry before injection
+- [x] Support both soft source (additive) and hard source (overwrite) modes
+- [x] Gaussian pulse and sine burst source signals (reuse from shoebox solver)
 
 ### 13.5 Validation against analytical solutions
 

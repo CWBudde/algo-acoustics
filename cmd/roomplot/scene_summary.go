@@ -7,9 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newInspectCommand() *cobra.Command {
+func newSceneSummaryCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "inspect <scene.json>",
+		Use:   "scene-summary <scene.json>",
 		Short: "Print a normalized summary of a scene.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -20,12 +20,11 @@ func newInspectCommand() *cobra.Command {
 
 			err = scene.Validate(sc)
 			if err != nil {
-				return &validationError{message: err.Error()}
+				return err
 			}
 
-			fmt.Fprint(cmd.OutOrStdout(), scene.Summary(sc))
-
-			return nil
+			_, err = fmt.Fprint(cmd.OutOrStdout(), scene.Summary(sc))
+			return err
 		},
 	}
 }
