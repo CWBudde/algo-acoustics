@@ -1,0 +1,268 @@
+// server.cu — GPU server: accepts one Unix socket connection and dispatches
+// incoming requests to CUDA kernels.
+//
+// Usage:
+//   algo-acoustics-gpu --socket /tmp/algo_gpu_NNNN.sock
+//
+// The server processes one request at a time (serialised by the Go worker's
+// channel).  Multiple connections are not supported; the server exits after
+// the connection is closed or a shutdown message is received.
+//
+// Handlers are stubs for phases 14.4 and 14.5:
+//   AllocGrid / UploadFields / RunFDTD  → STATUS_NOT_IMPL
+//   AllocBVH  / TraceRays              → STATUS_NOT_IMPL
+// Only Ping and Shutdown are fully implemented here.
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cerrno>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include "protocol.h"
+
+// -----------------------------------------------------------------------
+// Shared-memory helpers (Linux /dev/shm implementation)
+// -----------------------------------------------------------------------
+
+static const char SHM_DIR[] = "/dev/shm/";
+
+static void *shm_open_read(const char *name, size_t size) {
+    char path[256];
+    snprintf(path, sizeof(path), "%s%s", SHM_DIR, name);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { perror(path); return nullptr; }
+    void *p = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
+    close(fd);
+    if (p == MAP_FAILED) { perror("mmap read"); return nullptr; }
+    return p;
+}
+
+static void *shm_open_write(const char *name, size_t size) {
+    char path[256];
+    snprintf(path, sizeof(path), "%s%s", SHM_DIR, name);
+    int fd = open(path, O_RDWR);
+    if (fd < 0) { perror(path); return nullptr; }
+    void *p = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (p == MAP_FAILED) { perror("mmap write"); return nullptr; }
+    return p;
+}
+
+static void shm_close(void *p, size_t size) {
+    if (p && p != MAP_FAILED) munmap(p, size);
+}
+
+// -----------------------------------------------------------------------
+// Socket I/O helpers
+// -----------------------------------------------------------------------
+
+static bool read_exact(int fd, void *buf, size_t n) {
+    uint8_t *p = (uint8_t *)buf;
+    size_t remaining = n;
+    while (remaining > 0) {
+        ssize_t r = read(fd, p, remaining);
+        if (r <= 0) return false;
+        p += r;
+        remaining -= r;
+    }
+    return true;
+}
+
+static bool write_exact(int fd, const void *buf, size_t n) {
+    const uint8_t *p = (const uint8_t *)buf;
+    size_t remaining = n;
+    while (remaining > 0) {
+        ssize_t w = write(fd, p, remaining);
+        if (w <= 0) return false;
+        p += w;
+        remaining -= w;
+    }
+    return true;
+}
+
+static bool send_response(int fd, uint32_t status,
+                           const void *data = nullptr, uint32_t data_len = 0) {
+    resp_hdr_t h = { status, data_len };
+    if (!write_exact(fd, &h, sizeof(h))) return false;
+    if (data && data_len > 0)
+        if (!write_exact(fd, data, data_len)) return false;
+    return true;
+}
+
+// -----------------------------------------------------------------------
+// Handler stubs (filled in 14.4 and 14.5)
+// -----------------------------------------------------------------------
+
+static void handle_alloc_grid(int conn, const uint8_t *payload, uint32_t len) {
+    (void)payload; (void)len;
+    fprintf(stderr, "[gpu-server] AllocGrid: not yet implemented (phase 14.4)\n");
+    send_response(conn, STATUS_NOT_IMPL);
+}
+
+static void handle_free_grid(int conn, const uint8_t *payload, uint32_t len) {
+    (void)payload; (void)len;
+    send_response(conn, STATUS_NOT_IMPL);
+}
+
+static void handle_upload_fields(int conn, const uint8_t *payload, uint32_t len) {
+    (void)payload; (void)len;
+    fprintf(stderr, "[gpu-server] UploadFields: not yet implemented (phase 14.4)\n");
+    send_response(conn, STATUS_NOT_IMPL);
+}
+
+static void handle_run_fdtd(int conn, const uint8_t *payload, uint32_t len) {
+    (void)payload; (void)len;
+    fprintf(stderr, "[gpu-server] RunFDTD: not yet implemented (phase 14.4)\n");
+    send_response(conn, STATUS_NOT_IMPL);
+}
+
+static void handle_alloc_bvh(int conn, const uint8_t *payload, uint32_t len) {
+    (void)payload; (void)len;
+    fprintf(stderr, "[gpu-server] AllocBVH: not yet implemented (phase 14.5)\n");
+    send_response(conn, STATUS_NOT_IMPL);
+}
+
+static void handle_free_bvh(int conn, const uint8_t *payload, uint32_t len) {
+    (void)payload; (void)len;
+    send_response(conn, STATUS_NOT_IMPL);
+}
+
+static void handle_trace_rays(int conn, const uint8_t *payload, uint32_t len) {
+    (void)payload; (void)len;
+    fprintf(stderr, "[gpu-server] TraceRays: not yet implemented (phase 14.5)\n");
+    send_response(conn, STATUS_NOT_IMPL);
+}
+
+// -----------------------------------------------------------------------
+// Dispatch loop
+// -----------------------------------------------------------------------
+
+// Returns false if the connection should be closed (Shutdown or I/O error).
+static bool handle_one(int conn) {
+    req_hdr_t hdr;
+    if (!read_exact(conn, &hdr, sizeof(hdr))) return false;
+
+    // Read payload.
+    uint8_t *payload = nullptr;
+    if (hdr.payload_len > 0) {
+        payload = new uint8_t[hdr.payload_len];
+        if (!read_exact(conn, payload, hdr.payload_len)) {
+            delete[] payload;
+            return false;
+        }
+    }
+
+    bool keep_running = true;
+
+    switch (hdr.type) {
+    case MSG_PING:
+        send_response(conn, STATUS_OK);
+        break;
+
+    case MSG_SHUTDOWN:
+        send_response(conn, STATUS_OK);
+        keep_running = false;
+        break;
+
+    case MSG_ALLOC_GRID:
+        handle_alloc_grid(conn, payload, hdr.payload_len);
+        break;
+    case MSG_FREE_GRID:
+        handle_free_grid(conn, payload, hdr.payload_len);
+        break;
+    case MSG_UPLOAD_FIELDS:
+        handle_upload_fields(conn, payload, hdr.payload_len);
+        break;
+    case MSG_RUN_FDTD:
+        handle_run_fdtd(conn, payload, hdr.payload_len);
+        break;
+
+    case MSG_ALLOC_BVH:
+        handle_alloc_bvh(conn, payload, hdr.payload_len);
+        break;
+    case MSG_FREE_BVH:
+        handle_free_bvh(conn, payload, hdr.payload_len);
+        break;
+    case MSG_TRACE_RAYS:
+        handle_trace_rays(conn, payload, hdr.payload_len);
+        break;
+
+    default:
+        fprintf(stderr, "[gpu-server] unknown message type 0x%04x\n", hdr.type);
+        send_response(conn, STATUS_BAD_MSG);
+        break;
+    }
+
+    delete[] payload;
+    return keep_running;
+}
+
+// -----------------------------------------------------------------------
+// main
+// -----------------------------------------------------------------------
+
+int main(int argc, char **argv) {
+    // Parse --socket <path>.
+    const char *sock_path = nullptr;
+    for (int i = 1; i < argc - 1; i++) {
+        if (strcmp(argv[i], "--socket") == 0) {
+            sock_path = argv[i + 1];
+            break;
+        }
+    }
+    if (!sock_path) {
+        fprintf(stderr, "usage: %s --socket <path>\n", argv[0]);
+        return 1;
+    }
+
+    // Print CUDA device info.
+    int dev_count = 0;
+    cudaGetDeviceCount(&dev_count);
+    if (dev_count == 0) {
+        fprintf(stderr, "[gpu-server] no CUDA device found\n");
+        return 1;
+    }
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
+    fprintf(stderr, "[gpu-server] device: %s (sm_%d%d, %.1f GB)\n",
+            prop.name, prop.major, prop.minor,
+            prop.totalGlobalMem / 1e9);
+
+    // Create Unix domain socket.
+    int server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server_fd < 0) { perror("socket"); return 1; }
+
+    struct sockaddr_un addr = {};
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+    unlink(sock_path);
+
+    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("bind"); return 1;
+    }
+    if (listen(server_fd, 1) < 0) {
+        perror("listen"); return 1;
+    }
+
+    fprintf(stderr, "[gpu-server] listening on %s\n", sock_path);
+
+    // Accept exactly one connection.
+    int conn = accept(server_fd, nullptr, nullptr);
+    if (conn < 0) { perror("accept"); return 1; }
+
+    fprintf(stderr, "[gpu-server] client connected\n");
+
+    while (handle_one(conn)) {}
+
+    close(conn);
+    close(server_fd);
+    unlink(sock_path);
+    fprintf(stderr, "[gpu-server] shutdown\n");
+    return 0;
+}

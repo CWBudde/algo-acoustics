@@ -1021,49 +1021,76 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 14.1 CPU profiling baseline
 
-- [ ] Profile full simulation pipeline with `go tool pprof` (CPU, memory, block profiles)
-- [ ] Identify Amdahl fraction: what percentage of wall-clock time is in FDTD stencils vs. ray tracing vs. orchestration/I/O?
-- [ ] Measure single-core vs. multi-core scaling of hot loops (`GOMAXPROCS` sweep: 1, 2, 4, 8)
-- [ ] Document problem sizes: grid dimensions, ray counts per batch, total timesteps
-- [ ] Compute Amdahl ceiling: `Speedup = 1 / ((1 - P) + P/S)` — if ceiling < 3×, GPU may not justify the complexity
-- [ ] Estimate GPU memory requirements for target problem sizes, verify fit on target GPU (e.g., RTX 4090 = 24 GB)
+- [x] Profile full simulation pipeline with `go tool pprof` (CPU, memory, block profiles)
+- [x] Identify Amdahl fraction: what percentage of wall-clock time is in FDTD stencils vs. ray tracing vs. orchestration/I/O?
+- [x] Measure single-core vs. multi-core scaling of hot loops (`GOMAXPROCS` sweep: 1, 2, 4, 8)
+- [x] Document problem sizes: grid dimensions, ray counts per batch, total timesteps
+- [x] Compute Amdahl ceiling: `Speedup = 1 / ((1 - P) + P/S)` — if ceiling < 3×, GPU may not justify the complexity
+- [x] Estimate GPU memory requirements for target problem sizes, verify fit on target GPU (e.g., RTX 4090 = 24 GB)
+
+> **14.1 Findings (i7-1255U, 2026-04-04):** Full results in `docs/profiling-14.1-baseline.md`.
+>
+> **Amdahl fractions** — Ray tracing dominates the geometric pipeline: 89% at 4 096 rays, 99% at 65 536 rays. ISM is < 0.15% and not a GPU target. PDE shoebox sweep (Poisson solver per frequency point) is separate from the FDTD stencil and not a GPU target.
+>
+> **Critical: both hot paths are strictly single-threaded.** GOMAXPROCS sweep shows raytrace is 52% *slower* at 8 cores; FDTD is 45% slower. Neither path has been parallelised at all. This means the fair GPU comparison baseline is single-core CPU time — and parallelising on CPU (goroutines over ray batches; domain decomposition for FDTD) would itself give near-linear speedup before any GPU work.
+>
+> **Amdahl ceilings** — Raytrace at 64K rays: ~100× vs single-core (clears the 5× bar with large margin). FDTD at h ≤ 0.025 m: P ≈ 1.0, fully data-parallel per step — clearest GPU win. Raytrace at 4K rays (preview): ceiling ~9.5× vs single-core, borderline vs a 12-core parallel CPU.
+>
+> **GPU memory** — Max ~86 MB for FDTD fields at h = 0.025 m; ~4 MB for 64K ray buffers. Total < 1.4 GB on any target workload — RTX 4090 (24 GB) has 17× headroom.
+>
+> **Recommended priority:** FDTD stencil GPU first (P ≈ 1.0, no per-step transfer, clearest win); then raytrace at production ray counts (≥ 16K).
 
 ### 14.2 Standalone CUDA kernel prototypes
 
-- [ ] Write standalone CUDA FDTD stencil kernel (`.cu` file, no Go involvement):
+- [x] Write standalone CUDA FDTD stencil kernel (`.cu` file, no Go involvement):
   - 3D second-order finite-difference stencil with shared memory tiling
   - Benchmark: grid update throughput (cells/sec) for 256³, 512³, 1024³ grids
-  - Compare against Go CPU baseline including transfer time
-- [ ] Write standalone CUDA ray-BVH traversal kernel:
+  - **CPU baseline to beat:** 412 µs/step at 43³ (59K active nodes) single-core; target grid h=0.025 m ≈ 160³ (~3.7M active nodes), estimated ~26 ms/step single-core
+  - Compare GPU throughput including transfer time; geometry is uploaded once, field arrays stay on GPU for all timesteps (no per-step PCIe cost)
+- [x] Write standalone CUDA ray-BVH traversal kernel:
   - Evaluate NVIDIA OptiX for hardware RT-core acceleration vs. custom software BVH traversal
   - Benchmark: rays/sec for 100k, 1M, 10M rays against a 10k-triangle scene
-  - Compare against Go CPU baseline including transfer time
-- [ ] **Decision gate**: if GPU kernel + transfer is less than 5× faster than multi-core CPU for actual problem sizes, reconsider GPU investment
+  - **CPU baseline to beat:** ~714 ms for 65K rays single-core; 12-core parallel CPU would give ~60 ms (theoretical); GPU target ≤ 12 ms to clear 5× bar vs parallel CPU
+  - Compare against Go CPU baseline including transfer time (ray buffer: ~4 MB for 64K rays — cheap upload)
+- [x] **Decision gate**: if GPU kernel + transfer is less than 5× faster than **parallel** CPU (12-core) for actual problem sizes, reconsider GPU investment
+  - Note: current CPU baseline is *single-core* (neither path is parallelised); parallelising on CPU is lower-risk and should be evaluated first if GPU complexity is not justified
+
+> **14.2 Findings (T550 Laptop GPU, sm_75, 96 GB/s, 2026-04-04):** Full results in `docs/profiling-14.2-gpu-kernels.md`.
+>
+> **FDTD stencil** (`gpu/fdtd/`): naive (coalesced 1-D) and IY-IZ tiled kernels; both achieve ~4.4–6.5 Gcells/s. At 256³: 3.8 ms/step → **23× vs single-core CPU**. Tiled kernel is marginally slower than naive because the stencil is DRAM-bandwidth-bound and the 1.4 KB shared memory slab provides negligible savings over L1 cache. Speedup vs 12-core parallel CPU is ~2× on the T550 (memory-bandwidth limited laptop GPU); datacenter GPU (A100, ~2 TB/s) would give ~20× vs 12-core. **Key implementation fix:** `threadIdx.x` must map to IZ (fastest memory axis, stride 1), not IX (stride ny·nz = 16 384) — the initial incorrect mapping was ~30× slower.
+>
+> **Ray-BVH** (`gpu/raytrace/`): custom stack-based software BVH traversal, 10K-triangle scene. Peak throughput: **47 Mrays/s at 1M rays (511× vs single-core, ~43× vs 12-core CPU)**. Drops to 33 Mrays/s at 10M rays due to PCIe upload overhead. OptiX SDK not installed; hardware RT cores on T550 would add an estimated 5–10× over the software kernel. **Decision gate: PASSED for ray tracing at production ray counts.**
 
 ### 14.3 Integration architecture
 
-- [ ] Choose integration approach:
+- [x] Choose integration approach:
   - **Subprocess model** (recommended first): Go orchestrates, GPU binary does compute via shared memory (`mmap`/`shm_open`) for bulk data + Unix domain socket for control
   - **CGo + CUDA**: thin C wrapper around kernels, called from Go — tighter coupling, harder build chain
-- [ ] Define interface: what data crosses the boundary (geometry upload, field grids, ray buffers, results), in what format, how often
-- [ ] Design memory lifecycle: upload-once (geometry, BVH, materials) vs. per-frame (ray origins) vs. persistent (field grids stay on GPU)
-- [ ] Implement GPU worker pattern: single goroutine serializes GPU submissions via channel, avoids CGo thread-pool exhaustion
+- [x] Define interface: what data crosses the boundary (geometry upload, field grids, ray buffers, results), in what format, how often
+- [x] Design memory lifecycle: upload-once (geometry, BVH, materials) vs. per-frame (ray origins) vs. persistent (field grids stay on GPU)
+- [x] Implement GPU worker pattern: single goroutine serializes GPU submissions via channel, avoids CGo thread-pool exhaustion
+
+> **14.3 findings:** Chose subprocess model — Go build stays CUDA-free (`go build ./...` works without CUDA Toolkit). Wire protocol: 8-byte little-endian request header (type uint16 + flags uint16 + len uint32) + fixed-layout payload; 8-byte response header (status uint32 + len uint32). Bulk data via `/dev/shm/` + `mmap` (Linux POSIX shm); no `unix.ShmOpen` needed — `os.OpenFile("/dev/shm/"+name)` + `unix.Mmap` works without syscall wrapper gaps. Encoding: `encoding/binary.Write` on packed structs with no blank fields. Worker serialises all socket I/O through a single goroutine; callers block on per-call response channel. Implemented: `gpu/worker/` (Go: protocol, shm, worker, fdtd, raytrace) + `gpu/server/` (CUDA: server.cu + protocol.h). All Go tests pass; server binary compiles with `nvcc -arch=sm_75`. FDTD and ray-tracing handlers are STATUS_NOT_IMPL stubs, filled in 14.4/14.5.
 
 ### 14.4 FDTD GPU integration (`pde/`)
 
 - [ ] Implement GPU module (shared library or standalone binary) wrapping the FDTD stencil kernel
 - [ ] Go-side integration: upload grid + materials once, run N thousand timesteps entirely on GPU, download receiver time series
+  - Target grid: h = 0.025 m → ~160³ ≈ 3.7M active nodes, 86 MB field arrays — fits comfortably in GPU VRAM
+  - Timesteps for 1.5 s at h = 0.025 m: ~37 500 steps; CPU estimate ~975 s single-core, GPU target < 60 s
 - [ ] CUDA stream management: overlap compute and host↔device transfer (double-buffering)
 - [ ] Pinned (page-locked) host memory for 2–3× faster transfers
-- [ ] End-to-end benchmark: full PDE simulation with GPU, wall-clock time vs. CPU-only
+- [ ] End-to-end benchmark: full PDE simulation with GPU, wall-clock time vs. CPU-only (baseline: `BenchmarkIBM_FDTDStep_RectRoom` in `pde/`)
 
 ### 14.5 Ray tracing GPU integration (`raytrace/`)
 
 - [ ] Implement GPU ray tracing module:
-  - Upload BVH + mesh once
-  - Per-batch: upload ray origins/directions, download hit results (point, normal, triangle ID, distance)
+  - Upload BVH + mesh once (< 1 MB for shoebox, ~8 MB for 10K-triangle mesh)
+  - Per-batch: upload ray origins/directions (~4 MB for 64K rays), download hit results (point, normal, triangle ID, distance)
   - Accumulate energy histograms on GPU (avoid per-ray download)
-- [ ] End-to-end benchmark: full ray-traced IR with GPU, wall-clock time vs. CPU-only
+  - **Amdahl context:** at 64K rays raytrace = 99% of pipeline wall-clock, ceiling ~100× vs single-core — strong GPU case; at 4K rays ceiling ~9.5× — GPU unlikely to clear 5× bar vs 12-core CPU
+  - Target production mode: 64K rays; preview mode (4K rays) can remain CPU-only
+- [ ] End-to-end benchmark: full ray-traced IR with GPU, wall-clock time vs. CPU-only (baseline: `BenchmarkRayTrace_64K` in root package)
 
 ### 14.6 Production hardening
 
