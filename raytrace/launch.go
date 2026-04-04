@@ -8,12 +8,12 @@ import (
 
 // LaunchConfig controls Monte Carlo ray emission for the late-field model.
 type LaunchConfig struct {
-	NumRays                    int
-	MaxBounces                 int
-	MaxTimeSeconds             float64
-	SpeedOfSound               float64
-	ReflectionStrategy         ReflectionStrategy
-	EnergyTerminationThreshold float64
+	NumRays                     int
+	MaxBounces                  int
+	MaxTimeSeconds              float64
+	SpeedOfSound                float64
+	ReflectionStrategy          ReflectionStrategy
+	EnergyTerminationThreshold  float64
 	DiffractionAngularThreshold float64
 	DiffractionConeSamples      int
 }

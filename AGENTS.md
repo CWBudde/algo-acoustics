@@ -22,6 +22,7 @@ just bench              # Run benchmarks
 ```
 
 Run a single test:
+
 ```bash
 go test -v -run TestName ./package/...
 ```
@@ -57,23 +58,23 @@ Orchestrated by `Renderer` in `renderer.go` at the module root.
 
 ### Package Roles
 
-| Package | Role |
-|---------|------|
-| `acoustics` | Physical constants, octave band specs (`Octave6`, `Octave8`) |
-| `geometry` | Vec3, Ray, Plane, Triangle, BVH, intersection tests, quaternions |
-| `scene` | Room definition (shoebox/mesh), materials, sources, receivers, validation |
-| `directivity` | Source directivity models behind `Model` interface |
-| `hrtf` | HRTF dataset interface, SOFA adapter |
-| `ir` | Sparse `Event` → dense `Buffer` rendering, band gain aggregation, normalization |
-| `ism` | Image-source method solver (early specular reflections) |
-| `raytrace` | Monte Carlo ray tracer (late-field diffuse energy histograms) |
-| `pde` | Helmholtz solver for low-frequency modal content |
-| `hybrid` | Crossover blending of early/late events and geometric/modal IRs |
-| `metrics` | IR comparison, acoustic metrics |
-| `export` | WAV/JSON/CSV output |
-| `cmd/roomir` | Main CLI (validate, render, render-stereo, dump-events) |
-| `cmd/roombench` | Regression benchmark runner |
-| `web/wasm` | WASM entry point exposing `renderScene()` to JavaScript |
+| Package         | Role                                                                            |
+| --------------- | ------------------------------------------------------------------------------- |
+| `acoustics`     | Physical constants, octave band specs (`Octave6`, `Octave8`)                    |
+| `geometry`      | Vec3, Ray, Plane, Triangle, BVH, intersection tests, quaternions                |
+| `scene`         | Room definition (shoebox/mesh), materials, sources, receivers, validation       |
+| `directivity`   | Source directivity models behind `Model` interface                              |
+| `hrtf`          | HRTF dataset interface, SOFA adapter                                            |
+| `ir`            | Sparse `Event` → dense `Buffer` rendering, band gain aggregation, normalization |
+| `ism`           | Image-source method solver (early specular reflections)                         |
+| `raytrace`      | Monte Carlo ray tracer (late-field diffuse energy histograms)                   |
+| `pde`           | Helmholtz solver for low-frequency modal content                                |
+| `hybrid`        | Crossover blending of early/late events and geometric/modal IRs                 |
+| `metrics`       | IR comparison, acoustic metrics                                                 |
+| `export`        | WAV/JSON/CSV output                                                             |
+| `cmd/roomir`    | Main CLI (validate, render, render-stereo, dump-events)                         |
+| `cmd/roombench` | Regression benchmark runner                                                     |
+| `web/wasm`      | WASM entry point exposing `renderScene()` to JavaScript                         |
 
 ### Data Flow Types
 
@@ -85,6 +86,7 @@ Orchestrated by `Renderer` in `renderer.go` at the module root.
 ### Sibling Libraries
 
 All under `github.com/cwbudde` (private):
+
 - `algo-dsp` — convolution, FFT wrappers, acoustic metrics
 - `algo-fft` — FFT operations
 - `algo-pde` — Helmholtz/Poisson grid solves

@@ -8,13 +8,13 @@ const diffractionPathEpsilon = 1e-9
 
 // DiffractionPath describes a first-order path that bends around one edge.
 type DiffractionPath struct {
-	Source         Vec3
-	Receiver       Vec3
-	Point          Vec3
-	Edge           DiffractionEdge
-	SourceDistance float64
+	Source           Vec3
+	Receiver         Vec3
+	Point            Vec3
+	Edge             DiffractionEdge
+	SourceDistance   float64
 	ReceiverDistance float64
-	TotalDistance  float64
+	TotalDistance    float64
 }
 
 // FindDiffractionPoint returns the point on a finite edge that minimizes the
@@ -88,13 +88,13 @@ func EnumerateDiffractionPaths(source, receiver Vec3, edges []DiffractionEdge, m
 		sourceDistance := source.Distance(point)
 		receiverDistance := receiver.Distance(point)
 		paths = append(paths, DiffractionPath{
-			Source:         source,
-			Receiver:       receiver,
-			Point:          point,
-			Edge:           edge,
-			SourceDistance: sourceDistance,
+			Source:           source,
+			Receiver:         receiver,
+			Point:            point,
+			Edge:             edge,
+			SourceDistance:   sourceDistance,
 			ReceiverDistance: receiverDistance,
-			TotalDistance:   sourceDistance + receiverDistance,
+			TotalDistance:    sourceDistance + receiverDistance,
 		})
 	}
 

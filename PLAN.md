@@ -935,7 +935,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 ### 12.7 Validation
 
 - [x] Canonical infinite wedge: regression coverage for wedge angles 90°, 180° (half-plane), 270°
-- [ ] Barrier insertion loss: compare against Maekawa chart / ISO 9613-2 for Fresnel numbers > 1, target ≤ 1 dB error
+- [x] Barrier insertion loss: compare against Maekawa chart / ISO 9613-2 for Fresnel numbers > 1, target ≤ 1 dB error
 - [x] Mesh-cube diffraction smoke test: confirm branch spawning in a diffraction-rich mesh scene
 - [x] Performance: first-order diffraction overhead benchmark on branch spawning / ray-trace hot path
 
@@ -953,12 +953,12 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 13.1 Convex room geometry module (`pde/`)
 
-- [ ] Add `convex.go` with `ConvexRoom` struct: ordered list of wall planes (normal + offset)
-- [ ] Implement convexity validation: all vertices on the correct side of all planes
-- [ ] Implement `PointInConvexRoom(p Vec3) bool` — half-plane intersection test (all dot products positive)
-- [ ] Implement `DistanceToNearestWall(p Vec3) (dist float64, normal Vec3, wallIdx int)` — for each grid node near the boundary
-- [ ] Construct axis-aligned bounding box for the convex room + PML padding
-- [ ] Unit test: point containment for cube, wedge-shaped room, truncated pyramid
+- [x] Add `convex.go` with `ConvexRoom` struct: ordered list of wall planes (normal + offset)
+- [x] Implement convexity validation: all vertices on the correct side of all planes
+- [x] Implement `PointInConvexRoom(p Vec3) bool` — half-plane intersection test (all dot products positive)
+- [x] Implement `DistanceToNearestWall(p Vec3) (dist float64, normal Vec3, wallIdx int)` — for each grid node near the boundary
+- [x] Construct axis-aligned bounding box for the convex room + PML padding
+- [x] Unit test: point containment for cube, wedge-shaped room, truncated pyramid
 
 ### 13.2 Grid classification and boundary mapping (`pde/`)
 
