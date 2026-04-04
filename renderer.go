@@ -69,30 +69,6 @@ func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, e
 	return append([]float64(nil), buffer.Samples...), nil
 }
 
-func (r Renderer) applyLowFreq(sc *scene.Scene, cfg ir.RenderConfig, buffer *ir.Buffer) (*ir.Buffer, error) {
-	if r.LowFreq == nil {
-		return buffer, nil
-	}
-
-	provider, ok := r.LowFreq.(interface{ CrossoverHz() float64 })
-	if !ok {
-		return buffer, nil
-	}
-
-	transfer, err := r.LowFreq.Transfer(sc, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("generate low-frequency transfer: %w", err)
-	}
-
-	if transfer == nil {
-		return buffer, nil
-	}
-
-	lowIR := transfer.ToTimeDomain(cfg.SampleRate, len(buffer.Samples))
-
-	return hybrid.BlendLowFreq(lowIR, buffer, provider.CrossoverHz(), cfg.SampleRate), nil
-}
-
 // RenderStereo is reserved for Phase 7 binaural output.
 func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, right []float64, err error) {
 	if sc == nil {
@@ -128,6 +104,30 @@ func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, righ
 	}
 
 	return append([]float64(nil), leftBuf.Samples...), append([]float64(nil), rightBuf.Samples...), nil
+}
+
+func (r Renderer) applyLowFreq(sc *scene.Scene, cfg ir.RenderConfig, buffer *ir.Buffer) (*ir.Buffer, error) {
+	if r.LowFreq == nil {
+		return buffer, nil
+	}
+
+	provider, ok := r.LowFreq.(interface{ CrossoverHz() float64 })
+	if !ok {
+		return buffer, nil
+	}
+
+	transfer, err := r.LowFreq.Transfer(sc, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("generate low-frequency transfer: %w", err)
+	}
+
+	if transfer == nil {
+		return buffer, nil
+	}
+
+	lowIR := transfer.ToTimeDomain(cfg.SampleRate, len(buffer.Samples))
+
+	return hybrid.BlendLowFreq(lowIR, buffer, provider.CrossoverHz(), cfg.SampleRate), nil
 }
 
 func firstBinauralReceiver(sc *scene.Scene) (scene.Receiver, error) {

@@ -56,14 +56,14 @@ func splitReflectionEnergy(in, absorption, scattering []float64) (specular, diff
 }
 
 func maxEnergy(values []float64) float64 {
-	var max float64
+	var maximum float64
 	for _, value := range values {
-		if value > max {
-			max = value
+		if value > maximum {
+			maximum = value
 		}
 	}
 
-	return max
+	return maximum
 }
 
 func cloneEnergy(values []float64) []float64 {

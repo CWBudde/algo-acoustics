@@ -29,7 +29,8 @@ func TestExternalToolMeshSceneLateRenderMatchesReferenceIR(t *testing.T) {
 	referencePath := filepath.Join(tmpDir, "reference.wav")
 	renderedPath := filepath.Join(tmpDir, "rendered.wav")
 
-	if err := os.WriteFile(referencePath, referenceWAV, 0o600); err != nil {
+	err = os.WriteFile(referencePath, referenceWAV, 0o600)
+	if err != nil {
 		t.Fatalf("WriteFile(reference) error = %v", err)
 	}
 

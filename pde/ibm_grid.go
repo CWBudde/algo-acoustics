@@ -62,20 +62,6 @@ type IBMGrid struct {
 	CompactMap []int // flat index → compact index; -1 = exterior
 }
 
-// nodeIndex returns the flat index for grid coordinates (ix,iy,iz).
-func (g *IBMGrid) nodeIndex(ix, iy, iz int) int {
-	return ix*g.Ny*g.Nz + iy*g.Nz + iz
-}
-
-// nodePos returns the world position of grid node (ix,iy,iz).
-func (g *IBMGrid) nodePos(ix, iy, iz int) geometry.Vec3 {
-	return geometry.Vec3{
-		X: g.Origin.X + float64(ix)*g.H,
-		Y: g.Origin.Y + float64(iy)*g.H,
-		Z: g.Origin.Z + float64(iz)*g.H,
-	}
-}
-
 // NumInterior returns the number of interior nodes.
 func (g *IBMGrid) NumInterior() int { return len(g.InteriorIdx) }
 
@@ -142,6 +128,20 @@ func (g *IBMGrid) FieldSize() int {
 	}
 
 	return g.Nx * g.Ny * g.Nz
+}
+
+// nodeIndex returns the flat index for grid coordinates (ix,iy,iz).
+func (g *IBMGrid) nodeIndex(ix, iy, iz int) int {
+	return ix*g.Ny*g.Nz + iy*g.Nz + iz
+}
+
+// nodePos returns the world position of grid node (ix,iy,iz).
+func (g *IBMGrid) nodePos(ix, iy, iz int) geometry.Vec3 {
+	return geometry.Vec3{
+		X: g.Origin.X + float64(ix)*g.H,
+		Y: g.Origin.Y + float64(iy)*g.H,
+		Z: g.Origin.Z + float64(iz)*g.H,
+	}
 }
 
 // ClassifyGrid builds an IBMGrid for the given convex room on a uniform

@@ -12,7 +12,7 @@ const (
 	diffractionCullingDB    = -60.0
 )
 
-func spawnDiffractionBranches(state RayState, ray geometry.Ray, hitPoint geometry.Vec3, segmentLength float64, edges []geometry.DiffractionEdge, index *DiffractionEdgeIndex, cfg LaunchConfig, rng *rand.Rand, launchEnergy float64, bandFreqs []float64) []RayState {
+func spawnDiffractionBranches(state RayState, ray geometry.Ray, hitPoint geometry.Vec3, segmentLength float64, _ []geometry.DiffractionEdge, index *DiffractionEdgeIndex, cfg LaunchConfig, rng *rand.Rand, launchEnergy float64, bandFreqs []float64) []RayState {
 	if index == nil || cfg.DiffractionAngularThreshold <= 0 || cfg.DiffractionConeSamples <= 0 {
 		return nil
 	}
@@ -141,8 +141,8 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 	e := v.Dot(w)
 	denom := a*c - b*b
 
-	sN, sD := denom, denom
-	tN, tD := denom, denom
+	var sN, sD float64
+	var tN, tD float64
 
 	if denom < diffractionSpawnEpsilon {
 		sN = 0
@@ -150,6 +150,8 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 		tN = e
 		tD = c
 	} else {
+		sD = denom
+		tD = denom
 		sN = b*e - c*d
 		tN = a*e - b*d
 
@@ -166,26 +168,10 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 
 	if tN < 0 {
 		tN = 0
-
-		if -d < 0 {
-			sN = 0
-		} else if -d > a {
-			sN = sD
-		} else {
-			sN = -d
-			sD = a
-		}
+		sN, sD = clampClosestApproachS(-d, a, sD)
 	} else if tN > tD {
 		tN = tD
-
-		if (-d + b) < 0 {
-			sN = 0
-		} else if (-d + b) > a {
-			sN = sD
-		} else {
-			sN = -d + b
-			sD = a
-		}
+		sN, sD = clampClosestApproachS(-d+b, a, sD)
 	}
 
 	sc := 0.0
@@ -210,6 +196,17 @@ func closestApproach(rayStart, rayEnd, edgeStart, edgeEnd geometry.Vec3) (closes
 	distance = pointOnRay.Distance(pointOnEdge)
 
 	return closest, rayT, edgeT, distance, true
+}
+
+func clampClosestApproachS(value, a, sD float64) (float64, float64) {
+	switch {
+	case value < 0:
+		return 0, sD
+	case value > a:
+		return sD, sD
+	default:
+		return value, a
+	}
 }
 
 func orthogonalBasis(axis geometry.Vec3) geometry.Vec3 {

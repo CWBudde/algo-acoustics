@@ -13,8 +13,8 @@ import (
 // path-dependent distance parameter L; the helper functions below provide the
 // companion spreading factor and geometric L term used by later integration
 // stages.
-func WedgeDiffraction(phi, phiPrime, betaZero, n, k, L float64) complex128 {
-	if n <= 0 || k <= 0 || L < 0 {
+func WedgeDiffraction(phi, phiPrime, betaZero, n, k, l float64) complex128 {
+	if n <= 0 || k <= 0 || l < 0 {
 		return 0
 	}
 
@@ -28,10 +28,10 @@ func WedgeDiffraction(phi, phiPrime, betaZero, n, k, L float64) complex128 {
 	betaMinus := phi - phiPrime
 	betaPlus := phi + phiPrime
 
-	return prefactor * (cot((math.Pi+betaMinus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentPlus(betaMinus, n)) +
-		cot((math.Pi-betaMinus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentMinus(betaMinus, n)) +
-		cot((math.Pi+betaPlus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentPlus(betaPlus, n)) +
-		cot((math.Pi-betaPlus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentMinus(betaPlus, n)))
+	return prefactor * (cot((math.Pi+betaMinus)/(2*n))*FresnelTransition(k*l*wedgeTransitionArgumentPlus(betaMinus, n)) +
+		cot((math.Pi-betaMinus)/(2*n))*FresnelTransition(k*l*wedgeTransitionArgumentMinus(betaMinus, n)) +
+		cot((math.Pi+betaPlus)/(2*n))*FresnelTransition(k*l*wedgeTransitionArgumentPlus(betaPlus, n)) +
+		cot((math.Pi-betaPlus)/(2*n))*FresnelTransition(k*l*wedgeTransitionArgumentMinus(betaPlus, n)))
 }
 
 func wedgeSpreadingFactor(s, sPrime float64) float64 {

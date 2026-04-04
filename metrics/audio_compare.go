@@ -203,7 +203,9 @@ func bandLevels(samples []float64, sampleRate int, nfft int, spec acoustics.Band
 	}
 
 	spectrum := make([]complex128, nfft/2+1)
-	if err := plan.Forward(spectrum, padded); err != nil {
+
+	err = plan.Forward(spectrum, padded)
+	if err != nil {
 		return nil, fmt.Errorf("FFT forward: %w", err)
 	}
 

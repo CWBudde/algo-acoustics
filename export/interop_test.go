@@ -20,7 +20,8 @@ func TestExternalToolSceneMetadataRoundTrip(t *testing.T) {
 		t.Fatalf("LoadSceneFile() error = %v", err)
 	}
 
-	if err := scene.Validate(sc); err != nil {
+	err = scene.Validate(sc)
+	if err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
 
@@ -28,11 +29,13 @@ func TestExternalToolSceneMetadataRoundTrip(t *testing.T) {
 	projectDir := filepath.Join(tmpRoot, "project")
 	roomsDir := filepath.Join(tmpRoot, "rooms")
 
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+	err = os.MkdirAll(projectDir, 0o755)
+	if err != nil {
 		t.Fatalf("MkdirAll(project) error = %v", err)
 	}
 
-	if err := os.MkdirAll(roomsDir, 0o755); err != nil {
+	err = os.MkdirAll(roomsDir, 0o755)
+	if err != nil {
 		t.Fatalf("MkdirAll(rooms) error = %v", err)
 	}
 
@@ -41,13 +44,15 @@ func TestExternalToolSceneMetadataRoundTrip(t *testing.T) {
 		t.Fatalf("ReadFile(cube.obj) error = %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(roomsDir, "cube.obj"), cubeSource, 0o600); err != nil {
+	err = os.WriteFile(filepath.Join(roomsDir, "cube.obj"), cubeSource, 0o600)
+	if err != nil {
 		t.Fatalf("WriteFile(cube.obj) error = %v", err)
 	}
 
 	outputPath := filepath.Join(projectDir, "scene.json")
 
-	if err := export.WriteSceneJSON(outputPath, sc); err != nil {
+	err = export.WriteSceneJSON(outputPath, sc)
+	if err != nil {
 		t.Fatalf("WriteSceneJSON() error = %v", err)
 	}
 
@@ -77,7 +82,8 @@ func TestExternalToolSceneMetadataRoundTrip(t *testing.T) {
 		t.Fatalf("LoadSceneFile(round-tripped) error = %v", err)
 	}
 
-	if err := scene.Validate(roundTripped); err != nil {
+	err = scene.Validate(roundTripped)
+	if err != nil {
 		t.Fatalf("Validate(round-tripped) error = %v", err)
 	}
 

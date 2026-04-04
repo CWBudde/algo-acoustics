@@ -123,16 +123,16 @@ func TestDiffractionEventsEnumeratesBarrierPath(t *testing.T) {
 }
 
 func barrierMesh() *geometry.Mesh {
-	min := geometry.Vec3{X: -0.1, Y: -1, Z: 0}
-	max := geometry.Vec3{X: 0.1, Y: 1, Z: 2}
-	v000 := geometry.Vec3{X: min.X, Y: min.Y, Z: min.Z}
-	v001 := geometry.Vec3{X: min.X, Y: min.Y, Z: max.Z}
-	v010 := geometry.Vec3{X: min.X, Y: max.Y, Z: min.Z}
-	v011 := geometry.Vec3{X: min.X, Y: max.Y, Z: max.Z}
-	v100 := geometry.Vec3{X: max.X, Y: min.Y, Z: min.Z}
-	v101 := geometry.Vec3{X: max.X, Y: min.Y, Z: max.Z}
-	v110 := geometry.Vec3{X: max.X, Y: max.Y, Z: min.Z}
-	v111 := geometry.Vec3{X: max.X, Y: max.Y, Z: max.Z}
+	minCorner := geometry.Vec3{X: -0.1, Y: -1, Z: 0}
+	maxCorner := geometry.Vec3{X: 0.1, Y: 1, Z: 2}
+	v000 := geometry.Vec3{X: minCorner.X, Y: minCorner.Y, Z: minCorner.Z}
+	v001 := geometry.Vec3{X: minCorner.X, Y: minCorner.Y, Z: maxCorner.Z}
+	v010 := geometry.Vec3{X: minCorner.X, Y: maxCorner.Y, Z: minCorner.Z}
+	v011 := geometry.Vec3{X: minCorner.X, Y: maxCorner.Y, Z: maxCorner.Z}
+	v100 := geometry.Vec3{X: maxCorner.X, Y: minCorner.Y, Z: minCorner.Z}
+	v101 := geometry.Vec3{X: maxCorner.X, Y: minCorner.Y, Z: maxCorner.Z}
+	v110 := geometry.Vec3{X: maxCorner.X, Y: maxCorner.Y, Z: minCorner.Z}
+	v111 := geometry.Vec3{X: maxCorner.X, Y: maxCorner.Y, Z: maxCorner.Z}
 
 	return &geometry.Mesh{Triangles: []geometry.Triangle{
 		{V0: v000, V1: v110, V2: v100},

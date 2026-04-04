@@ -275,15 +275,6 @@ func (r *RayTracer) diffractionEdgeIndex() *DiffractionEdgeIndex {
 	return NewDiffractionEdgeIndex(r.Scene.Room.Mesh)
 }
 
-func totalEnergy(values []float64) float64 {
-	var sum float64
-	for _, value := range values {
-		sum += value
-	}
-
-	return sum
-}
-
 func calibratedRayLaunchEnergy(sourceGainDB float64, sourcePosition, receiverPosition geometry.Vec3, receiverRadius float64, rayCount int) float64 {
 	if rayCount <= 0 || receiverRadius <= 0 {
 		return 0

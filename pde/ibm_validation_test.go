@@ -569,7 +569,7 @@ func TestIBMValidation_EnergyDecaySabine(t *testing.T) {
 		{"high absorption", 0.5},
 	}
 
-	var t60s []float64
+	t60s := make([]float64, 0, len(testCases))
 
 	for _, tc := range testCases {
 		R := tc.R

@@ -51,12 +51,12 @@ func newMaterialsCommand() *cobra.Command {
 
 			switch format {
 			case "table":
-				err := writeMaterialTable(writer, source, material, rows)
+				err = writeMaterialTable(writer, source, material, rows)
 				if err != nil {
 					return fmt.Errorf("write table: %w", err)
 				}
 			case "csv":
-				err := writeMaterialCSV(writer, source, rows)
+				err = writeMaterialCSV(writer, source, rows)
 				if err != nil {
 					return fmt.Errorf("write csv: %w", err)
 				}
@@ -82,7 +82,8 @@ func newMaterialsCommand() *cobra.Command {
 }
 
 func loadMaterialSpec(arg string) (scene.Material, string, error) {
-	if info, err := os.Stat(arg); err == nil && !info.IsDir() {
+	info, err := os.Stat(arg)
+	if err == nil && !info.IsDir() {
 		material, loadErr := scene.LoadMaterialFile(arg)
 		if loadErr != nil {
 			return scene.Material{}, "", loadErr
@@ -116,20 +117,24 @@ func buildMaterialBandRows(material scene.Material) []materialBandRow {
 }
 
 func writeMaterialTable(w io.Writer, source string, material scene.Material, rows []materialBandRow) error {
-	if _, err := fmt.Fprintf(w, "material: %s\n", material.Name); err != nil {
+	_, err := fmt.Fprintf(w, "material: %s\n", material.Name)
+	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(w, "source: %s\n", source); err != nil {
+	_, err = fmt.Fprintf(w, "source: %s\n", source)
+	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintln(w, "band center_hz absorption scattering"); err != nil {
+	_, err = fmt.Fprintln(w, "band center_hz absorption scattering")
+	if err != nil {
 		return err
 	}
 
 	for _, row := range rows {
-		if _, err := fmt.Fprintf(w, "%d %g %g %g\n", row.BandIndex, row.CenterHz, row.Absorption, row.Scattering); err != nil {
+		_, err = fmt.Fprintf(w, "%d %g %g %g\n", row.BandIndex, row.CenterHz, row.Absorption, row.Scattering)
+		if err != nil {
 			return err
 		}
 	}

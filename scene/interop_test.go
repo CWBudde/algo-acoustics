@@ -22,7 +22,8 @@ func TestInteropScenesLoadAndValidate(t *testing.T) {
 				t.Fatalf("LoadSceneFile() error = %v", err)
 			}
 
-			if err := Validate(sc); err != nil {
+			err = Validate(sc)
+			if err != nil {
 				t.Fatalf("Validate() error = %v", err)
 			}
 		})

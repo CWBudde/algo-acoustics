@@ -18,7 +18,9 @@ func TestSceneSchemaFileExistsAndIsValidJSON(t *testing.T) {
 	}
 
 	var schema map[string]any
-	if err := json.Unmarshal(data, &schema); err != nil {
+
+	err = json.Unmarshal(data, &schema)
+	if err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 

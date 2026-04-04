@@ -117,6 +117,116 @@ func (s *IBMStencil) ApplyLaplacian(dst, src []float64) {
 	}
 }
 
+// UpdateADE advances the ADE auxiliary variables by one time step dt.
+// Must be called once per FDTD time step, after ApplyLaplacian.
+// For each boundary node, updates ψ_k using the pressure gradient.
+func (s *IBMStencil) UpdateADE(src []float64, dt float64) {
+	if s.BC.Type != WallADE || s.adeStates == nil {
+		return
+	}
+
+	g := s.Grid
+
+	for idx, bi := range g.Boundary {
+		st := s.adeStates[idx]
+		if st == nil {
+			continue
+		}
+
+		// Estimate ∂p/∂n at the wall using the nearest-wall normal.
+		// Use one-sided difference toward the wall.
+		fieldIdx := idx
+		if g.Compressed {
+			fieldIdx = g.CompactMap[idx]
+		}
+
+		pNode := src[fieldIdx]
+
+		// Find the axis/direction with the smallest wall fraction (closest wall).
+		minFrac := math.Inf(1)
+
+		for a := range 3 {
+			for d := range 2 {
+				if f := bi.Frac[a][d]; f > 0 && f < minFrac {
+					minFrac = f
+				}
+			}
+		}
+
+		// Approximate ∂p/∂n ≈ 0 for nodes very close to rigid-like walls.
+		dpdn := 0.0
+		if minFrac > 0 && !math.IsInf(minFrac, 1) {
+			// Simple estimate: pressure drops to ~0 at wall over θ·h.
+			dpdn = -pNode / (minFrac * g.H)
+		}
+
+		// Update each auxiliary variable: ψ_k^{n+1} = ψ_k^n · e^{−λ_k·dt} + c_k · dpdn · dt
+		for k := range st.Phi {
+			decay := math.Exp(-s.BC.ADEPoles[k] * dt)
+			st.Phi[k] = st.Phi[k]*decay + s.BC.ADEResidues[k]*dpdn*dt
+		}
+	}
+}
+
+// CFLLimit returns the maximum stable time step for the FDTD scheme
+// on this grid with sound speed c.
+//
+// For the standard 3D Cartesian stencil: dt_max = h / (c · √3).
+// The Hamilton–Bilbao modification can reduce this; we apply a safety
+// factor based on the minimum fractional distance in the grid.
+func (s *IBMStencil) CFLLimit(soundSpeed float64) float64 {
+	dtStandard := s.Grid.H / (soundSpeed * math.Sqrt(3))
+
+	// Find minimum fractional distance across all boundary nodes.
+	minTheta := 1.0
+
+	for _, bi := range s.Grid.Boundary {
+		for a := range 3 {
+			for d := range 2 {
+				if f := bi.Frac[a][d]; f > 0 && f < minTheta {
+					minTheta = f
+				}
+			}
+		}
+	}
+
+	// The Shortley–Weller stencil coefficient scales as 1/θ, which
+	// effectively reduces the stable time step.  Conservative bound:
+	// dt_max ≈ dt_standard · √(θ_min) for θ_min < 1.
+	if minTheta < 1 {
+		return dtStandard * math.Sqrt(minTheta)
+	}
+
+	return dtStandard
+}
+
+// FDTDStep performs one second-order FDTD time step:
+//
+//	p^{n+1} = 2·p^n − p^{n-1} − (c·dt)² · L(p^n)
+//
+// where L is the negative Laplacian (positive-definite).
+// pCur, pPrev, and pNext are all sized FieldSize().
+// The caller is responsible for ensuring dt ≤ CFLLimit(c).
+func (s *IBMStencil) FDTDStep(pNext, pCur, pPrev []float64, c, dt float64) {
+	g := s.Grid
+
+	// Compute −∇²(pCur) into pNext (used as scratch).
+	s.ApplyLaplacian(pNext, pCur)
+
+	cdt2 := c * c * dt * dt
+
+	if g.Compressed {
+		s.fdtdUpdateCompact(pNext, pCur, pPrev, c, dt, cdt2)
+	} else {
+		s.fdtdUpdateFull(pNext, pCur, pPrev, c, dt, cdt2)
+	}
+
+	// Update ADE state if applicable.
+	if s.BC.Type == WallADE {
+		s.UpdateADE(pCur, dt)
+	}
+}
+
 // applyLaplacianCompact operates on compact (compressed) pressure arrays
 // where field indices are obtained via CompactMap.
 func (s *IBMStencil) applyLaplacianCompact(dst, src []float64) {
@@ -340,116 +450,6 @@ func (s *IBMStencil) adeGhostValue(pNode float64, idx, _, _ int) float64 {
 
 	// Ghost value: rigid component + impedance correction.
 	return pNode - correction
-}
-
-// UpdateADE advances the ADE auxiliary variables by one time step dt.
-// Must be called once per FDTD time step, after ApplyLaplacian.
-// For each boundary node, updates ψ_k using the pressure gradient.
-func (s *IBMStencil) UpdateADE(src []float64, dt float64) {
-	if s.BC.Type != WallADE || s.adeStates == nil {
-		return
-	}
-
-	g := s.Grid
-
-	for idx, bi := range g.Boundary {
-		st := s.adeStates[idx]
-		if st == nil {
-			continue
-		}
-
-		// Estimate ∂p/∂n at the wall using the nearest-wall normal.
-		// Use one-sided difference toward the wall.
-		fieldIdx := idx
-		if g.Compressed {
-			fieldIdx = g.CompactMap[idx]
-		}
-
-		pNode := src[fieldIdx]
-
-		// Find the axis/direction with the smallest wall fraction (closest wall).
-		minFrac := math.Inf(1)
-
-		for a := range 3 {
-			for d := range 2 {
-				if f := bi.Frac[a][d]; f > 0 && f < minFrac {
-					minFrac = f
-				}
-			}
-		}
-
-		// Approximate ∂p/∂n ≈ 0 for nodes very close to rigid-like walls.
-		dpdn := 0.0
-		if minFrac > 0 && !math.IsInf(minFrac, 1) {
-			// Simple estimate: pressure drops to ~0 at wall over θ·h.
-			dpdn = -pNode / (minFrac * g.H)
-		}
-
-		// Update each auxiliary variable: ψ_k^{n+1} = ψ_k^n · e^{−λ_k·dt} + c_k · dpdn · dt
-		for k := range st.Phi {
-			decay := math.Exp(-s.BC.ADEPoles[k] * dt)
-			st.Phi[k] = st.Phi[k]*decay + s.BC.ADEResidues[k]*dpdn*dt
-		}
-	}
-}
-
-// CFLLimit returns the maximum stable time step for the FDTD scheme
-// on this grid with sound speed c.
-//
-// For the standard 3D Cartesian stencil: dt_max = h / (c · √3).
-// The Hamilton–Bilbao modification can reduce this; we apply a safety
-// factor based on the minimum fractional distance in the grid.
-func (s *IBMStencil) CFLLimit(soundSpeed float64) float64 {
-	dtStandard := s.Grid.H / (soundSpeed * math.Sqrt(3))
-
-	// Find minimum fractional distance across all boundary nodes.
-	minTheta := 1.0
-
-	for _, bi := range s.Grid.Boundary {
-		for a := range 3 {
-			for d := range 2 {
-				if f := bi.Frac[a][d]; f > 0 && f < minTheta {
-					minTheta = f
-				}
-			}
-		}
-	}
-
-	// The Shortley–Weller stencil coefficient scales as 1/θ, which
-	// effectively reduces the stable time step.  Conservative bound:
-	// dt_max ≈ dt_standard · √(θ_min) for θ_min < 1.
-	if minTheta < 1 {
-		return dtStandard * math.Sqrt(minTheta)
-	}
-
-	return dtStandard
-}
-
-// FDTDStep performs one second-order FDTD time step:
-//
-//	p^{n+1} = 2·p^n − p^{n-1} − (c·dt)² · L(p^n)
-//
-// where L is the negative Laplacian (positive-definite).
-// pCur, pPrev, and pNext are all sized FieldSize().
-// The caller is responsible for ensuring dt ≤ CFLLimit(c).
-func (s *IBMStencil) FDTDStep(pNext, pCur, pPrev []float64, c, dt float64) {
-	g := s.Grid
-
-	// Compute −∇²(pCur) into pNext (used as scratch).
-	s.ApplyLaplacian(pNext, pCur)
-
-	cdt2 := c * c * dt * dt
-
-	if g.Compressed {
-		s.fdtdUpdateCompact(pNext, pCur, pPrev, c, dt, cdt2)
-	} else {
-		s.fdtdUpdateFull(pNext, pCur, pPrev, c, dt, cdt2)
-	}
-
-	// Update ADE state if applicable.
-	if s.BC.Type == WallADE {
-		s.UpdateADE(pCur, dt)
-	}
 }
 
 func (s *IBMStencil) fdtdUpdateFull(pNext, pCur, pPrev []float64, c, dt, cdt2 float64) {

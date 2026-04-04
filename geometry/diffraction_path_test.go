@@ -84,34 +84,8 @@ func TestDiffractionPathEnumerationFindsBarrierTopEdge(t *testing.T) {
 }
 
 func barrierMesh() *Mesh {
-	min := Vec3{X: -0.1, Y: -1, Z: 0}
-	max := Vec3{X: 0.1, Y: 1, Z: 2}
-	v000 := Vec3{X: min.X, Y: min.Y, Z: min.Z}
-	v001 := Vec3{X: min.X, Y: min.Y, Z: max.Z}
-	v010 := Vec3{X: min.X, Y: max.Y, Z: min.Z}
-	v011 := Vec3{X: min.X, Y: max.Y, Z: max.Z}
-	v100 := Vec3{X: max.X, Y: min.Y, Z: min.Z}
-	v101 := Vec3{X: max.X, Y: min.Y, Z: max.Z}
-	v110 := Vec3{X: max.X, Y: max.Y, Z: min.Z}
-	v111 := Vec3{X: max.X, Y: max.Y, Z: max.Z}
-
-	return &Mesh{Triangles: []Triangle{
-		{V0: v000, V1: v110, V2: v100},
-		{V0: v000, V1: v010, V2: v110},
-		{V0: v001, V1: v101, V2: v111},
-		{V0: v001, V1: v111, V2: v011},
-		{V0: v000, V1: v101, V2: v001},
-		{V0: v000, V1: v100, V2: v101},
-		{V0: v010, V1: v011, V2: v111},
-		{V0: v010, V1: v111, V2: v110},
-		{V0: v000, V1: v001, V2: v011},
-		{V0: v000, V1: v011, V2: v010},
-		{V0: v100, V1: v110, V2: v111},
-		{V0: v100, V1: v111, V2: v101},
-	}}
-}
-
-func cubeMesh(minCorner, maxCorner Vec3) *Mesh {
+	minCorner := Vec3{X: -0.1, Y: -1, Z: 0}
+	maxCorner := Vec3{X: 0.1, Y: 1, Z: 2}
 	v000 := Vec3{X: minCorner.X, Y: minCorner.Y, Z: minCorner.Z}
 	v001 := Vec3{X: minCorner.X, Y: minCorner.Y, Z: maxCorner.Z}
 	v010 := Vec3{X: minCorner.X, Y: maxCorner.Y, Z: minCorner.Z}

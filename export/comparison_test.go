@@ -22,7 +22,9 @@ func TestWriteComparisonCSVAndMarkdown(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	csvPath := filepath.Join(tmpDir, "comparison.csv")
-	if err := export.WriteComparisonCSV(csvPath, rows); err != nil {
+
+	err := export.WriteComparisonCSV(csvPath, rows)
+	if err != nil {
 		t.Fatalf("WriteComparisonCSV() error = %v", err)
 	}
 
@@ -46,7 +48,9 @@ func TestWriteComparisonCSVAndMarkdown(t *testing.T) {
 	}
 
 	mdPath := filepath.Join(tmpDir, "comparison.md")
-	if err := export.WriteComparisonMarkdown(mdPath, rows); err != nil {
+
+	err = export.WriteComparisonMarkdown(mdPath, rows)
+	if err != nil {
 		t.Fatalf("WriteComparisonMarkdown() error = %v", err)
 	}
 

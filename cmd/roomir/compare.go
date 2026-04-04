@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const csvFormat = "csv"
+
 func newCompareCommand() *cobra.Command {
 	var format string
 	var outputPath string
@@ -37,51 +39,9 @@ func newCompareCommand() *cobra.Command {
 				return err
 			}
 
-			switch format {
-			case "table":
-				writer := cmd.OutOrStdout()
-
-				if outputPath != "" {
-					file, err := os.Create(outputPath)
-					if err != nil {
-						return fmt.Errorf("create output %q: %w", outputPath, err)
-					}
-					defer file.Close()
-
-					writer = file
-				}
-
-				metrics.PrintComparisonReport(rows, writer)
-			case "csv":
-				if outputPath == "" {
-					err := export.WriteComparisonCSVTo(cmd.OutOrStdout(), rows)
-					if err != nil {
-						return err
-					}
-
-					return nil
-				}
-
-				err := export.WriteComparisonCSV(outputPath, rows)
-				if err != nil {
-					return err
-				}
-			case "markdown":
-				if outputPath == "" {
-					err := export.WriteComparisonMarkdownTo(cmd.OutOrStdout(), rows)
-					if err != nil {
-						return err
-					}
-
-					return nil
-				}
-
-				err := export.WriteComparisonMarkdown(outputPath, rows)
-				if err != nil {
-					return err
-				}
-			default:
-				return fmt.Errorf("unsupported format %q", format)
+			err = writeComparisonReport(cmd, format, outputPath, rows)
+			if err != nil {
+				return err
 			}
 
 			if outputPath != "" {
@@ -96,6 +56,41 @@ func newCompareCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "output file (defaults to stdout)")
 
 	return cmd
+}
+
+func writeComparisonReport(cmd *cobra.Command, format, outputPath string, rows []metrics.ComparisonRow) error {
+	switch format {
+	case "table":
+		writer := cmd.OutOrStdout()
+
+		if outputPath != "" {
+			file, err := os.Create(outputPath)
+			if err != nil {
+				return fmt.Errorf("create output %q: %w", outputPath, err)
+			}
+			defer file.Close()
+
+			writer = file
+		}
+
+		metrics.PrintComparisonReport(rows, writer)
+
+		return nil
+	case csvFormat:
+		if outputPath == "" {
+			return export.WriteComparisonCSVTo(cmd.OutOrStdout(), rows)
+		}
+
+		return export.WriteComparisonCSV(outputPath, rows)
+	case "markdown":
+		if outputPath == "" {
+			return export.WriteComparisonMarkdownTo(cmd.OutOrStdout(), rows)
+		}
+
+		return export.WriteComparisonMarkdown(outputPath, rows)
+	default:
+		return fmt.Errorf("unsupported format %q", format)
+	}
 }
 
 func loadComparisonBuffer(path string) (*ir.Buffer, error) {
