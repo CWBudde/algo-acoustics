@@ -41,3 +41,20 @@ func TestWedgeDiffractionNinetyDegreeWedgeReference(t *testing.T) {
 		t.Fatalf("WedgeDiffraction(...) = %v, want %v", got, want)
 	}
 }
+
+func TestWedgeDiffractionFiniteNearShadowBoundary(t *testing.T) {
+	const (
+		phiPrime = 0.6
+		betaZero = 1.1
+		n        = 2.0
+		k        = 7.5
+		L        = 0.8
+	)
+
+	for _, delta := range []float64{1e-3, 1e-4, 1e-5} {
+		got := WedgeDiffraction(math.Pi-delta+phiPrime, phiPrime, betaZero, n, k, L)
+		if math.IsNaN(real(got)) || math.IsNaN(imag(got)) || math.IsInf(real(got), 0) || math.IsInf(imag(got), 0) {
+			t.Fatalf("WedgeDiffraction near shadow boundary with delta=%g returned %v, want finite", delta, got)
+		}
+	}
+}

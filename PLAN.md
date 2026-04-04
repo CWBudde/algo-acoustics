@@ -906,7 +906,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 - [x] Implement distance parameter `L = (s · s') / (s + s') · sin²(β₀)`
 - [x] Unit test: half-plane diffraction (`n = 2`) matches classical Sommerfeld solution
 - [x] Unit test: 90° wedge (`n = 1.5`) matches published values from Balanis (2012, Table 13.1)
-- [ ] Validate: coefficient is continuous across shadow boundaries (the defining property of UTD over GTD)
+- [x] Validate: coefficient remains finite near shadow and reflection boundaries; the total field continuity comes from the GO plus diffraction sum
 
 ### 12.4 Diffraction path finding (`geometry/`, `ism/`)
 

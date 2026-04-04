@@ -28,10 +28,10 @@ func WedgeDiffraction(phi, phiPrime, betaZero, n, k, L float64) complex128 {
 	betaMinus := phi - phiPrime
 	betaPlus := phi + phiPrime
 
-	return prefactor * (cot((math.Pi+betaMinus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgument(betaMinus, n)) +
-		cot((math.Pi-betaMinus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgument(betaMinus, n)) +
-		cot((math.Pi+betaPlus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgument(betaPlus, n)) +
-		cot((math.Pi-betaPlus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgument(betaPlus, n)))
+	return prefactor * (cot((math.Pi+betaMinus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentPlus(betaMinus, n)) +
+		cot((math.Pi-betaMinus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentMinus(betaMinus, n)) +
+		cot((math.Pi+betaPlus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentPlus(betaPlus, n)) +
+		cot((math.Pi-betaPlus)/(2*n))*FresnelTransition(k*L*wedgeTransitionArgumentMinus(betaPlus, n)))
 }
 
 func wedgeSpreadingFactor(s, sPrime float64) float64 {
@@ -55,20 +55,29 @@ func wedgeDistanceParameter(s, sPrime, betaZero float64) float64 {
 	return (s * sPrime / (s + sPrime)) * sinBetaZero * sinBetaZero
 }
 
-func wedgeTransitionArgument(beta, n float64) float64 {
+func wedgeTransitionArgumentPlus(beta, n float64) float64 {
 	if n <= 0 {
 		return 0
 	}
 
 	period := 2 * n * math.Pi
-	reduced := math.Mod(beta, period)
-	if reduced > period/2 {
-		reduced -= period
-	} else if reduced < -period/2 {
-		reduced += period
+	target := (beta + math.Pi) / period
+	N := math.Round(target)
+
+	c := math.Cos((period*N - beta) / 2)
+	return 2 * c * c
+}
+
+func wedgeTransitionArgumentMinus(beta, n float64) float64 {
+	if n <= 0 {
+		return 0
 	}
 
-	c := math.Cos(reduced / 2)
+	period := 2 * n * math.Pi
+	target := (beta - math.Pi) / period
+	N := math.Round(target)
+
+	c := math.Cos((period*N - beta) / 2)
 	return 2 * c * c
 }
 
