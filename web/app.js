@@ -400,7 +400,7 @@ const DEFAULT_STATE = {
     crossoverWindow: "hann",
   },
   irView: "linear",
-  reflections: 2,
+  reflections: 1,
 };
 
 const POSITION_MARGIN = 0.15;
@@ -2320,9 +2320,11 @@ function updateSceneView() {
     roomGroup.add(edgeBox);
   }
 
+  const reflections = clampInt(Math.round(state.reflections), 0, 2);
   const sourceMarker = createMarkerSphere(state.source, 0xff6b4a, 0.12, "source");
   const receiverMarker = createMarkerSphere(state.receiver, 0x0f9d92, 0.14, "receiver");
   const directPath = createDirectPathLine(palette);
+  directPath.visible = reflections === 0;
   pathGroup.add(directPath);
   sceneView.animatedPathMaterials.push(directPath.material);
 
@@ -2435,17 +2437,191 @@ function createDirectPathLine(palette) {
 }
 
 function createRayPathOverlay(palette) {
-  const reflections = clampInt(Math.round(state.reflections), 0, 6);
-  if (reflections <= 0 || !sceneView?.roomSurfaces?.length) {
+  const reflections = clampInt(Math.round(state.reflections), 0, 2);
+  if (reflections <= 0) {
     return [];
   }
 
-  const path = traceProbeRayPath(sceneView.roomSurfaces, reflections);
-  if (path.length < 2) {
-    return [];
+  if (state.room.kind === "shoebox") {
+    return createShoeboxReflectionPaths(reflections, palette);
   }
 
-  return [makePathLine(path, palette.ray, 0.75)];
+  if (sceneView?.roomSurfaces?.length) {
+    const path = traceProbeRayPath(
+      sceneView.roomSurfaces,
+      reflections,
+      createProbeTargetPoint(),
+    );
+    if (path.length >= 2) {
+      return [makePathLine(path, palette.ray, 0.72)];
+    }
+  }
+
+  return [];
+}
+
+function createShoeboxReflectionPaths(reflections, palette) {
+  const walls = buildShoeboxWalls();
+  const paths = [];
+
+  const firstOrder = pickBestReflectionPath(walls, 1);
+  if (firstOrder) {
+    paths.push(makePathLine(firstOrder, palette.ray, 0.8));
+  }
+
+  if (reflections >= 2) {
+    const secondOrder = pickBestReflectionPath(walls, 2);
+    if (secondOrder) {
+      paths.push(makePathLine(secondOrder, palette.ray, 0.62));
+    }
+  }
+
+  return paths;
+}
+
+function pickBestReflectionPath(walls, order) {
+  if (order <= 0) {
+    return null;
+  }
+
+  const indices = walls.map((_, index) => index);
+  let bestPath = null;
+  let bestLength = Infinity;
+
+  const visit = (sequence, depth) => {
+    if (depth === order) {
+      const path = buildReflectionPath(sequence, walls);
+      if (!path || path.length < 2) {
+        return;
+      }
+
+      const length = totalPathLength(path);
+      if (length < bestLength) {
+        bestLength = length;
+        bestPath = path;
+      }
+      return;
+    }
+
+    for (const wallIndex of indices) {
+      sequence.push(wallIndex);
+      visit(sequence, depth + 1);
+      sequence.pop();
+    }
+  };
+
+  visit([], 0);
+  return bestPath;
+}
+
+function buildReflectionPath(sequence, walls) {
+  if (!sequence.length) {
+    return null;
+  }
+
+  const source = toAcousticPoint(state.source);
+  const receiver = toAcousticPoint(state.receiver);
+  const images = [source];
+  for (const wallIndex of sequence) {
+    images.push(reflectAcousticPointAcrossWall(images[images.length - 1], walls[wallIndex]));
+  }
+
+  const hitsReverse = [];
+  let currentReceiver = receiver;
+  for (let index = sequence.length - 1; index >= 0; index -= 1) {
+    const wall = walls[sequence[index]];
+    const hit = intersectAcousticSegmentWithWall(currentReceiver, images[index + 1], wall);
+    if (!hit) {
+      return null;
+    }
+
+    hitsReverse.push(hit);
+    currentReceiver = reflectAcousticPointAcrossWall(currentReceiver, wall);
+  }
+
+  const points = [toScenePoint(source)];
+  for (let index = hitsReverse.length - 1; index >= 0; index -= 1) {
+    points.push(toScenePoint(hitsReverse[index]));
+  }
+  points.push(toScenePoint(receiver));
+  return points;
+}
+
+function buildShoeboxWalls() {
+  return [
+    { axis: "x", coord: 0, minA: 0, maxA: state.room.depth, minB: 0, maxB: state.room.height },
+    { axis: "x", coord: state.room.width, minA: 0, maxA: state.room.depth, minB: 0, maxB: state.room.height },
+    { axis: "y", coord: 0, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.height },
+    { axis: "y", coord: state.room.depth, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.height },
+    { axis: "z", coord: 0, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.depth },
+    { axis: "z", coord: state.room.height, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.depth },
+  ];
+}
+
+function totalPathLength(points) {
+  let length = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    length += points[index - 1].distanceTo(points[index]);
+  }
+  return length;
+}
+
+function toAcousticPoint(point) {
+  return { x: point.x, y: point.y, z: point.z };
+}
+
+function toScenePoint(point) {
+  return new THREE.Vector3(point.x, point.z, point.y);
+}
+
+function reflectAcousticPointAcrossWall(point, wall) {
+  if (wall.axis === "x") {
+    return { x: 2 * wall.coord - point.x, y: point.y, z: point.z };
+  }
+  if (wall.axis === "y") {
+    return { x: point.x, y: 2 * wall.coord - point.y, z: point.z };
+  }
+  return { x: point.x, y: point.y, z: 2 * wall.coord - point.z };
+}
+
+function intersectAcousticSegmentWithWall(start, end, wall) {
+  const direction = {
+    x: end.x - start.x,
+    y: end.y - start.y,
+    z: end.z - start.z,
+  };
+
+  const denom = direction[wall.axis];
+  if (Math.abs(denom) < 1e-9) {
+    return null;
+  }
+
+  const t = (wall.coord - start[wall.axis]) / denom;
+  if (t <= 0 || t >= 1) {
+    return null;
+  }
+
+  const hit = {
+    x: start.x + direction.x * t,
+    y: start.y + direction.y * t,
+    z: start.z + direction.z * t,
+  };
+
+  if (wall.axis === "x") {
+    if (!isWithin(hit.y, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
+      return null;
+    }
+  } else if (wall.axis === "y") {
+    if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
+      return null;
+    }
+  } else if (wall.axis === "z") {
+    if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.y, wall.minB, wall.maxB)) {
+      return null;
+    }
+  }
+
+  return hit;
 }
 
 function makePathLine(points, color, opacity) {
@@ -2462,7 +2638,24 @@ function makePathLine(points, color, opacity) {
   return line;
 }
 
-function traceProbeRayPath(roomSurfaces, maxBounces) {
+function createProbeTargetPoint() {
+  const delta = new THREE.Vector3(
+    state.receiver.x - state.source.x,
+    state.receiver.z - state.source.z,
+    state.receiver.y - state.source.y,
+  );
+  if (delta.lengthSq() === 0) {
+    delta.set(1, 0, 0);
+  }
+
+  return new THREE.Vector3(
+    state.receiver.x + delta.x,
+    state.receiver.z + delta.y,
+    state.receiver.y + delta.z,
+  );
+}
+
+function traceProbeRayPath(roomSurfaces, maxBounces, targetPoint) {
   const points = [new THREE.Vector3(state.source.x, state.source.z, state.source.y)];
   if (!roomSurfaces?.length) {
     return points;
@@ -2474,7 +2667,7 @@ function traceProbeRayPath(roomSurfaces, maxBounces) {
 
   const raycaster = new THREE.Raycaster();
   let origin = points[0].clone();
-  const target = new THREE.Vector3(state.receiver.x, state.receiver.z, state.receiver.y);
+  const target = targetPoint ?? new THREE.Vector3(state.receiver.x, state.receiver.z, state.receiver.y);
   let direction = target.clone().sub(origin);
   if (direction.lengthSq() === 0) {
     direction.set(1, 0, 0);
