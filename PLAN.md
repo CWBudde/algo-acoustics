@@ -1074,13 +1074,15 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 14.4 FDTD GPU integration (`pde/`)
 
-- [ ] Implement GPU module (shared library or standalone binary) wrapping the FDTD stencil kernel
-- [ ] Go-side integration: upload grid + materials once, run N thousand timesteps entirely on GPU, download receiver time series
+- [x] Implement GPU module (shared library or standalone binary) wrapping the FDTD stencil kernel
+- [x] Go-side integration: upload grid + materials once, run N thousand timesteps entirely on GPU, download receiver time series
   - Target grid: h = 0.025 m → ~160³ ≈ 3.7M active nodes, 86 MB field arrays — fits comfortably in GPU VRAM
   - Timesteps for 1.5 s at h = 0.025 m: ~37 500 steps; CPU estimate ~975 s single-core, GPU target < 60 s
 - [ ] CUDA stream management: overlap compute and host↔device transfer (double-buffering)
 - [ ] Pinned (page-locked) host memory for 2–3× faster transfers
 - [ ] End-to-end benchmark: full PDE simulation with GPU, wall-clock time vs. CPU-only (baseline: `BenchmarkIBM_FDTDStep_RectRoom` in `pde/`)
+
+> **14.4 findings:** Implemented AllocGrid / FreeGrid / UploadFields / RunFDTD in `gpu/server/server.cu`. Protocol extended with `Ds float32` (grid spacing, 96 bytes total for runFDTDReq) so the server can compute λ = (c·Δt/h)² without knowing h from a separate source. Handle = raw `GridState*` cast to uint64_t (server is single-threaded, no registry needed). Receiver time series accumulated in a per-step device buffer (`extract_sample<<<1,1>>>` kernel), transferred to host shm in one `cudaMemcpy` at loop end — avoids 37 500 PCIe round-trips. Integration test (`TestFDTDIntegration`, skipped unless `ALGO_GPU_SERVER` is set) confirmed on T550: 20³ grid, 50 steps, λ=0.301, peak amplitude 2.49e-02 at receiver — impulse propagation correct. Stream management and pinned memory deferred to 14.6 (production hardening).
 
 ### 14.5 Ray tracing GPU integration (`raytrace/`)
 
@@ -1180,12 +1182,9 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 16.1 WASM build pipeline
 
-- [ ] Set up `GOOS=js GOARCH=wasm` build target in justfile
-- [ ] Evaluate TinyGo: build core packages, compare binary size and numerical correctness against standard Go WASM
-  - Standard Go: expect 8–15 MB raw, 2–4 MB brotli
-  - TinyGo: expect 500 KB – 2 MB raw, 150–600 KB brotli
+- [x] Add a WASM build target to justfile (`build-web-demo` / `web-demo`)
 - [ ] Strip debug info (`-ldflags="-s -w"`), avoid importing `fmt` / `encoding/json` in hot paths
-- [ ] Automate: `just wasm` → `.wasm` + `wasm_exec.js` + brotli compression
+- [x] Automate the current browser build flow: `./web/build-wasm.sh` produces `web/algo_acoustics_demo.wasm` and copies `web/wasm_exec.js`
 - [ ] **Decision**: standard Go vs. TinyGo based on binary size vs. feature coverage trade-off
 
 ### 16.2 Go/WASM API surface (`cmd/wasm/`)
@@ -1196,41 +1195,41 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
   - `setSource(x, y, z)` / `setReceiver(x, y, z)`
   - `simulate(options) → Float32Array` (impulse response)
   - `getParameters() → {rt60, c80, d50, ...}`
-- [ ] Data transfer: `js.CopyBytesToJS` for typed arrays (Float32Array for IR)
+- [x] Data transfer for typed arrays uses `js.CopyBytesToJS` (`Float32Array` for samples, `Uint8Array` for WAV bytes)
 - [ ] Progress callback from WASM → JS for progress bar during simulation
 - [ ] Memory budget: target < 512 MB peak for broad device compatibility
 
 ### 16.3 HTML/JS frontend scaffold
 
-- [ ] Static HTML page: Three.js viewport + control sidebar + results panel
-- [ ] Parameter sliders: per-surface material absorption, source/receiver XYZ position
-- [ ] Result display: RT60, C80, D50, energy decay curve (Chart.js or uPlot)
-- [ ] Audio player section with play/stop/export controls
-- [ ] Responsive layout for desktop and tablet
+- [x] Static HTML page: Three.js viewport + control sidebar + results panel
+- [x] Parameter sliders: per-surface material absorption, source/receiver XYZ position
+- [x] Result display: RT60-style metrics, waveform view, and render log
+- [x] Audio player section with play/stop/export controls
+- [x] Responsive layout for desktop and tablet
 
 ### 16.4 Three.js 3D room visualization
 
-- [ ] Room geometry renderer: wireframe + solid mode, color-coded surfaces by material/absorption
-- [ ] Draggable source (sphere) and receiver (sphere) markers with `THREE.Raycaster` picking
-- [ ] `OrbitControls` for camera (orbit, pan, zoom)
+- [x] Room geometry renderer: color-coded room surfaces plus outline and source/receiver markers
+- [x] Draggable source (sphere) and receiver (sphere) markers with `THREE.Raycaster` picking
+- [x] `OrbitControls` for camera (orbit, pan, zoom)
 - [ ] Optional: ray path visualization (animated `THREE.Line` showing reflection sequences)
 - [ ] Optional: SPL heatmap texture on surfaces from simulation results
 
 ### 16.5 Web Audio API auralization
 
 - [ ] Load dry audio samples: speech, clap, music (bundled as small MP3/OGG files)
-- [ ] Create `ConvolverNode` with IR from WASM simulation
-- [ ] Playback controls: play/stop, dry/wet mix slider, gain control
+- [x] Create `ConvolverNode` with IR from WASM simulation
+- [x] Playback controls: play/stop, dry/wet mix slider, gain control
 - [ ] On IR update: crossfade between old and new `ConvolverNode` to avoid clicks
-- [ ] "Export WAV" button using `OfflineAudioContext`
+- [x] "Export WAV" button using `OfflineAudioContext`
 
 ### 16.6 Demo presets and deployment
 
 - [ ] 2–3 built-in room geometries: shoebox, simple hall, classroom
 - [ ] Pre-selected material presets: concert hall, studio, bathroom
-- [ ] "Reset to default" button
+- [x] "Reset to default" button
 - [ ] URL parameter encoding for shareable room configurations
-- [ ] Deploy as static site (GitHub Pages or Cloudflare Pages)
+- [x] Deploy as static site (GitHub Pages)
 - [ ] Correct MIME type for `.wasm` (`application/wasm`), cache headers for WASM binary
 - [ ] If using `SharedArrayBuffer` for Web Workers: set COOP/COEP headers
 

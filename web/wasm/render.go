@@ -193,15 +193,23 @@ func runDemoRenderJSON(payload string) (demoResult, error) {
 
 func runDemoRender(request demoRequest) (demoResult, error) {
 	started := time.Now()
+	reportDemoProgress("prepare", 2, "Preparing demo request")
 
 	normalized, err := normalizeDemoRequest(request)
 	if err != nil {
 		return demoResult{}, err
 	}
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
+	}
 
+	reportDemoProgress("scene", 10, "Building room scene")
 	sc, err := buildDemoScene(normalized)
 	if err != nil {
 		return demoResult{}, err
+	}
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
 	}
 
 	renderCfg := ir.RenderConfig{
@@ -217,36 +225,52 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 
 	switch normalized.Render.Mode {
 	case "early":
+		reportDemoProgress("early", 25, "Tracing early reflections")
 		earlyEvents, err = solveEarly(sc, normalized.Render.MaxOrder)
 		if err != nil {
 			return demoResult{}, err
 		}
+		if demoCancelled() {
+			return demoResult{}, errors.New("render cancelled")
+		}
 
+		reportDemoProgress("render", 45, "Rendering early impulse response")
 		buffer, err = ir.RenderMono(earlyEvents, renderCfg)
 		if err != nil {
 			return demoResult{}, fmt.Errorf("render early impulse response: %w", err)
 		}
 	case "late":
+		reportDemoProgress("late", 35, "Tracing late field")
 		buffer, err = renderLateBuffer(sc, normalized.Render.DurationSeconds, normalized.Render.NumRays, normalized.Render.MaxOrder)
 		if err != nil {
 			return demoResult{}, err
 		}
 	case "hybrid":
+		reportDemoProgress("early", 22, "Tracing early reflections")
 		earlyEvents, err = solveEarly(sc, normalized.Render.MaxOrder)
 		if err != nil {
 			return demoResult{}, err
 		}
+		if demoCancelled() {
+			return demoResult{}, errors.New("render cancelled")
+		}
 
+		reportDemoProgress("render", 38, "Rendering early impulse response")
 		earlyBuffer, renderErr := ir.RenderMono(earlyEvents, renderCfg)
 		if renderErr != nil {
 			return demoResult{}, fmt.Errorf("render early impulse response: %w", renderErr)
 		}
 
+		reportDemoProgress("late", 58, "Tracing late field")
 		lateBuffer, renderErr := renderLateBuffer(sc, normalized.Render.DurationSeconds, normalized.Render.NumRays, normalized.Render.MaxOrder)
 		if renderErr != nil {
 			return demoResult{}, renderErr
 		}
+		if demoCancelled() {
+			return demoResult{}, errors.New("render cancelled")
+		}
 
+		reportDemoProgress("blend", 84, "Blending early and late responses")
 		hybridCfg := hybrid.HybridConfig{
 			CrossoverTimeSeconds: normalized.Render.CrossoverTimeSeconds,
 			CrossoverMode:        hybrid.TimeBased,
@@ -266,14 +290,29 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		return demoResult{}, fmt.Errorf("unsupported render mode %q", normalized.Render.Mode)
 	}
 
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
+	}
+	reportDemoProgress("normalize", 90, "Normalizing output")
 	limitBufferPeak(buffer, outputPeakHeadroom)
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
+	}
 
+	reportDemoProgress("encode", 95, "Encoding WAV")
 	wavBytes, err := encodeMonoWAVBytes(buffer)
 	if err != nil {
 		return demoResult{}, err
 	}
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
+	}
 
 	peak, rms, firstArrivalMs := analyzeSamples(buffer.Samples, buffer.SampleRate)
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
+	}
+	reportDemoProgress("finish", 100, "Done")
 
 	floatSamples := make([]float32, len(buffer.Samples))
 	for index, sample := range buffer.Samples {
@@ -514,6 +553,10 @@ func analyzeSamples(samples []float64, sampleRate int) (peak, rms, firstArrivalM
 	var energySum float64
 
 	for index, sample := range samples {
+		if index%4096 == 0 && demoCancelled() {
+			return 0, 0, 0
+		}
+
 		magnitude := math.Abs(sample)
 		if magnitude > peak {
 			peak = magnitude
@@ -541,7 +584,11 @@ func limitBufferPeak(buf *ir.Buffer, targetPeak float64) float64 {
 	}
 
 	currentPeak := 0.0
-	for _, sample := range buf.Samples {
+	for index, sample := range buf.Samples {
+		if index%4096 == 0 && demoCancelled() {
+			return 0
+		}
+
 		magnitude := math.Abs(sample)
 		if magnitude > currentPeak {
 			currentPeak = magnitude

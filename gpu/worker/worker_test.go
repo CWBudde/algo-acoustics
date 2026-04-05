@@ -23,7 +23,7 @@ func TestProtocolStructSizes(t *testing.T) {
 		{"allocGridResp", allocGridResp{}, 8},
 		{"freeGridReq", freeGridReq{}, 8},
 		{"uploadFieldsReq", uploadFieldsReq{}, 72},
-		{"runFDTDReq", runFDTDReq{}, 92},
+		{"runFDTDReq", runFDTDReq{}, 96},
 		{"allocBVHReq", allocBVHReq{}, 72},
 		{"allocBVHResp", allocBVHResp{}, 8},
 		{"freeBVHReq", freeBVHReq{}, 8},

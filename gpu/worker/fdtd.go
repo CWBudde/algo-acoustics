@@ -18,6 +18,7 @@ type FDTDParams struct {
 	RcvIdx       uint32  // flat grid index of the receiver extraction point
 	SpeedOfSound float32 // m/s (typically 343.0)
 	Dt           float32 // timestep in seconds (must satisfy CFL condition)
+	Ds           float32 // grid spacing in metres (h); used to compute λ = (c·Δt/h)²
 }
 
 // AllocGrid allocates a Cartesian FDTD grid of dimensions nx × ny × nz on the
@@ -102,8 +103,9 @@ func (w *Worker) RunFDTD(ctx context.Context, h GridHandle, p FDTDParams) ([]flo
 		RcvIdx:       p.RcvIdx,
 		SpeedOfSound: p.SpeedOfSound,
 		Dt:           p.Dt,
+		Ds:           p.Ds,
+		ResultSHM:    shmNameOf(resultName),
 	}
-	copy(req.ResultSHM[:], resultName)
 
 	var buf bytes.Buffer
 	if err = binary.Write(&buf, byteOrder, req); err != nil {

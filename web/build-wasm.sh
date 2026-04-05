@@ -18,7 +18,7 @@ if [[ -z $GO_WASM_EXEC ]]; then
 fi
 
 cp "$GO_WASM_EXEC" "$WEB_DIR/wasm_exec.js"
-GOOS=js GOARCH=wasm go build -buildvcs=false -o "$WEB_DIR/algo_acoustics_demo.wasm" "$ROOT_DIR/web/wasm"
+GOOS=js GOARCH=wasm go build -buildvcs=false -trimpath -ldflags="-s -w" -o "$WEB_DIR/algo_acoustics_demo.wasm" "$ROOT_DIR/web/wasm"
 
 echo "Built $WEB_DIR/algo_acoustics_demo.wasm"
 echo "Copied $WEB_DIR/wasm_exec.js"

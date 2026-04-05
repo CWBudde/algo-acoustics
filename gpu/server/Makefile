@@ -1,6 +1,6 @@
 # Makefile — GPU server binary
 #
-# Builds algo-acoustics-gpu from server.cu.
+# Builds algo-acoustics-gpu from server.cu + the shared FDTD kernel.
 # Requires CUDA Toolkit (nvcc) and a sm_75+ GPU (RTX series / Quadro T-series).
 #
 # Usage:
@@ -15,13 +15,13 @@ NVCCFLAGS := -arch=$(ARCH) -std=$(CXXSTD) -O3 \
              -Xcompiler -Wall,-Wextra
 
 TARGET    := algo-acoustics-gpu
-SRCS      := server.cu
+SRCS      := server.cu ../fdtd/fdtd_kernel.cu
 
 .PHONY: all clean install
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS) protocol.h
+$(TARGET): $(SRCS) protocol.h ../fdtd/fdtd_kernel.cuh
 	$(NVCC) $(NVCCFLAGS) -o $@ $(SRCS)
 
 install: $(TARGET)

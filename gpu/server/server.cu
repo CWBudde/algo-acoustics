@@ -8,10 +8,9 @@
 // channel).  Multiple connections are not supported; the server exits after
 // the connection is closed or a shutdown message is received.
 //
-// Handlers are stubs for phases 14.4 and 14.5:
-//   AllocGrid / UploadFields / RunFDTD  → STATUS_NOT_IMPL
-//   AllocBVH  / TraceRays              → STATUS_NOT_IMPL
-// Only Ping and Shutdown are fully implemented here.
+// Phases implemented here:
+//   AllocGrid / FreeGrid / UploadFields / RunFDTD  → fully implemented (14.4)
+//   AllocBVH  / FreeBVH  / TraceRays              → STATUS_NOT_IMPL (14.5)
 
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +24,7 @@
 #include <fcntl.h>
 
 #include "protocol.h"
+#include "../fdtd/fdtd_kernel.cuh"
 
 // -----------------------------------------------------------------------
 // Shared-memory helpers (Linux /dev/shm implementation)
@@ -96,31 +96,183 @@ static bool send_response(int fd, uint32_t status,
 }
 
 // -----------------------------------------------------------------------
-// Handler stubs (filled in 14.4 and 14.5)
+// GridState — persistent FDTD pressure fields in GPU VRAM.
+//
+// Three device float arrays of length nx·ny·nz:
+//   pCur  — pressure at time t
+//   pPrev — pressure at time t-Δt
+//   pNext — scratch buffer (written by the kernel, then rotated)
+//
+// The handle returned to the Go client is the pointer cast to uint64_t.
+// The server is single-threaded so no lock is needed.
+// -----------------------------------------------------------------------
+
+struct GridState {
+    float *pCur;
+    float *pPrev;
+    float *pNext;
+    int    nx, ny, nz;
+};
+
+// -----------------------------------------------------------------------
+// extract_sample — CUDA kernel: copy one element from a device array into
+// a pre-allocated device result buffer at position [step].
+// Launched as <<<1,1>>> in the default stream after each fdtd_step kernel.
+// -----------------------------------------------------------------------
+
+__global__ void extract_sample(const float *field, float *results,
+                                int rcv_idx, int step) {
+    results[step] = field[rcv_idx];
+}
+
+// -----------------------------------------------------------------------
+// FDTD handlers (Phase 14.4)
 // -----------------------------------------------------------------------
 
 static void handle_alloc_grid(int conn, const uint8_t *payload, uint32_t len) {
-    (void)payload; (void)len;
-    fprintf(stderr, "[gpu-server] AllocGrid: not yet implemented (phase 14.4)\n");
-    send_response(conn, STATUS_NOT_IMPL);
+    if (len < sizeof(alloc_grid_req_t)) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    alloc_grid_req_t req;
+    memcpy(&req, payload, sizeof(req));
+
+    const long long N  = (long long)req.nx * req.ny * req.nz;
+    const size_t    sz = (size_t)N * sizeof(float);
+
+    auto *g = new GridState{};
+    g->nx = (int)req.nx;
+    g->ny = (int)req.ny;
+    g->nz = (int)req.nz;
+
+    if (cudaMalloc(&g->pCur,  sz) != cudaSuccess ||
+        cudaMalloc(&g->pPrev, sz) != cudaSuccess ||
+        cudaMalloc(&g->pNext, sz) != cudaSuccess) {
+        cudaFree(g->pCur);
+        cudaFree(g->pPrev);
+        cudaFree(g->pNext);
+        delete g;
+        send_response(conn, STATUS_OOM);
+        return;
+    }
+    cudaMemset(g->pCur,  0, sz);
+    cudaMemset(g->pPrev, 0, sz);
+    cudaMemset(g->pNext, 0, sz);
+
+    fprintf(stderr, "[gpu-server] AllocGrid %dx%dx%d  handle=0x%llx\n",
+            req.nx, req.ny, req.nz, (unsigned long long)(uintptr_t)g);
+
+    alloc_grid_resp_t resp = { (uint64_t)(uintptr_t)g };
+    send_response(conn, STATUS_OK, &resp, sizeof(resp));
 }
 
 static void handle_free_grid(int conn, const uint8_t *payload, uint32_t len) {
-    (void)payload; (void)len;
-    send_response(conn, STATUS_NOT_IMPL);
+    if (len < sizeof(free_grid_req_t)) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    free_grid_req_t req;
+    memcpy(&req, payload, sizeof(req));
+    auto *g = reinterpret_cast<GridState *>((uintptr_t)req.handle);
+    cudaFree(g->pCur);
+    cudaFree(g->pPrev);
+    cudaFree(g->pNext);
+    delete g;
+    send_response(conn, STATUS_OK);
 }
 
 static void handle_upload_fields(int conn, const uint8_t *payload, uint32_t len) {
-    (void)payload; (void)len;
-    fprintf(stderr, "[gpu-server] UploadFields: not yet implemented (phase 14.4)\n");
-    send_response(conn, STATUS_NOT_IMPL);
+    if (len < sizeof(upload_fields_req_t)) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    upload_fields_req_t req;
+    memcpy(&req, payload, sizeof(req));
+    auto *g = reinterpret_cast<GridState *>((uintptr_t)req.handle);
+
+    const long long N  = (long long)g->nx * g->ny * g->nz;
+    const size_t    sz = (size_t)N * sizeof(float);
+
+    // Shared memory layout: [pCur (N floats) | pPrev (N floats)]
+    void *p = shm_open_read(req.shm_name.s, 2 * sz);
+    if (!p) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+
+    cudaError_t e1 = cudaMemcpy(g->pCur,  p,                     sz, cudaMemcpyHostToDevice);
+    cudaError_t e2 = cudaMemcpy(g->pPrev, (const char *)p + sz,  sz, cudaMemcpyHostToDevice);
+    shm_close(p, 2 * sz);
+
+    if (e1 != cudaSuccess || e2 != cudaSuccess) {
+        fprintf(stderr, "[gpu-server] UploadFields cudaMemcpy: %s / %s\n",
+                cudaGetErrorString(e1), cudaGetErrorString(e2));
+        send_response(conn, STATUS_CUDA);
+        return;
+    }
+    send_response(conn, STATUS_OK);
 }
 
 static void handle_run_fdtd(int conn, const uint8_t *payload, uint32_t len) {
-    (void)payload; (void)len;
-    fprintf(stderr, "[gpu-server] RunFDTD: not yet implemented (phase 14.4)\n");
-    send_response(conn, STATUS_NOT_IMPL);
+    if (len < sizeof(run_fdtd_req_t)) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    run_fdtd_req_t req;
+    memcpy(&req, payload, sizeof(req));
+    auto *g = reinterpret_cast<GridState *>((uintptr_t)req.handle);
+
+    // λ = (c · Δt / h)²  (Courant number squared)
+    const float cfl    = req.speed_of_sound * req.dt / req.ds;
+    const float lambda = cfl * cfl;
+
+    fprintf(stderr, "[gpu-server] RunFDTD %u steps  λ=%.4f  src=%u  rcv=%u\n",
+            req.steps, lambda, req.src_idx, req.rcv_idx);
+
+    // Allocate device buffer for the receiver time series.
+    float *d_results = nullptr;
+    if (cudaMalloc(&d_results, req.steps * sizeof(float)) != cudaSuccess) {
+        send_response(conn, STATUS_OOM);
+        return;
+    }
+    cudaMemset(d_results, 0, req.steps * sizeof(float));
+
+    // Time-march loop.  All kernels run in the default stream (stream 0)
+    // and therefore execute in issue order — no explicit sync between steps.
+    for (uint32_t step = 0; step < req.steps; step++) {
+        launch_fdtd_naive(g->pNext, g->pCur, g->pPrev,
+                          g->nx, g->ny, g->nz, lambda, /*stream=*/0);
+
+        // Record receiver value: pNext[rcv_idx] → d_results[step].
+        extract_sample<<<1, 1>>>(g->pNext, d_results, (int)req.rcv_idx, (int)step);
+
+        // Rotate buffers (pointer swap, no device-side copy):
+        //   pPrev ← pCur,  pCur ← pNext,  pNext ← old pPrev
+        float *tmp = g->pPrev;
+        g->pPrev   = g->pCur;
+        g->pCur    = g->pNext;
+        g->pNext   = tmp;
+    }
+    cudaDeviceSynchronize();
+
+    // Write results to the pre-created shared memory segment.
+    const size_t result_sz = req.steps * sizeof(float);
+    void *p = shm_open_write(req.result_shm.s, result_sz);
+    if (!p) {
+        cudaFree(d_results);
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    cudaMemcpy(p, d_results, result_sz, cudaMemcpyDeviceToHost);
+    shm_close(p, result_sz);
+    cudaFree(d_results);
+
+    send_response(conn, STATUS_OK);
 }
+
+// -----------------------------------------------------------------------
+// BVH / ray-tracing handler stubs (Phase 14.5)
+// -----------------------------------------------------------------------
 
 static void handle_alloc_bvh(int conn, const uint8_t *payload, uint32_t len) {
     (void)payload; (void)len;

@@ -79,6 +79,11 @@
           </div>
 
           <div class="control-stack">
+            <label class="field compact-field">
+              <span>Room preset</span>
+              <select id="room-preset"></select>
+            </label>
+
             <label class="field">
               <span>Pattern</span>
               <select id="source-directivity">
@@ -211,6 +216,11 @@
             </div>
           </div>
 
+          <label class="field compact-field">
+            <span>Material preset</span>
+            <select id="material-preset"></select>
+          </label>
+
           <div class="wall-grid">
             <label class="field compact-field">
               <span>West wall</span>
@@ -332,8 +342,16 @@
           </label>
 
           <div class="action-row">
-            <button id="render-scene" class="primary-button" type="button">
-              Render room
+            <button
+              id="render-scene"
+              class="primary-button progress-button"
+              type="button"
+            >
+              <span class="button-progress-fill"></span>
+              <span class="button-copy">
+                <span class="button-title">Render room</span>
+                <span class="button-subtitle">Ready</span>
+              </span>
             </button>
             <button
               id="download-wav"
@@ -421,6 +439,70 @@
             <div class="audio-card">
               <audio id="audio-player" controls preload="none"></audio>
             </div>
+
+            <section class="auralization-card">
+              <div class="panel-head compact-panel-head">
+                <div>
+                  <p class="section-kicker">Auralization</p>
+                  <h2>Web Audio playback</h2>
+                </div>
+                <span id="audio-status" class="status-pill is-loading"
+                  >Waiting for IR</span
+                >
+              </div>
+
+              <div class="field compact-field">
+                <span>Dry source</span>
+                <select id="dry-source">
+                  <option value="clap">Clap</option>
+                  <option value="speech">Speech-like</option>
+                  <option value="music">Music bed</option>
+                </select>
+              </div>
+
+              <div class="field split-field">
+                <label>
+                  <span>Wet mix</span>
+                  <input
+                    id="wet-mix"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                  />
+                </label>
+                <strong id="wet-mix-value" class="field-value"></strong>
+              </div>
+
+              <div class="field split-field">
+                <label>
+                  <span>Output gain</span>
+                  <input
+                    id="audio-gain"
+                    type="range"
+                    min="-12"
+                    max="6"
+                    step="0.5"
+                  />
+                </label>
+                <strong id="audio-gain-value" class="field-value"></strong>
+              </div>
+
+              <div class="action-row audio-action-row">
+                <button id="play-auralization" class="primary-button" type="button">
+                  Play
+                </button>
+                <button id="stop-auralization" class="ghost-button" type="button">
+                  Stop
+                </button>
+              </div>
+
+              <div class="action-row audio-action-row">
+                <button id="export-auralization" class="ghost-button" type="button">
+                  Export WAV
+                </button>
+              </div>
+            </section>
 
             <pre id="render-log" class="render-log">
 Run the renderer to generate a browser-side WAV preview.</pre

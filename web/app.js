@@ -44,7 +44,96 @@ const MATERIALS = {
   },
 };
 
+const ROOM_PRESETS = {
+  custom: {
+    label: "Custom",
+  },
+  shoebox: {
+    label: "Shoebox",
+    room: { width: 6.4, depth: 4.8, height: 2.9 },
+    source: {
+      x: 1.4,
+      y: 1.9,
+      z: 1.25,
+      gainDb: 0,
+      directivity: "omni",
+      azimuthDegrees: 18,
+      cardioidOrder: 1.15,
+    },
+    receiver: { x: 4.85, y: 2.9, z: 1.2 },
+  },
+  hall: {
+    label: "Simple Hall",
+    room: { width: 12, depth: 8, height: 4 },
+    source: {
+      x: 2.1,
+      y: 2.4,
+      z: 1.55,
+      gainDb: -1.5,
+      directivity: "cardioid",
+      azimuthDegrees: 15,
+      cardioidOrder: 1.3,
+    },
+    receiver: { x: 8.9, y: 4.1, z: 1.45 },
+  },
+  classroom: {
+    label: "Classroom",
+    room: { width: 8.8, depth: 6.4, height: 3.1 },
+    source: {
+      x: 1.75,
+      y: 2,
+      z: 1.35,
+      gainDb: 0,
+      directivity: "omni",
+      azimuthDegrees: 0,
+      cardioidOrder: 1,
+    },
+    receiver: { x: 6.9, y: 3.7, z: 1.35 },
+  },
+};
+
+const MATERIAL_PRESETS = {
+  custom: {
+    label: "Custom",
+  },
+  concertHall: {
+    label: "Concert Hall",
+    materials: {
+      west: "perforatedWood",
+      east: "perforatedWood",
+      south: "heavyCurtain",
+      north: "heavyCurtain",
+      floor: "plywoodPanels",
+      ceiling: "heavyCurtain",
+    },
+  },
+  studio: {
+    label: "Studio",
+    materials: {
+      west: "thinCarpet",
+      east: "thinCarpet",
+      south: "plywoodPanels",
+      north: "defaultMaterial",
+      floor: "pileCarpet",
+      ceiling: "heavyCurtain",
+    },
+  },
+  bathroom: {
+    label: "Bathroom",
+    materials: {
+      west: "glassWindow",
+      east: "glassWindow",
+      south: "smoothConcrete",
+      north: "smoothConcrete",
+      floor: "smoothConcrete",
+      ceiling: "smoothConcrete",
+    },
+  },
+};
+
 const DEFAULT_STATE = {
+  roomPreset: "custom",
+  materialPreset: "custom",
   room: { width: 6.4, depth: 4.8, height: 2.9 },
   materials: {
     west: "perforatedWood",
@@ -109,12 +198,31 @@ const THEME_ICONS = {
 const state = structuredClone(DEFAULT_STATE);
 let currentThemeMode = "auto";
 let mediaThemeQuery = null;
+let renderWorker = null;
+let renderSession = null;
+let renderButtonAnimation = 0;
+let urlSyncTimer = 0;
+let latestEncodedState = null;
+let renderWorkerReady = false;
+let audioContext = null;
+let currentIRBuffer = null;
+let currentAuralizationSource = null;
+let currentAuralizationNodes = null;
+let currentAuralizationPlaying = false;
+let currentAuralizationStopTimer = 0;
+let lastAuralizedWav = null;
+let dragState = null;
+let sceneRaycaster = null;
+let scenePointer = null;
+let sceneDragPlane = null;
 
 const refs = {
   engineStatus: document.getElementById("engine-status"),
   themeToggle: document.getElementById("theme-toggle"),
   renderBadge: document.getElementById("render-badge"),
   resetScene: document.getElementById("reset-scene"),
+  roomPreset: document.getElementById("room-preset"),
+  materialPreset: document.getElementById("material-preset"),
   sourceDirectivity: document.getElementById("source-directivity"),
   sourceAzimuth: document.getElementById("source-azimuth"),
   sourceAzimuthValue: document.getElementById("source-azimuth-value"),
@@ -151,7 +259,18 @@ const refs = {
     document.querySelectorAll("#render-mode-switch .mode-button"),
   ),
   renderScene: document.getElementById("render-scene"),
+  renderButtonTitle: document.querySelector("#render-scene .button-title"),
+  renderButtonSubtitle: document.querySelector("#render-scene .button-subtitle"),
   downloadWav: document.getElementById("download-wav"),
+  audioStatus: document.getElementById("audio-status"),
+  drySource: document.getElementById("dry-source"),
+  wetMix: document.getElementById("wet-mix"),
+  wetMixValue: document.getElementById("wet-mix-value"),
+  audioGain: document.getElementById("audio-gain"),
+  audioGainValue: document.getElementById("audio-gain-value"),
+  playAuralization: document.getElementById("play-auralization"),
+  stopAuralization: document.getElementById("stop-auralization"),
+  exportAuralization: document.getElementById("export-auralization"),
   metricFirstArrival: document.getElementById("metric-first-arrival"),
   metricPeak: document.getElementById("metric-peak"),
   metricEvents: document.getElementById("metric-events"),
@@ -165,41 +284,40 @@ const refs = {
   renderLog: document.getElementById("render-log"),
 };
 
-let wasmApi = null;
 let sceneView = null;
 let lastRender = null;
 let lastAudioURL = null;
+let workerReadyResolve = null;
+let workerReadyReject = null;
+let currentRenderId = 0;
 
 init();
 
 async function init() {
   initTheme();
+  populatePresetSelects();
   populateMaterialSelects();
+  loadStateFromUrl();
   bindEvents();
   syncFormFromState();
+  syncAuralizationControls();
   updateMaterialSummary();
   drawWaveform();
   sceneView = createSceneView(refs.sceneCanvas);
+  bindSceneInteractions(refs.sceneCanvas);
   applySceneTheme();
   updateSceneView();
+  updateRenderButton("Render room", "Ready", 0);
   await initWasm();
+  scheduleUrlSync();
 }
 
 async function initWasm() {
   try {
     setEngineStatus("Loading WASM", "loading");
-    const go = new Go();
-    const result = await WebAssembly.instantiateStreaming(
-      fetch("algo_acoustics_demo.wasm"),
-      go.importObject,
-    );
-    go.run(result.instance);
-    wasmApi = window.algoAcousticsDemo;
-    if (!wasmApi?.renderScene) {
-      throw new Error(
-        "WASM runtime did not expose algoAcousticsDemo.renderScene",
-      );
-    }
+    const readyPromise = waitForWorkerReady();
+    renderWorker = createRenderWorker();
+    await readyPromise;
     setEngineStatus("WASM ready", "ready");
     setRenderBadge("Waiting for render", "ready");
   } catch (error) {
@@ -209,35 +327,160 @@ async function initWasm() {
   }
 }
 
+function createRenderWorker() {
+  const worker = new Worker("worker.js");
+  worker.addEventListener("message", handleWorkerMessage);
+  worker.addEventListener("error", (event) => {
+    if (workerReadyReject) {
+      workerReadyReject(event.error ?? new Error(event.message));
+      workerReadyReject = null;
+      workerReadyResolve = null;
+    }
+    setEngineStatus("WASM failed", "error");
+    refs.renderLog.textContent = `${event.message}`;
+  });
+  worker.postMessage({ type: "init" });
+  return worker;
+}
+
+function waitForWorkerReady() {
+  if (renderWorkerReady) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    workerReadyResolve = resolve;
+    workerReadyReject = reject;
+  });
+}
+
+function handleWorkerMessage(event) {
+  const { type, requestId, result, stage, percent, message } = event.data ?? {};
+
+  if (type === "ready") {
+    renderWorkerReady = true;
+    if (workerReadyResolve) {
+      workerReadyResolve();
+      workerReadyResolve = null;
+      workerReadyReject = null;
+    }
+    return;
+  }
+
+  if (type === "progress") {
+    if (!renderSession || requestId !== renderSession.requestId) {
+      return;
+    }
+
+    updateRenderSessionProgress({
+      stage: stage ?? "working",
+      percent: Number.isFinite(percent) ? percent : renderSession.progress,
+      message: message ?? stage ?? "Working",
+    });
+    return;
+  }
+
+  if (type === "cancelled") {
+    if (!renderSession || requestId !== renderSession.requestId) {
+      return;
+    }
+
+    finalizeRenderSession("Render canceled", "ready");
+    refs.renderLog.textContent = "Render canceled.";
+    setRenderBadge("Render canceled", "ready");
+    return;
+  }
+
+  if (type === "error") {
+    if (renderSession && requestId === renderSession.requestId) {
+      finalizeRenderSession("Render failed", "error");
+    }
+    setRenderBadge("Render failed", "error");
+    refs.renderLog.textContent = `${message ?? result ?? "Render failed"}`;
+    return;
+  }
+
+  if (type === "result") {
+    if (!renderSession || requestId !== renderSession.requestId) {
+      return;
+    }
+
+    if (renderSession.cancelRequested) {
+      finalizeRenderSession("Render canceled", "ready");
+      setRenderBadge("Render canceled", "ready");
+      return;
+    }
+
+    const samples = result?.samples ? new Float32Array(result.samples) : new Float32Array();
+    const wavBytes = result?.wavBytes ? new Uint8Array(result.wavBytes) : new Uint8Array();
+    lastRender = {
+      ...result,
+      samples,
+      wavBytes,
+    };
+
+    setRenderBadge("Render complete", "ready");
+    updateMetrics(lastRender);
+    updateAudio(lastRender.wavBytes);
+    updateRenderLog(lastRender);
+    drawWaveform(samples);
+    refs.downloadWav.disabled = false;
+    finalizeRenderSession("Render room", "ready");
+    setRenderBadge("Render complete", "ready");
+    scheduleUrlSync();
+  }
+}
+
 function bindEvents() {
   refs.themeToggle?.addEventListener("click", cycleTheme);
 
   refs.resetScene.addEventListener("click", () => {
+    if (isRenderActive()) {
+      requestRenderCancel();
+    }
     copyState(DEFAULT_STATE, state);
     syncFormFromState();
     updateMaterialSummary();
     updateSceneView();
     drawWaveform(lastRender?.samples ?? null);
     setRenderBadge("Waiting for render", "ready");
+    scheduleUrlSync();
+  });
+
+  refs.roomPreset.addEventListener("change", () => {
+    applyRoomPreset(refs.roomPreset.value);
+  });
+
+  refs.materialPreset.addEventListener("change", () => {
+    applyMaterialPreset(refs.materialPreset.value);
   });
 
   refs.sourceDirectivity.addEventListener("change", () => {
     state.source.directivity = refs.sourceDirectivity.value;
+    state.roomPreset = "custom";
     syncDirectivityAvailability();
     updateSceneView();
+    syncPresetSelects();
+    scheduleUrlSync();
   });
 
   bindNumber(refs.roomWidth, (value) => {
     state.room.width = clamp(value, 2.5, 16);
+    state.roomPreset = "custom";
     normalizeSpatialState();
+    syncPresetSelects();
   });
   bindNumber(refs.roomDepth, (value) => {
     state.room.depth = clamp(value, 2.5, 16);
+    state.roomPreset = "custom";
     normalizeSpatialState();
+    syncPresetSelects();
   });
   bindNumber(refs.roomHeight, (value) => {
     state.room.height = clamp(value, 2.2, 7);
+    state.roomPreset = "custom";
     normalizeSpatialState();
+    syncPresetSelects();
   });
 
   bindNumber(refs.sourceX, (value) => {
@@ -246,6 +489,8 @@ function bindEvents() {
       POSITION_MARGIN,
       state.room.width - POSITION_MARGIN,
     );
+    state.roomPreset = "custom";
+    syncPresetSelects();
   });
   bindNumber(refs.sourceY, (value) => {
     state.source.y = clamp(
@@ -253,6 +498,8 @@ function bindEvents() {
       POSITION_MARGIN,
       state.room.depth - POSITION_MARGIN,
     );
+    state.roomPreset = "custom";
+    syncPresetSelects();
   });
   bindNumber(refs.sourceZ, (value) => {
     state.source.z = clamp(
@@ -260,6 +507,8 @@ function bindEvents() {
       POSITION_MARGIN,
       state.room.height - POSITION_MARGIN,
     );
+    state.roomPreset = "custom";
+    syncPresetSelects();
   });
   bindNumber(refs.receiverX, (value) => {
     state.receiver.x = clamp(
@@ -267,6 +516,8 @@ function bindEvents() {
       POSITION_MARGIN,
       state.room.width - POSITION_MARGIN,
     );
+    state.roomPreset = "custom";
+    syncPresetSelects();
   });
   bindNumber(refs.receiverY, (value) => {
     state.receiver.y = clamp(
@@ -274,6 +525,8 @@ function bindEvents() {
       POSITION_MARGIN,
       state.room.depth - POSITION_MARGIN,
     );
+    state.roomPreset = "custom";
+    syncPresetSelects();
   });
   bindNumber(refs.receiverZ, (value) => {
     state.receiver.z = clamp(
@@ -281,27 +534,37 @@ function bindEvents() {
       POSITION_MARGIN,
       state.room.height - POSITION_MARGIN,
     );
+    state.roomPreset = "custom";
+    syncPresetSelects();
   });
 
   bindRange(refs.sourceAzimuth, refs.sourceAzimuthValue, (value) => {
     state.source.azimuthDegrees = value;
+    state.roomPreset = "custom";
+    scheduleUrlSync();
     return `${Math.round(value)}°`;
   });
   bindRange(refs.sourceFocus, refs.sourceFocusValue, (value) => {
     state.source.cardioidOrder = value;
+    state.roomPreset = "custom";
+    scheduleUrlSync();
     return value.toFixed(2);
   });
   bindRange(refs.sourceGain, refs.sourceGainValue, (value) => {
     state.source.gainDb = value;
+    state.roomPreset = "custom";
+    scheduleUrlSync();
     return `${value.toFixed(1)} dB`;
   });
   bindRange(refs.renderRays, refs.renderRaysValue, (value) => {
     state.render.numRays = roundToStep(value, 128);
     refs.renderRays.value = String(state.render.numRays);
+    scheduleUrlSync();
     return `${state.render.numRays.toLocaleString()} rays`;
   });
   bindRange(refs.renderOrder, refs.renderOrderValue, (value) => {
     state.render.maxOrder = Math.round(value);
+    scheduleUrlSync();
     return `order ${state.render.maxOrder}`;
   });
   bindRange(refs.renderDuration, refs.renderDurationValue, (value) => {
@@ -312,6 +575,7 @@ function bindEvents() {
       state.render.durationSeconds * 0.85,
     );
     syncFormFromState();
+    scheduleUrlSync();
     return `${value.toFixed(2)} s`;
   });
   bindRange(refs.renderCrossover, refs.renderCrossoverValue, (value) => {
@@ -320,11 +584,13 @@ function bindEvents() {
       0.03,
       state.render.durationSeconds * 0.85,
     );
+    scheduleUrlSync();
     return `${state.render.crossoverTimeSeconds.toFixed(2)} s`;
   });
 
   refs.renderWindow.addEventListener("change", () => {
     state.render.crossoverWindow = refs.renderWindow.value;
+    scheduleUrlSync();
   });
 
   [
@@ -337,8 +603,11 @@ function bindEvents() {
   ].forEach(([element, key]) => {
     element.addEventListener("change", () => {
       state.materials[key] = element.value;
+      state.materialPreset = "custom";
       updateMaterialSummary();
       updateSceneView();
+      syncPresetSelects();
+      scheduleUrlSync();
     });
   });
 
@@ -347,6 +616,7 @@ function bindEvents() {
       state.render.mode = button.dataset.mode;
       syncModeButtons();
       drawWaveform(lastRender?.samples ?? null);
+      scheduleUrlSync();
     });
   });
 
@@ -355,15 +625,42 @@ function bindEvents() {
       state.irView = button.dataset.view;
       syncIrViewButtons();
       drawWaveform(lastRender?.samples ?? null);
+      scheduleUrlSync();
     });
   });
 
-  refs.renderScene.addEventListener("click", runRender);
+  refs.renderScene.addEventListener("click", onRenderButtonClick);
   refs.downloadWav.addEventListener("click", () => {
     if (!lastRender?.wavBytes) {
       return;
     }
     downloadBytes(lastRender.wavBytes, "algo-acoustics-demo.wav", "audio/wav");
+  });
+
+  refs.drySource.addEventListener("change", () => {
+    scheduleUrlSync();
+  });
+
+  refs.wetMix.addEventListener("input", () => {
+    syncAuralizationControls();
+  });
+
+  refs.audioGain.addEventListener("input", () => {
+    syncAuralizationControls();
+  });
+
+  refs.playAuralization.addEventListener("click", () => {
+    if (currentAuralizationPlaying) {
+      stopAuralizationPlayback();
+    } else {
+      void startAuralizationPlayback();
+    }
+  });
+
+  refs.stopAuralization.addEventListener("click", stopAuralizationPlayback);
+
+  refs.exportAuralization.addEventListener("click", () => {
+    void exportAuralizedWav();
   });
 
   window.addEventListener("resize", () => {
@@ -392,6 +689,8 @@ function populateMaterialSelects() {
 }
 
 function syncFormFromState() {
+  refs.roomPreset.value = state.roomPreset;
+  refs.materialPreset.value = state.materialPreset;
   refs.sourceDirectivity.value = state.source.directivity;
   refs.sourceAzimuth.value = String(state.source.azimuthDegrees);
   refs.sourceAzimuthValue.textContent = `${Math.round(state.source.azimuthDegrees)}°`;
@@ -503,45 +802,124 @@ function normalizeSpatialState() {
   );
   syncFormFromState();
   updateSceneView();
+  scheduleUrlSync();
 }
 
-async function runRender() {
-  if (!wasmApi?.renderScene) {
-    setRenderBadge("Engine unavailable", "error");
+function onRenderButtonClick() {
+  if (isRenderActive()) {
+    requestRenderCancel();
     return;
   }
 
-  refs.renderScene.disabled = true;
-  setRenderBadge("Rendering…", "busy");
-  refs.renderLog.textContent =
-    "Rendering hybrid impulse response in the browser…";
-  await nextPaint();
+  startRender();
+}
 
-  try {
-    const result = wasmApi.renderScene(buildRequest());
-    if (result.error) {
-      throw new Error(result.error);
+function startRender() {
+  if (!renderWorker) {
+    setRenderBadge("Engine unavailable", "error");
+    refs.renderLog.textContent = "WASM worker is not ready.";
+    return;
+  }
+
+  if (renderSession) {
+    return;
+  }
+
+  const requestId = ++currentRenderId;
+  const request = buildRequest();
+  renderSession = {
+    requestId,
+    startedAt: performance.now(),
+    progress: 0,
+    stage: "starting",
+    cancelRequested: false,
+  };
+
+  refs.renderScene.disabled = false;
+  refs.downloadWav.disabled = true;
+  setRenderBadge("Rendering…", "busy");
+  refs.renderLog.textContent = "Rendering hybrid impulse response in the browser…";
+  updateRenderButton("Cancel", "Starting render…", 0);
+  scheduleRenderButtonAnimation();
+  renderWorker.postMessage({
+    type: "render",
+    requestId,
+    payload: request,
+  });
+}
+
+function requestRenderCancel() {
+  if (!renderSession || renderSession.cancelRequested) {
+    return;
+  }
+
+  renderSession.cancelRequested = true;
+  setRenderBadge("Cancel requested", "busy");
+  updateRenderButton("Cancel", "Cancel requested", renderSession.progress);
+  renderWorker?.postMessage({ type: "cancel", requestId: renderSession.requestId });
+}
+
+function isRenderActive() {
+  return renderSession !== null;
+}
+
+function updateRenderSessionProgress({ stage, percent, message }) {
+  if (!renderSession) {
+    return;
+  }
+
+  renderSession.stage = stage;
+  renderSession.progress = clamp(percent, 0, 99);
+  updateRenderButton("Cancel", message, renderSession.progress);
+  setRenderBadge(`Rendering… ${Math.round(renderSession.progress)}%`, "busy");
+}
+
+function finalizeRenderSession(title, badgeState) {
+  if (renderButtonAnimation) {
+    cancelAnimationFrame(renderButtonAnimation);
+    renderButtonAnimation = 0;
+  }
+
+  renderSession = null;
+  updateRenderButton(title, "Ready", 0);
+  refs.renderScene.disabled = false;
+  setRenderBadge(title, badgeState);
+}
+
+function scheduleRenderButtonAnimation() {
+  if (renderButtonAnimation) {
+    return;
+  }
+
+  const tick = () => {
+    if (!renderSession) {
+      renderButtonAnimation = 0;
+      return;
     }
 
-    const samples = new Float32Array(result.samples);
-    const wavBytes = new Uint8Array(result.wavBytes);
-    lastRender = {
-      ...result,
-      samples,
-      wavBytes,
-    };
+    const elapsed = performance.now() - renderSession.startedAt;
+    const drift = Math.min(8, Math.floor(elapsed / 650));
+    const shownProgress = clamp(renderSession.progress + drift, 0, 99);
+    updateRenderButton(
+      renderSession.cancelRequested ? "Canceling…" : "Cancel",
+      renderSession.stage,
+      shownProgress,
+    );
+    renderButtonAnimation = requestAnimationFrame(tick);
+  };
 
-    setRenderBadge("Render complete", "ready");
-    updateMetrics(lastRender);
-    updateAudio(lastRender.wavBytes);
-    updateRenderLog(lastRender);
-    drawWaveform(samples);
-    refs.downloadWav.disabled = false;
-  } catch (error) {
-    setRenderBadge("Render failed", "error");
-    refs.renderLog.textContent = `${error}`;
-  } finally {
-    refs.renderScene.disabled = false;
+  renderButtonAnimation = requestAnimationFrame(tick);
+}
+
+function updateRenderButton(title, subtitle, progress) {
+  refs.renderScene.style.setProperty("--render-progress", `${progress}%`);
+  if (refs.renderButtonTitle) {
+    refs.renderButtonTitle.textContent = title;
+  } else {
+    refs.renderScene.textContent = title;
+  }
+  if (refs.renderButtonSubtitle) {
+    refs.renderButtonSubtitle.textContent = subtitle;
   }
 }
 
@@ -556,6 +934,8 @@ function updateRenderLog(result) {
   refs.renderLog.textContent = [
     `Mode: ${state.render.mode}`,
     `Room: ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} × ${state.room.height.toFixed(1)} m`,
+    `Room preset: ${state.roomPreset}`,
+    `Material preset: ${state.materialPreset}`,
     `Source: ${formatVec(state.source.x, state.source.y, state.source.z)} | ${state.source.directivity}`,
     `Receiver: ${formatVec(state.receiver.x, state.receiver.y, state.receiver.z)}`,
     `Rays: ${state.render.numRays.toLocaleString()} | Max order: ${state.render.maxOrder}`,
@@ -571,6 +951,327 @@ function updateAudio(wavBytes) {
   const blob = new Blob([wavBytes], { type: "audio/wav" });
   lastAudioURL = URL.createObjectURL(blob);
   refs.audioPlayer.src = lastAudioURL;
+  lastAuralizedWav = wavBytes.slice ? wavBytes.slice() : new Uint8Array(wavBytes);
+  currentIRBuffer = null;
+  updateAuralizationStatus("IR ready", "ready");
+  syncAuralizationControls();
+}
+
+function updateAuralizationStatus(label, stateName) {
+  refs.audioStatus.textContent = label;
+  refs.audioStatus.className = `status-pill is-${stateName}`;
+}
+
+function syncAuralizationControls() {
+  const wetMix = clamp(Number(refs.wetMix.value || 0.72), 0, 1);
+  const gainDb = clamp(Number(refs.audioGain.value || -0.5), -12, 6);
+  refs.wetMix.value = String(wetMix);
+  refs.wetMixValue.textContent = `${Math.round(wetMix * 100)}%`;
+  refs.audioGain.value = String(gainDb);
+  refs.audioGainValue.textContent = `${gainDb.toFixed(1)} dB`;
+  refs.playAuralization.disabled = !lastAuralizedWav || currentAuralizationPlaying;
+  refs.stopAuralization.disabled = !currentAuralizationPlaying;
+  refs.exportAuralization.disabled = !lastAuralizedWav;
+  if (!lastAuralizedWav) {
+    updateAuralizationStatus("Waiting for IR", "loading");
+  } else if (currentAuralizationPlaying) {
+    updateAuralizationStatus("Playing", "busy");
+  } else {
+    updateAuralizationStatus("Ready", "ready");
+  }
+}
+
+async function ensureAudioContext() {
+  if (!audioContext || audioContext.state === "closed") {
+    audioContext = new AudioContext({ sampleRate: 48000 });
+  }
+
+  if (audioContext.state === "suspended") {
+    await audioContext.resume();
+  }
+
+  return audioContext;
+}
+
+async function ensureIrAudioBuffer() {
+  if (currentIRBuffer) {
+    return currentIRBuffer;
+  }
+
+  if (!lastAuralizedWav) {
+    throw new Error("No rendered IR available");
+  }
+
+  const context = await ensureAudioContext();
+  const arrayBuffer = lastAuralizedWav.buffer.slice(
+    lastAuralizedWav.byteOffset,
+    lastAuralizedWav.byteOffset + lastAuralizedWav.byteLength,
+  );
+  currentIRBuffer = await context.decodeAudioData(arrayBuffer);
+  return currentIRBuffer;
+}
+
+function buildDrySourceBuffer(context, preset) {
+  const sampleRate = context.sampleRate;
+  const durationSeconds = preset === "music" ? 3.5 : preset === "speech" ? 2.4 : 1.4;
+  const buffer = context.createBuffer(1, Math.ceil(durationSeconds * sampleRate), sampleRate);
+  const data = buffer.getChannelData(0);
+
+  if (preset === "clap") {
+    for (let index = 0; index < data.length; index += 1) {
+      const t = index / sampleRate;
+      const burst = Math.exp(-t * 16);
+      const noise = Math.sin(index * 12.9898) * 43758.5453;
+      const n = (noise - Math.floor(noise)) * 2 - 1;
+      data[index] = burst * n * (t < 0.12 ? 1 : 0.15);
+    }
+    return buffer;
+  }
+
+  if (preset === "music") {
+    const notes = [261.63, 329.63, 392, 523.25];
+    for (let index = 0; index < data.length; index += 1) {
+      const t = index / sampleRate;
+      const note = notes[Math.floor(t * 1.5) % notes.length];
+      const env = Math.exp(-t * 0.8) * (0.92 + 0.08 * Math.sin(t * 2 * Math.PI * 0.5));
+      data[index] =
+        env *
+        (0.42 * Math.sin(2 * Math.PI * note * t) +
+          0.18 * Math.sin(2 * Math.PI * note * 2 * t) +
+          0.08 * Math.sin(2 * Math.PI * note * 3 * t));
+    }
+    return buffer;
+  }
+
+  // speech-like: voiced-ish pulses with moving formant-ish envelope.
+  const phonemes = [
+    { freq: 140, v1: 730, v2: 1090, amp: 1.0, dur: 0.32 },
+    { freq: 155, v1: 530, v2: 1840, amp: 0.92, dur: 0.36 },
+    { freq: 170, v1: 300, v2: 2240, amp: 0.86, dur: 0.34 },
+    { freq: 150, v1: 600, v2: 870, amp: 0.88, dur: 0.36 },
+  ];
+
+  let cursor = 0;
+  for (const phoneme of phonemes) {
+    const start = cursor;
+    const end = Math.min(data.length, start + Math.floor(phoneme.dur * sampleRate));
+    for (let index = start; index < end; index += 1) {
+      const t = (index - start) / sampleRate;
+      const env = Math.exp(-t * 5.5);
+      const base = Math.sin(2 * Math.PI * phoneme.freq * (index / sampleRate));
+      const formant =
+        0.55 * Math.sin(2 * Math.PI * phoneme.v1 * (index / sampleRate)) +
+        0.35 * Math.sin(2 * Math.PI * phoneme.v2 * (index / sampleRate)) +
+        0.1 * Math.sin(2 * Math.PI * phoneme.v2 * 1.5 * (index / sampleRate));
+      data[index] += phoneme.amp * env * (0.45 * base + 0.55 * formant);
+    }
+    cursor = end + Math.floor(0.05 * sampleRate);
+  }
+
+  return buffer;
+}
+
+async function startAuralizationPlayback() {
+  if (!lastAuralizedWav) {
+    updateAuralizationStatus("Waiting for IR", "loading");
+    return;
+  }
+
+  const context = await ensureAudioContext();
+  const irBuffer = await ensureIrAudioBuffer();
+  stopAuralizationPlayback();
+
+  const drySource = context.createBufferSource();
+  drySource.buffer = buildDrySourceBuffer(context, refs.drySource.value);
+  drySource.loop = false;
+
+  const convolver = context.createConvolver();
+  convolver.buffer = irBuffer;
+
+  const dryGain = context.createGain();
+  const wetGain = context.createGain();
+  const outputGain = context.createGain();
+
+  const wetMix = clamp(Number(refs.wetMix.value || 0.72), 0, 1);
+  const gainDb = clamp(Number(refs.audioGain.value || -0.5), -12, 6);
+  dryGain.gain.value = Math.sqrt(1 - wetMix);
+  wetGain.gain.value = Math.sqrt(wetMix);
+  outputGain.gain.value = dbToLinear(gainDb);
+
+  drySource.connect(dryGain);
+  drySource.connect(convolver);
+  convolver.connect(wetGain);
+  dryGain.connect(outputGain);
+  wetGain.connect(outputGain);
+  outputGain.connect(context.destination);
+
+  currentAuralizationNodes = {
+    drySource,
+    convolver,
+    dryGain,
+    wetGain,
+    outputGain,
+  };
+  currentAuralizationPlaying = true;
+  syncAuralizationControls();
+  updateAuralizationStatus("Playing", "busy");
+
+  drySource.start();
+  currentAuralizationStopTimer = window.setTimeout(() => {
+    stopAuralizationPlayback();
+  }, Math.ceil(drySource.buffer.duration * 1000) + 1200);
+
+  drySource.onended = () => {
+    if (currentAuralizationPlaying) {
+      stopAuralizationPlayback();
+    }
+  };
+}
+
+function stopAuralizationPlayback() {
+  if (currentAuralizationStopTimer) {
+    clearTimeout(currentAuralizationStopTimer);
+    currentAuralizationStopTimer = 0;
+  }
+
+  if (currentAuralizationNodes?.drySource) {
+    try {
+      currentAuralizationNodes.drySource.stop();
+    } catch (error) {
+      void error;
+    }
+  }
+
+  if (currentAuralizationNodes) {
+    for (const node of [
+      currentAuralizationNodes.drySource,
+      currentAuralizationNodes.convolver,
+      currentAuralizationNodes.dryGain,
+      currentAuralizationNodes.wetGain,
+      currentAuralizationNodes.outputGain,
+    ]) {
+      try {
+        node?.disconnect?.();
+      } catch (error) {
+        void error;
+      }
+    }
+  }
+
+  currentAuralizationNodes = null;
+  currentAuralizationPlaying = false;
+  syncAuralizationControls();
+}
+
+async function exportAuralizedWav() {
+  if (!lastAuralizedWav) {
+    return;
+  }
+
+  const rendered = await renderAuralizationOffline();
+  const wavBytes = encodeAudioBufferToWav(rendered);
+  downloadBytes(wavBytes, "algo-acoustics-auralization.wav", "audio/wav");
+}
+
+async function renderAuralizationOffline() {
+  const baseContext = await ensureAudioContext();
+  const irBuffer = await ensureIrAudioBuffer();
+  const dryBuffer = buildDrySourceBuffer(baseContext, refs.drySource.value);
+  const offline = new OfflineAudioContext(
+    1,
+    Math.ceil((dryBuffer.duration + irBuffer.duration + 1.2) * baseContext.sampleRate),
+    baseContext.sampleRate,
+  );
+
+  const drySource = offline.createBufferSource();
+  drySource.buffer = dryBuffer;
+  const convolver = offline.createConvolver();
+  convolver.buffer = irBuffer;
+  const dryGain = offline.createGain();
+  const wetGain = offline.createGain();
+  const outputGain = offline.createGain();
+  const wetMix = clamp(Number(refs.wetMix.value || 0.72), 0, 1);
+  const gainDb = clamp(Number(refs.audioGain.value || -0.5), -12, 6);
+  dryGain.gain.value = Math.sqrt(1 - wetMix);
+  wetGain.gain.value = Math.sqrt(wetMix);
+  outputGain.gain.value = dbToLinear(gainDb);
+
+  drySource.connect(dryGain);
+  drySource.connect(convolver);
+  convolver.connect(wetGain);
+  dryGain.connect(outputGain);
+  wetGain.connect(outputGain);
+  outputGain.connect(offline.destination);
+  drySource.start();
+
+  return offline.startRendering();
+}
+
+function encodeAudioBufferToWav(audioBuffer) {
+  const channels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const frameCount = audioBuffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = frameCount * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  const writeString = (text) => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+    offset += text.length;
+  };
+
+  writeString("RIFF");
+  view.setUint32(offset, 36 + dataSize, true);
+  offset += 4;
+  writeString("WAVE");
+  writeString("fmt ");
+  view.setUint32(offset, 16, true);
+  offset += 4;
+  view.setUint16(offset, 1, true);
+  offset += 2;
+  view.setUint16(offset, channels, true);
+  offset += 2;
+  view.setUint32(offset, sampleRate, true);
+  offset += 4;
+  view.setUint32(offset, byteRate, true);
+  offset += 4;
+  view.setUint16(offset, blockAlign, true);
+  offset += 2;
+  view.setUint16(offset, 16, true);
+  offset += 2;
+  writeString("data");
+  view.setUint32(offset, dataSize, true);
+  offset += 4;
+
+  const channelData = [];
+  for (let channel = 0; channel < channels; channel += 1) {
+    channelData.push(audioBuffer.getChannelData(channel));
+  }
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = clamp(channelData[channel][frame], -1, 1);
+      view.setInt16(offset, Math.round(sample * 0x7fff), true);
+      offset += 2;
+    }
+  }
+
+  return new Uint8Array(buffer);
+}
+
+function populatePresetSelects() {
+  refs.roomPreset.innerHTML = Object.entries(ROOM_PRESETS)
+    .map(([value, preset]) => `<option value="${value}">${preset.label}</option>`)
+    .join("");
+  refs.materialPreset.innerHTML = Object.entries(MATERIAL_PRESETS)
+    .map(([value, preset]) => `<option value="${value}">${preset.label}</option>`)
+    .join("");
 }
 
 function updateMaterialSummary() {
@@ -590,8 +1291,315 @@ function updateMaterialSummary() {
     .join("");
 }
 
+function syncPresetSelects() {
+  refs.roomPreset.value = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
+  refs.materialPreset.value = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
+}
+
+function applyRoomPreset(presetName, options = {}) {
+  const preset = ROOM_PRESETS[presetName] ?? ROOM_PRESETS.custom;
+  state.roomPreset = presetName in ROOM_PRESETS ? presetName : "custom";
+
+  if (preset.room) {
+    state.room = structuredClone(preset.room);
+  }
+
+  if (preset.source) {
+    state.source = structuredClone(preset.source);
+  }
+
+  if (preset.receiver) {
+    state.receiver = structuredClone(preset.receiver);
+  }
+
+  syncFormFromState();
+  updateSceneView();
+  drawWaveform(lastRender?.samples ?? null);
+  if (!options.skipUrlSync) {
+    scheduleUrlSync();
+  }
+}
+
+function applyMaterialPreset(presetName, options = {}) {
+  const preset = MATERIAL_PRESETS[presetName] ?? MATERIAL_PRESETS.custom;
+  state.materialPreset = presetName in MATERIAL_PRESETS ? presetName : "custom";
+
+  if (preset.materials) {
+    state.materials = structuredClone(preset.materials);
+  }
+
+  syncFormFromState();
+  updateMaterialSummary();
+  updateSceneView();
+  if (!options.skipUrlSync) {
+    scheduleUrlSync();
+  }
+}
+
+function loadStateFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const encoded = params.get("scene");
+  if (!encoded) {
+    syncPresetSelects();
+    return;
+  }
+
+  try {
+    const decoded = decodeStateFromUrl(encoded);
+    applySerializedState(decoded);
+  } catch (error) {
+    console.warn("Ignoring invalid scene URL", error);
+  }
+}
+
+function applySerializedState(input) {
+  copyState(DEFAULT_STATE, state);
+
+  if (input && typeof input === "object") {
+    if (typeof input.roomPreset === "string" && input.roomPreset in ROOM_PRESETS) {
+      state.roomPreset = input.roomPreset;
+      applyRoomPreset(input.roomPreset, { skipUrlSync: true });
+    }
+    if (typeof input.materialPreset === "string" && input.materialPreset in MATERIAL_PRESETS) {
+      state.materialPreset = input.materialPreset;
+      applyMaterialPreset(input.materialPreset, { skipUrlSync: true });
+    }
+
+    assignRoomState(input.room);
+    assignMaterialState(input.materials);
+    assignSourceState(input.source);
+    assignReceiverState(input.receiver);
+    assignRenderState(input.render);
+
+    if (typeof input.irView === "string" && input.irView) {
+      state.irView = input.irView;
+    }
+  }
+
+  normalizeSceneState();
+  syncFormFromState();
+  updateMaterialSummary();
+  updateSceneView();
+  drawWaveform(lastRender?.samples ?? null);
+}
+
+function assignRoomState(room) {
+  if (!room || typeof room !== "object") {
+    return;
+  }
+
+  if (typeof room.width === "number" && room.width > 0) {
+    state.room.width = room.width;
+  }
+  if (typeof room.depth === "number" && room.depth > 0) {
+    state.room.depth = room.depth;
+  }
+  if (typeof room.height === "number" && room.height > 0) {
+    state.room.height = room.height;
+  }
+}
+
+function assignMaterialState(materials) {
+  if (!materials || typeof materials !== "object") {
+    return;
+  }
+
+  for (const key of ["west", "east", "south", "north", "floor", "ceiling"]) {
+    if (typeof materials[key] === "string" && materials[key] in MATERIALS) {
+      state.materials[key] = materials[key];
+    }
+  }
+}
+
+function assignSourceState(source) {
+  if (!source || typeof source !== "object") {
+    return;
+  }
+
+  for (const key of ["x", "y", "z", "gainDb", "azimuthDegrees", "cardioidOrder"]) {
+    if (typeof source[key] === "number" && Number.isFinite(source[key])) {
+      state.source[key] = source[key];
+    }
+  }
+  if (typeof source.directivity === "string") {
+    state.source.directivity = source.directivity;
+  }
+}
+
+function assignReceiverState(receiver) {
+  if (!receiver || typeof receiver !== "object") {
+    return;
+  }
+
+  for (const key of ["x", "y", "z"]) {
+    if (typeof receiver[key] === "number" && Number.isFinite(receiver[key])) {
+      state.receiver[key] = receiver[key];
+    }
+  }
+}
+
+function assignRenderState(render) {
+  if (!render || typeof render !== "object") {
+    return;
+  }
+
+  for (const key of ["maxOrder", "numRays"]) {
+    if (typeof render[key] === "number" && Number.isFinite(render[key])) {
+      state.render[key] = render[key];
+    }
+  }
+  for (const key of ["durationSeconds", "crossoverTimeSeconds", "crossoverWindowAlpha"]) {
+    if (typeof render[key] === "number" && Number.isFinite(render[key])) {
+      state.render[key] = render[key];
+    }
+  }
+  if (typeof render.mode === "string") {
+    state.render.mode = render.mode;
+  }
+  if (typeof render.crossoverWindow === "string") {
+    state.render.crossoverWindow = render.crossoverWindow;
+  }
+}
+
+function normalizeSceneState() {
+  state.room.width = clamp(state.room.width, 2.5, 16);
+  state.room.depth = clamp(state.room.depth, 2.5, 16);
+  state.room.height = clamp(state.room.height, 2.2, 7);
+
+  state.source.directivity = normalizeDirectivity(state.source.directivity, DEFAULT_STATE.source.directivity);
+  state.source.gainDb = clamp(state.source.gainDb, -24, 12);
+  state.source.azimuthDegrees = clamp(state.source.azimuthDegrees, -180, 180);
+  state.source.cardioidOrder = clamp(state.source.cardioidOrder, 0.25, 2.5);
+
+  state.render.mode = ["early", "late", "hybrid"].includes(state.render.mode)
+    ? state.render.mode
+    : DEFAULT_STATE.render.mode;
+  state.render.maxOrder = clampInt(Math.round(state.render.maxOrder), 1, 12);
+  state.render.numRays = clampInt(Math.round(state.render.numRays), 128, 16384);
+  state.render.durationSeconds = clamp(state.render.durationSeconds, 0.25, 3);
+  state.render.crossoverTimeSeconds = clamp(
+    state.render.crossoverTimeSeconds,
+    0.03,
+    state.render.durationSeconds * 0.85,
+  );
+  state.render.crossoverWindow = normalizeCrossoverWindow(
+    state.render.crossoverWindow,
+    DEFAULT_STATE.render.crossoverWindow,
+  );
+
+  state.source.x = clamp(
+    state.source.x,
+    POSITION_MARGIN,
+    state.room.width - POSITION_MARGIN,
+  );
+  state.source.y = clamp(
+    state.source.y,
+    POSITION_MARGIN,
+    state.room.depth - POSITION_MARGIN,
+  );
+  state.source.z = clamp(
+    state.source.z,
+    POSITION_MARGIN,
+    state.room.height - POSITION_MARGIN,
+  );
+  state.receiver.x = clamp(
+    state.receiver.x,
+    POSITION_MARGIN,
+    state.room.width - POSITION_MARGIN,
+  );
+  state.receiver.y = clamp(
+    state.receiver.y,
+    POSITION_MARGIN,
+    state.room.depth - POSITION_MARGIN,
+  );
+  state.receiver.z = clamp(
+    state.receiver.z,
+    POSITION_MARGIN,
+    state.room.height - POSITION_MARGIN,
+  );
+
+  state.roomPreset = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
+  state.materialPreset = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
+}
+
+function normalizeCrossoverWindow(name, fallback) {
+  const trimmed = String(name ?? "").trim();
+  if (
+    trimmed === "hann" ||
+    trimmed === "hamming" ||
+    trimmed === "blackman" ||
+    trimmed === "blackman-harris" ||
+    trimmed === "flattop"
+  ) {
+    return trimmed;
+  }
+
+  return fallback;
+}
+
+function encodeStateForUrl() {
+  const payload = {
+    roomPreset: state.roomPreset,
+    materialPreset: state.materialPreset,
+    room: state.room,
+    materials: state.materials,
+    source: state.source,
+    receiver: state.receiver,
+    render: state.render,
+    irView: state.irView,
+  };
+  return base64UrlEncode(JSON.stringify(payload));
+}
+
+function decodeStateFromUrl(encoded) {
+  const raw = base64UrlDecode(encoded);
+  return JSON.parse(raw);
+}
+
+function scheduleUrlSync() {
+  if (urlSyncTimer) {
+    clearTimeout(urlSyncTimer);
+  }
+
+  urlSyncTimer = window.setTimeout(syncUrlState, 120);
+}
+
+function syncUrlState() {
+  urlSyncTimer = 0;
+  const encoded = encodeStateForUrl();
+  if (latestEncodedState === encoded) {
+    return;
+  }
+
+  latestEncodedState = encoded;
+  const url = new URL(window.location.href);
+  url.searchParams.set("scene", encoded);
+  window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
+}
+
+function base64UrlEncode(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value) {
+  let normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  while (normalized.length % 4 !== 0) {
+    normalized += "=";
+  }
+  const binary = atob(normalized);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 function buildRequest() {
   return {
+    roomPreset: state.roomPreset,
+    materialPreset: state.materialPreset,
     room: state.room,
     materials: state.materials,
     source: state.source,
@@ -796,7 +1804,122 @@ function createSceneView(canvas) {
     fillLight,
     grid,
     resize,
+    sourceMarker: null,
+    receiverMarker: null,
+    interactiveObjects: [],
   };
+}
+
+function bindSceneInteractions(canvas) {
+  sceneRaycaster = new THREE.Raycaster();
+  scenePointer = new THREE.Vector2();
+  sceneDragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+  canvas.style.touchAction = "none";
+  canvas.addEventListener("pointerdown", onScenePointerDown);
+  canvas.addEventListener("pointermove", onScenePointerMove);
+  canvas.addEventListener("pointerup", onScenePointerUp);
+  canvas.addEventListener("pointercancel", onScenePointerUp);
+  canvas.addEventListener("lostpointercapture", onScenePointerUp);
+}
+
+function onScenePointerDown(event) {
+  if (!sceneView) {
+    return;
+  }
+
+  const target = pickDragTarget(event);
+  if (!target) {
+    return;
+  }
+
+  event.preventDefault();
+
+  dragState = {
+    target,
+    pointerId: event.pointerId,
+    planeY: target === "source" ? state.source.z : state.receiver.z,
+  };
+
+  sceneView.controls.enabled = false;
+  refs.sceneCanvas.setPointerCapture(event.pointerId);
+  refs.sceneCanvas.classList.add("is-dragging");
+}
+
+function onScenePointerMove(event) {
+  if (!dragState || !sceneView) {
+    return;
+  }
+
+  if (event.pointerId !== dragState.pointerId) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const point = projectScenePointerToPlane(event, dragState.planeY);
+  if (!point) {
+    return;
+  }
+
+  if (dragState.target === "source") {
+    state.source.x = clamp(point.x, POSITION_MARGIN, state.room.width - POSITION_MARGIN);
+    state.source.y = clamp(point.z, POSITION_MARGIN, state.room.depth - POSITION_MARGIN);
+  } else if (dragState.target === "receiver") {
+    state.receiver.x = clamp(point.x, POSITION_MARGIN, state.room.width - POSITION_MARGIN);
+    state.receiver.y = clamp(point.z, POSITION_MARGIN, state.room.depth - POSITION_MARGIN);
+  }
+
+  syncFormFromState();
+  updateSceneView();
+  scheduleUrlSync();
+}
+
+function onScenePointerUp(event) {
+  if (!dragState || event.pointerId !== dragState.pointerId) {
+    return;
+  }
+
+  try {
+    refs.sceneCanvas.releasePointerCapture(event.pointerId);
+  } catch (error) {
+    void error;
+  }
+
+  dragState = null;
+  if (sceneView) {
+    sceneView.controls.enabled = true;
+  }
+  refs.sceneCanvas.classList.remove("is-dragging");
+}
+
+function pickDragTarget(event) {
+  if (!sceneView?.interactiveObjects?.length) {
+    return null;
+  }
+
+  const rect = refs.sceneCanvas.getBoundingClientRect();
+  scenePointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  scenePointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+  sceneRaycaster.setFromCamera(scenePointer, sceneView.camera);
+  const hits = sceneRaycaster.intersectObjects(sceneView.interactiveObjects, false);
+  if (!hits.length) {
+    return null;
+  }
+
+  return hits[0].object.userData.dragTarget ?? null;
+}
+
+function projectScenePointerToPlane(event, planeY) {
+  const rect = refs.sceneCanvas.getBoundingClientRect();
+  scenePointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  scenePointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+  sceneRaycaster.setFromCamera(scenePointer, sceneView.camera);
+  const plane = sceneDragPlane ?? new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+  plane.constant = -planeY;
+  const point = new THREE.Vector3();
+  const hit = sceneRaycaster.ray.intersectPlane(plane, point);
+  return hit ? point : null;
 }
 
 function updateSceneView() {
@@ -851,13 +1974,22 @@ function updateSceneView() {
   edgeBox.position.set(width / 2, height / 2, depth / 2);
   roomGroup.add(edgeBox);
 
-  roomGroup.add(createMarkerSphere(state.source, 0xff6b4a, 0.12));
-  roomGroup.add(createMarkerSphere(state.receiver, 0x0f9d92, 0.14));
-  roomGroup.add(createDirectPathLine(palette));
+  const sourceMarker = createMarkerSphere(state.source, 0xff6b4a, 0.12, "source");
+  const receiverMarker = createMarkerSphere(state.receiver, 0x0f9d92, 0.14, "receiver");
+  const directPath = createDirectPathLine(palette);
+
+  roomGroup.add(sourceMarker);
+  roomGroup.add(receiverMarker);
+  roomGroup.add(directPath);
 
   if (state.source.directivity === "cardioid") {
     roomGroup.add(createDirectivityCone(palette));
   }
+
+  sceneView.sourceMarker = sourceMarker;
+  sceneView.receiverMarker = receiverMarker;
+  sceneView.interactiveObjects = [sourceMarker, receiverMarker];
+  sceneView.directPathLine = directPath;
 }
 
 function createWallMesh(name, width, height, materialKey, configure) {
@@ -879,7 +2011,7 @@ function createWallMesh(name, width, height, materialKey, configure) {
   return mesh;
 }
 
-function createMarkerSphere(position, color, radius) {
+function createMarkerSphere(position, color, radius, target) {
   const marker = new THREE.Mesh(
     new THREE.SphereGeometry(radius, 28, 28),
     new THREE.MeshStandardMaterial({
@@ -889,6 +2021,8 @@ function createMarkerSphere(position, color, radius) {
     }),
   );
   marker.position.set(position.x, position.z, position.y);
+  marker.userData.dragTarget = target;
+  marker.userData.dragHeight = position.z;
   return marker;
 }
 
@@ -1097,7 +2231,9 @@ function bindRange(input, output, formatter) {
   const handler = () => {
     const value = Number(input.value);
     output.textContent = formatter(value);
+    syncPresetSelects();
     updateSceneView();
+    scheduleUrlSync();
   };
   input.addEventListener("input", handler);
 }
@@ -1108,6 +2244,7 @@ function bindNumber(input, onChange) {
     syncFormFromState();
     updateMaterialSummary();
     updateSceneView();
+    scheduleUrlSync();
   });
 }
 
@@ -1139,6 +2276,10 @@ function clamp(value, minValue, maxValue) {
   return Math.min(Math.max(value, minValue), maxValue);
 }
 
+function dbToLinear(valueDb) {
+  return Math.pow(10, valueDb / 20);
+}
+
 function roundToStep(value, step) {
   return Math.round(value / step) * step;
 }
@@ -1149,12 +2290,6 @@ function copyState(source, target) {
   target.source = structuredClone(source.source);
   target.receiver = structuredClone(source.receiver);
   target.render = structuredClone(source.render);
-}
-
-function nextPaint() {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  });
 }
 
 function downloadBytes(bytes, filename, mimeType) {

@@ -86,9 +86,10 @@ typedef struct __attribute__((packed)) {
     uint32_t   rcv_idx;            // 4
     float      speed_of_sound;     // 4
     float      dt;                 // 4
+    float      ds;                 // 4  — grid spacing h (m); λ = (c·Δt/h)²
     shm_name_t result_shm;         // 64
-} run_fdtd_req_t;                  // 92 bytes
-static_assert(sizeof(run_fdtd_req_t) == 92, "run_fdtd_req size mismatch");
+} run_fdtd_req_t;                  // 96 bytes
+static_assert(sizeof(run_fdtd_req_t) == 96, "run_fdtd_req size mismatch");
 
 typedef struct __attribute__((packed)) {
     uint32_t   node_count;         // 4

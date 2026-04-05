@@ -175,10 +175,11 @@ type runFDTDReq struct {
 	RcvIdx       uint32  // 4 — flat index of receiver extraction node
 	SpeedOfSound float32 // 4 m/s
 	Dt           float32 // 4 seconds
+	Ds           float32 // 4 metres — grid spacing h; server computes λ = (c·Δt/h)²
 	// ResultSHM is pre-created by the caller; the server writes Steps float32
 	// pressure samples into it, then the caller reads and removes the segment.
 	ResultSHM ShmName // 64 bytes
-} // 92 bytes
+} // 96 bytes
 
 // -- AllocBVH (0x2001) ----------------------------------------------------
 // Request payload: 72 bytes.
