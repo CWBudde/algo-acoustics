@@ -402,12 +402,11 @@
               <div>
                 <p class="section-kicker">Spatial view</p>
                 <h2>Scene preview</h2>
+                <p class="viewport-note">
+                  Orbit, pan, and inspect wall treatment live.
+                </p>
               </div>
               <div class="viewport-controls">
-                <label class="toggle-field">
-                  <input id="scene-visibility" type="checkbox" checked />
-                  <span>Show scene</span>
-                </label>
                 <label class="field compact-field viewport-reflections">
                   <span>Reflections</span>
                   <input id="scene-reflections" type="number" min="0" max="6" step="1" />
@@ -416,9 +415,6 @@
             </div>
             <div class="viewport-shell">
               <canvas id="scene-canvas"></canvas>
-              <div id="scene-empty" class="viewport-empty" hidden>
-                Spatial view is disabled.
-              </div>
               <div class="viewport-overlay">
                 <span class="legend-dot legend-source"></span>
                 <span>Source</span>

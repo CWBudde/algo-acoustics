@@ -400,10 +400,7 @@ const DEFAULT_STATE = {
     crossoverWindow: "hann",
   },
   irView: "linear",
-  view: {
-    spatialVisible: true,
-    reflections: 2,
-  },
+  reflections: 2,
 };
 
 const POSITION_MARGIN = 0.15;
@@ -497,7 +494,6 @@ const refs = {
   renderCrossover: document.getElementById("render-crossover"),
   renderCrossoverValue: document.getElementById("render-crossover-value"),
   renderWindow: document.getElementById("render-window"),
-  sceneVisibility: document.getElementById("scene-visibility"),
   sceneReflections: document.getElementById("scene-reflections"),
   renderModeButtons: Array.from(
     document.querySelectorAll("#render-mode-switch .mode-button"),
@@ -526,8 +522,6 @@ const refs = {
   sceneCanvas: document.getElementById("scene-canvas"),
   audioPlayer: document.getElementById("audio-player"),
   renderLog: document.getElementById("render-log"),
-  sceneEmpty: document.getElementById("scene-empty"),
-  viewportCard: document.querySelector(".viewport-card"),
 };
 
 let sceneView = null;
@@ -845,18 +839,12 @@ function bindEvents() {
     scheduleUrlSync();
   });
 
-  refs.sceneVisibility.addEventListener("change", () => {
-    state.view.spatialVisible = refs.sceneVisibility.checked;
-    syncSpatialViewVisibility();
-    scheduleUrlSync();
-  });
-
   refs.sceneReflections.addEventListener("input", () => {
     const value = Number(refs.sceneReflections.value);
     if (Number.isFinite(value)) {
-      state.view.reflections = clampInt(Math.round(value), 0, 6);
+      state.reflections = clampInt(Math.round(value), 0, 6);
     }
-    refs.sceneReflections.value = String(state.view.reflections);
+    refs.sceneReflections.value = String(state.reflections);
     updateSceneView();
     scheduleUrlSync();
   });
@@ -998,12 +986,10 @@ function syncFormFromState() {
   refs.renderCrossover.value = String(state.render.crossoverTimeSeconds);
   refs.renderCrossoverValue.textContent = `${state.render.crossoverTimeSeconds.toFixed(2)} s`;
   refs.renderWindow.value = state.render.crossoverWindow;
-  refs.sceneVisibility.checked = state.view.spatialVisible;
-  refs.sceneReflections.value = String(state.view.reflections);
+  refs.sceneReflections.value = String(state.reflections);
 
   syncModeButtons();
   syncDirectivityAvailability();
-  syncSpatialViewVisibility();
 }
 
 function syncDirectivityAvailability() {
@@ -1025,22 +1011,6 @@ function syncRoomModeAvailability() {
     refs.roomWidth.removeAttribute("title");
     refs.roomDepth.removeAttribute("title");
     refs.roomHeight.removeAttribute("title");
-  }
-}
-
-function syncSpatialViewVisibility() {
-  const enabled = Boolean(state.view.spatialVisible);
-  if (refs.viewportCard) {
-    refs.viewportCard.classList.toggle("is-disabled", !enabled);
-  }
-  if (refs.sceneEmpty) {
-    refs.sceneEmpty.hidden = enabled;
-  }
-  if (sceneView) {
-    sceneView.scene.visible = enabled;
-    sceneView.roomGroup.visible = enabled;
-    sceneView.pathGroup.visible = enabled;
-    sceneView.controls.enabled = enabled && !dragState;
   }
 }
 
@@ -1701,7 +1671,9 @@ function applySerializedState(input) {
     assignSourceState(input.source);
     assignReceiverState(input.receiver);
     assignRenderState(input.render);
-    assignViewState(input.view);
+    if (typeof input.reflections === "number" && Number.isFinite(input.reflections)) {
+      state.reflections = input.reflections;
+    }
 
     if (typeof input.irView === "string" && input.irView) {
       state.irView = input.irView;
@@ -1801,20 +1773,6 @@ function assignRenderState(render) {
   }
 }
 
-function assignViewState(view) {
-  if (!view || typeof view !== "object") {
-    return;
-  }
-
-  if (typeof view.spatialVisible === "boolean") {
-    state.view.spatialVisible = view.spatialVisible;
-  }
-
-  if (typeof view.reflections === "number" && Number.isFinite(view.reflections)) {
-    state.view.reflections = view.reflections;
-  }
-}
-
 function normalizeSceneState() {
   state.room.width = clamp(state.room.width, 2.5, 16);
   state.room.depth = clamp(state.room.depth, 2.5, 16);
@@ -1874,8 +1832,7 @@ function normalizeSceneState() {
 
   state.roomPreset = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
   state.materialPreset = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
-  state.view.spatialVisible = Boolean(state.view.spatialVisible);
-  state.view.reflections = clampInt(Math.round(state.view.reflections), 0, 6);
+  state.reflections = clampInt(Math.round(state.reflections), 0, 6);
 
   if (state.room.kind === "mesh" && !state.room.mesh) {
     state.room.kind = "shoebox";
@@ -1910,7 +1867,7 @@ function encodeStateForUrl() {
     receiver: state.receiver,
     render: state.render,
     irView: state.irView,
-    view: state.view,
+    reflections: state.reflections,
   };
   return base64UrlEncode(JSON.stringify(payload));
 }
@@ -1969,7 +1926,7 @@ function buildRequest() {
     source: state.source,
     receiver: state.receiver,
     render: state.render,
-    view: state.view,
+    reflections: state.reflections,
   };
 }
 
@@ -2386,7 +2343,6 @@ function updateSceneView() {
   sceneView.receiverMarker = receiverMarker;
   sceneView.interactiveObjects = [sourceMarker, receiverMarker];
   sceneView.directPathLine = directPath;
-  syncSpatialViewVisibility();
 }
 
 function createWallMesh(name, width, height, materialKey, configure) {
@@ -2479,11 +2435,7 @@ function createDirectPathLine(palette) {
 }
 
 function createRayPathOverlay(palette) {
-  if (!state.view.spatialVisible) {
-    return [];
-  }
-
-  const reflections = clampInt(Math.round(state.view.reflections), 0, 6);
+  const reflections = clampInt(Math.round(state.reflections), 0, 6);
   if (reflections <= 0 || !sceneView?.roomSurfaces?.length) {
     return [];
   }
@@ -2816,7 +2768,7 @@ function copyState(source, target) {
   target.source = structuredClone(source.source);
   target.receiver = structuredClone(source.receiver);
   target.render = structuredClone(source.render);
-  target.view = structuredClone(source.view);
+  target.reflections = source.reflections;
 }
 
 function downloadBytes(bytes, filename, mimeType) {
