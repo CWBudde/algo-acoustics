@@ -49,11 +49,10 @@ const ROOM_PRESETS = {
     label: "Custom",
     kind: "shoebox",
   },
-  shoebox: {
-    label: "Shoebox",
-    kind: "shoebox",
-    room: { width: 6.4, depth: 4.8, height: 2.9 },
-    source: {
+  shoebox: makeShoeboxPreset(
+    "Shoebox",
+    { width: 6.4, depth: 4.8, height: 2.9 },
+    {
       x: 1.4,
       y: 1.9,
       z: 1.25,
@@ -62,14 +61,16 @@ const ROOM_PRESETS = {
       azimuthDegrees: 18,
       cardioidOrder: 1.15,
     },
-    receiver: { x: 4.85, y: 2.9, z: 1.2 },
-    renderMode: "hybrid",
-  },
-  classroom: {
-    label: "Classroom",
-    kind: "shoebox",
-    room: { width: 8.8, depth: 6.4, height: 3.1 },
-    source: {
+    { x: 4.85, y: 2.9, z: 1.2 },
+    {
+      materialPreset: "concertHall",
+      renderMode: "hybrid",
+    },
+  ),
+  classroom: makeShoeboxPreset(
+    "Classroom",
+    { width: 8.8, depth: 6.4, height: 3.1 },
+    {
       x: 1.8,
       y: 1.9,
       z: 1.35,
@@ -78,15 +79,114 @@ const ROOM_PRESETS = {
       azimuthDegrees: 0,
       cardioidOrder: 1.1,
     },
-    receiver: { x: 6.7, y: 3.7, z: 1.35 },
-    materialPreset: "studio",
-    renderMode: "hybrid",
-  },
-  loft: {
-    label: "Loft Atrium",
-    kind: "mesh",
-    room: { width: 8.6, depth: 6.4, height: 3.2 },
-    source: {
+    { x: 6.7, y: 3.7, z: 1.35 },
+    {
+      materialPreset: "studio",
+      renderMode: "hybrid",
+    },
+  ),
+  lectureHall: makeShoeboxPreset(
+    "Lecture Hall",
+    { width: 14.2, depth: 9.4, height: 5.1 },
+    {
+      x: 2.1,
+      y: 3.0,
+      z: 1.55,
+      gainDb: -1,
+      directivity: "omni",
+      azimuthDegrees: 0,
+      cardioidOrder: 1.1,
+    },
+    { x: 10.6, y: 4.7, z: 1.45 },
+    {
+      materialPreset: "concertHall",
+      renderMode: "hybrid",
+    },
+  ),
+  rehearsalRoom: makeShoeboxPreset(
+    "Rehearsal Room",
+    { width: 8.2, depth: 5.8, height: 3.0 },
+    {
+      x: 2.4,
+      y: 2.2,
+      z: 1.32,
+      gainDb: -1,
+      directivity: "cardioid",
+      azimuthDegrees: 20,
+      cardioidOrder: 1.2,
+    },
+    { x: 6.1, y: 3.4, z: 1.28 },
+    {
+      materialPreset: "studio",
+      renderMode: "hybrid",
+    },
+  ),
+  library: makeShoeboxPreset(
+    "Library",
+    { width: 11.2, depth: 7.0, height: 3.7 },
+    {
+      x: 2.3,
+      y: 2.0,
+      z: 1.28,
+      gainDb: -2,
+      directivity: "omni",
+      azimuthDegrees: 0,
+      cardioidOrder: 1.1,
+    },
+    { x: 8.1, y: 4.2, z: 1.22 },
+    {
+      materials: {
+        west: "perforatedWood",
+        east: "perforatedWood",
+        south: "thinCarpet",
+        north: "thinCarpet",
+        floor: "pileCarpet",
+        ceiling: "heavyCurtain",
+      },
+      renderMode: "hybrid",
+    },
+  ),
+  chapel: makeShoeboxPreset(
+    "Chapel",
+    { width: 12.4, depth: 6.8, height: 7.2 },
+    {
+      x: 3.0,
+      y: 2.0,
+      z: 1.55,
+      gainDb: -1,
+      directivity: "cardioid",
+      azimuthDegrees: 8,
+      cardioidOrder: 1.4,
+    },
+    { x: 8.9, y: 3.5, z: 1.4 },
+    {
+      materialPreset: "concertHall",
+      renderMode: "hybrid",
+    },
+  ),
+  podcastBooth: makeShoeboxPreset(
+    "Podcast Booth",
+    { width: 3.8, depth: 2.8, height: 2.4 },
+    {
+      x: 1.1,
+      y: 1.2,
+      z: 1.2,
+      gainDb: 0,
+      directivity: "cardioid",
+      azimuthDegrees: 15,
+      cardioidOrder: 1.6,
+    },
+    { x: 2.9, y: 1.6, z: 1.18 },
+    {
+      materialPreset: "studio",
+      renderMode: "early",
+    },
+  ),
+  loft: makeMeshPreset(
+    "Loft Atrium",
+    { width: 8.6, depth: 6.4, height: 3.2 },
+    makeTriangularPrismMesh(8.6, 6.4, 3.2),
+    {
       x: 2.1,
       y: 1.8,
       z: 1.35,
@@ -95,22 +195,57 @@ const ROOM_PRESETS = {
       azimuthDegrees: 18,
       cardioidOrder: 1.35,
     },
-    receiver: { x: 5.8, y: 3.7, z: 1.25 },
-    mesh: {
-      triangles: [
-        { v0: { x: 0, y: 0, z: 0 }, v1: { x: 4.3, y: 6.4, z: 0 }, v2: { x: 8.6, y: 0, z: 0 } },
-        { v0: { x: 0, y: 0, z: 3.2 }, v1: { x: 8.6, y: 0, z: 3.2 }, v2: { x: 4.3, y: 6.4, z: 3.2 } },
-        { v0: { x: 0, y: 0, z: 0 }, v1: { x: 8.6, y: 0, z: 0 }, v2: { x: 8.6, y: 0, z: 3.2 } },
-        { v0: { x: 0, y: 0, z: 0 }, v1: { x: 8.6, y: 0, z: 3.2 }, v2: { x: 0, y: 0, z: 3.2 } },
-        { v0: { x: 8.6, y: 0, z: 0 }, v1: { x: 4.3, y: 6.4, z: 0 }, v2: { x: 4.3, y: 6.4, z: 3.2 } },
-        { v0: { x: 8.6, y: 0, z: 0 }, v1: { x: 4.3, y: 6.4, z: 3.2 }, v2: { x: 8.6, y: 0, z: 3.2 } },
-        { v0: { x: 4.3, y: 6.4, z: 0 }, v1: { x: 0, y: 0, z: 0 }, v2: { x: 0, y: 0, z: 3.2 } },
-        { v0: { x: 4.3, y: 6.4, z: 0 }, v1: { x: 0, y: 0, z: 3.2 }, v2: { x: 4.3, y: 6.4, z: 3.2 } },
-      ],
+    { x: 5.8, y: 3.7, z: 1.25 },
+    {
+      materialPreset: "concertHall",
+      renderMode: "late",
     },
-    materialPreset: "concertHall",
-    renderMode: "late",
-  },
+  ),
+  wedgeHall: makeMeshPreset(
+    "Wedge Hall",
+    { width: 12.0, depth: 7.2, height: 5.4 },
+    makeSlopedRoofMesh(12.0, 7.2, 3.0, 5.4),
+    {
+      x: 2.7,
+      y: 2.2,
+      z: 1.48,
+      gainDb: -1,
+      directivity: "omni",
+      azimuthDegrees: 0,
+      cardioidOrder: 1.1,
+    },
+    { x: 8.8, y: 4.1, z: 1.4 },
+    {
+      materialPreset: "concertHall",
+      renderMode: "late",
+    },
+  ),
+  cornerGallery: makeMeshPreset(
+    "Corner Gallery",
+    { width: 9.4, depth: 6.0, height: 4.1 },
+    makeSlopedRoofMesh(9.4, 6.0, 2.8, 4.1),
+    {
+      x: 1.9,
+      y: 1.7,
+      z: 1.34,
+      gainDb: -2,
+      directivity: "cardioid",
+      azimuthDegrees: 12,
+      cardioidOrder: 1.2,
+    },
+    { x: 6.8, y: 3.3, z: 1.28 },
+    {
+      materials: {
+        west: "smoothConcrete",
+        east: "glassWindow",
+        south: "perforatedWood",
+        north: "perforatedWood",
+        floor: "thinCarpet",
+        ceiling: "heavyCurtain",
+      },
+      renderMode: "late",
+    },
+  ),
 };
 
 const MATERIAL_PRESETS = {
@@ -151,6 +286,63 @@ const MATERIAL_PRESETS = {
     },
   },
 };
+
+function makeShoeboxPreset(label, room, source, receiver, options = {}) {
+  return {
+    label,
+    kind: "shoebox",
+    room,
+    source,
+    receiver,
+    ...options,
+  };
+}
+
+function makeMeshPreset(label, room, mesh, source, receiver, options = {}) {
+  return {
+    label,
+    kind: "mesh",
+    room,
+    mesh,
+    source,
+    receiver,
+    ...options,
+  };
+}
+
+function makeTriangularPrismMesh(width, depth, height) {
+  return {
+    triangles: [
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: 0 }, v2: { x: width, y: 0, z: 0 } },
+      { v0: { x: 0, y: 0, z: height }, v1: { x: width, y: 0, z: height }, v2: { x: width / 2, y: depth, z: height } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: 0, z: height } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: height }, v2: { x: 0, y: 0, z: height } },
+      { v0: { x: width, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: 0 }, v2: { x: width / 2, y: depth, z: height } },
+      { v0: { x: width, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: height }, v2: { x: width, y: 0, z: height } },
+      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: 0, y: 0, z: 0 }, v2: { x: 0, y: 0, z: height } },
+      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: 0, y: 0, z: height }, v2: { x: width / 2, y: depth, z: height } },
+    ],
+  };
+}
+
+function makeSlopedRoofMesh(width, depth, lowHeight, highHeight) {
+  return {
+    triangles: [
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: depth, z: 0 } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: depth, z: 0 }, v2: { x: 0, y: depth, z: 0 } },
+      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: width, y: depth, z: highHeight } },
+      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: width, y: depth, z: highHeight }, v2: { x: 0, y: depth, z: highHeight } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: 0, z: lowHeight } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: 0, y: 0, z: lowHeight } },
+      { v0: { x: width, y: depth, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: 0, z: lowHeight } },
+      { v0: { x: width, y: depth, z: 0 }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: width, y: depth, z: highHeight } },
+      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: 0, z: 0 }, v2: { x: 0, y: 0, z: lowHeight } },
+      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: 0, z: lowHeight }, v2: { x: 0, y: depth, z: highHeight } },
+      { v0: { x: 0, y: depth, z: 0 }, v1: { x: width, y: depth, z: 0 }, v2: { x: width, y: depth, z: highHeight } },
+      { v0: { x: 0, y: depth, z: 0 }, v1: { x: width, y: depth, z: highHeight }, v2: { x: 0, y: depth, z: highHeight } },
+    ],
+  };
+}
 
 const DEFAULT_STATE = {
   roomPreset: "custom",
@@ -1369,6 +1561,11 @@ function applyRoomPreset(presetName, options = {}) {
 
   if (preset.materialPreset && preset.materialPreset in MATERIAL_PRESETS) {
     state.materialPreset = preset.materialPreset;
+  }
+
+  if (preset.materials) {
+    state.materials = structuredClone(preset.materials);
+    state.materialPreset = "custom";
   }
 
   if (preset.renderMode) {
