@@ -22,8 +22,8 @@ type BVHHandle uint64
 type BVHNode struct {
 	LoX, LoY, LoZ float32
 	HiX, HiY, HiZ float32
-	LeftOrFirst    int32
-	Count          int32
+	LeftOrFirst   int32
+	Count         int32
 }
 
 // Triangle matches gpu/raytrace/bvh.h Triangle (52 bytes):
@@ -36,7 +36,7 @@ type Triangle struct {
 	V0X, V0Y, V0Z float32
 	V1X, V1Y, V1Z float32
 	V2X, V2Y, V2Z float32
-	ID             int32
+	ID            int32
 }
 
 // Ray matches gpu/raytrace/bvh.h Ray (32 bytes):
@@ -86,12 +86,15 @@ func (w *Worker) AllocBVH(ctx context.Context, nodes []BVHNode, tris []Triangle)
 	}
 
 	req := allocBVHReq{
-		NodeCount: uint32(len(nodes)),
-		TriCount:  uint32(len(tris)),
+		NodeCount: uint32(len(nodes)), //nolint:gosec
+		TriCount:  uint32(len(tris)),  //nolint:gosec
 		ShmName:   shmNameOf(shmName),
 	}
+
 	var buf bytes.Buffer
-	if err = binary.Write(&buf, byteOrder, req); err != nil {
+
+	err = binary.Write(&buf, byteOrder, req)
+	if err != nil {
 		return 0, fmt.Errorf("encode AllocBVH: %w", err)
 	}
 
@@ -101,20 +104,28 @@ func (w *Worker) AllocBVH(ctx context.Context, nodes []BVHNode, tris []Triangle)
 	}
 
 	var r allocBVHResp
-	if err = binary.Read(bytes.NewReader(resp), byteOrder, &r); err != nil {
+
+	err = binary.Read(bytes.NewReader(resp), byteOrder, &r)
+	if err != nil {
 		return 0, fmt.Errorf("decode AllocBVH response: %w", err)
 	}
+
 	return BVHHandle(r.Handle), nil
 }
 
 // FreeBVH releases the GPU-side BVH allocation.
 func (w *Worker) FreeBVH(ctx context.Context, h BVHHandle) error {
 	req := freeBVHReq{Handle: uint64(h)}
+
 	var buf bytes.Buffer
-	if err := binary.Write(&buf, byteOrder, req); err != nil {
+
+	err := binary.Write(&buf, byteOrder, req)
+	if err != nil {
 		return fmt.Errorf("encode FreeBVH: %w", err)
 	}
-	_, err := w.do(ctx, MsgFreeBVH, buf.Bytes())
+
+	_, err = w.do(ctx, MsgFreeBVH, buf.Bytes())
+
 	return err
 }
 
@@ -128,6 +139,7 @@ func (w *Worker) TraceRays(ctx context.Context, h BVHHandle, rays []Ray) ([]HitR
 
 	// Shared memory for rays (input).
 	rayBytes := len(rays) * int(unsafe.Sizeof(Ray{}))
+
 	raysName, raysData, err := createShm(rayBytes)
 	if err != nil {
 		return nil, fmt.Errorf("TraceRays: create rays shm: %w", err)
@@ -139,6 +151,7 @@ func (w *Worker) TraceRays(ctx context.Context, h BVHHandle, rays []Ray) ([]HitR
 
 	// Shared memory for hits (output, pre-allocated by caller).
 	hitBytes := len(rays) * int(unsafe.Sizeof(HitRecord{}))
+
 	hitsName, hitsData, err := createShm(hitBytes)
 	if err != nil {
 		return nil, fmt.Errorf("TraceRays: create hits shm: %w", err)
@@ -147,16 +160,20 @@ func (w *Worker) TraceRays(ctx context.Context, h BVHHandle, rays []Ray) ([]HitR
 
 	req := traceRaysReq{
 		Handle:   uint64(h),
-		RayCount: uint32(len(rays)),
+		RayCount: uint32(len(rays)), //nolint:gosec
 		RaysSHM:  shmNameOf(raysName),
 		HitsSHM:  shmNameOf(hitsName),
 	}
+
 	var buf bytes.Buffer
-	if err = binary.Write(&buf, byteOrder, req); err != nil {
+
+	err = binary.Write(&buf, byteOrder, req)
+	if err != nil {
 		return nil, fmt.Errorf("encode TraceRays: %w", err)
 	}
 
-	if _, err = w.do(ctx, MsgTraceRays, buf.Bytes()); err != nil {
+	_, err = w.do(ctx, MsgTraceRays, buf.Bytes())
+	if err != nil {
 		return nil, fmt.Errorf("TraceRays: %w", err)
 	}
 
@@ -164,5 +181,6 @@ func (w *Worker) TraceRays(ctx context.Context, h BVHHandle, rays []Ray) ([]HitR
 	hits := make([]HitRecord, len(rays))
 	hb := unsafe.Slice((*byte)(unsafe.Pointer(&hits[0])), hitBytes)
 	copy(hb, hitsData[:hitBytes])
+
 	return hits, nil
 }

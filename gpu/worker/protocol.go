@@ -53,6 +53,7 @@ package worker
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -65,13 +66,13 @@ const (
 	MsgPing     uint16 = 0x0001
 	MsgShutdown uint16 = 0x0002
 
-	// FDTD messages (0x1xxx).
+	// MsgAllocGrid and related constants are FDTD messages (0x1xxx).
 	MsgAllocGrid    uint16 = 0x1001
 	MsgFreeGrid     uint16 = 0x1002
 	MsgUploadFields uint16 = 0x1003
 	MsgRunFDTD      uint16 = 0x1004
 
-	// Ray-tracing messages (0x2xxx).
+	// MsgAllocBVH and related constants are ray-tracing messages (0x2xxx).
 	MsgAllocBVH  uint16 = 0x2001
 	MsgFreeBVH   uint16 = 0x2002
 	MsgTraceRays uint16 = 0x2003
@@ -98,7 +99,9 @@ type ShmName [64]byte
 // shmNameOf converts a string to a ShmName (truncated to 63 chars, always NUL-terminated).
 func shmNameOf(s string) ShmName {
 	var n ShmName
+
 	copy(n[:63], s) // n[63] stays 0 (zero value = NUL terminator)
+
 	return n
 }
 
@@ -109,19 +112,25 @@ func (n ShmName) String() string {
 			return string(n[:i])
 		}
 	}
+
 	return string(n[:])
 }
 
 // -- Request header (8 bytes) ---------------------------------------------
 
 type reqHeader struct {
-	Type    uint16
-	Flags   uint16
+	Type       uint16
+	Flags      uint16
 	PayloadLen uint32
 }
 
 func (h reqHeader) writeTo(w io.Writer) error {
-	return binary.Write(w, byteOrder, h)
+	err := binary.Write(w, byteOrder, h)
+	if err != nil {
+		return fmt.Errorf("write request header: %w", err)
+	}
+
+	return nil
 }
 
 // -- Response header (8 bytes) --------------------------------------------
@@ -133,7 +142,13 @@ type respHeader struct {
 
 func readRespHeader(r io.Reader) (respHeader, error) {
 	var h respHeader
-	return h, binary.Read(r, byteOrder, &h)
+
+	err := binary.Read(r, byteOrder, &h)
+	if err != nil {
+		return h, fmt.Errorf("read response header: %w", err)
+	}
+
+	return h, nil
 }
 
 // -- AllocGrid (0x1001) ---------------------------------------------------

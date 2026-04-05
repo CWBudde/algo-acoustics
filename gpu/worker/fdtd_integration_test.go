@@ -29,13 +29,16 @@ func TestFDTDIntegration(t *testing.T) {
 	}
 
 	ctx := context.Background()
+
 	w, err := Start(ctx, bin)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer w.Close() //nolint:errcheck
 
-	if err := w.Ping(ctx); err != nil {
+	defer w.Close()
+
+	err = w.Ping(ctx)
+	if err != nil {
 		t.Fatalf("Ping: %v", err)
 	}
 
@@ -55,9 +58,11 @@ func TestFDTDIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllocGrid: %v", err)
 	}
+
 	defer func() {
-		if err := w.FreeGrid(ctx, grid); err != nil {
-			t.Logf("FreeGrid: %v", err)
+		freeErr := w.FreeGrid(ctx, grid)
+		if freeErr != nil {
+			t.Logf("FreeGrid: %v", freeErr)
 		}
 	}()
 
@@ -67,7 +72,8 @@ func TestFDTDIntegration(t *testing.T) {
 	pPrev := make([]float32, N)
 	pCur[srcIdx] = 1.0
 
-	if err := w.UploadFields(ctx, grid, pCur, pPrev); err != nil {
+	err = w.UploadFields(ctx, grid, pCur, pPrev)
+	if err != nil {
 		t.Fatalf("UploadFields: %v", err)
 	}
 
@@ -96,16 +102,20 @@ func TestFDTDIntegration(t *testing.T) {
 
 	// After step 5 the impulse must have reached the receiver.
 	var maxAbs float32
+
 	for _, s := range samples[5:] {
 		if s < 0 {
 			s = -s
 		}
+
 		if s > maxAbs {
 			maxAbs = s
 		}
 	}
+
 	if maxAbs < 1e-6 {
 		t.Error("receiver time series is all-zero after step 5 — impulse did not propagate")
 	}
+
 	t.Logf("peak receiver amplitude (steps 5–%d): %e", steps, maxAbs)
 }

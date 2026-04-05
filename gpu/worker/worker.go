@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -47,12 +48,14 @@ func Start(ctx context.Context, serverBin string) (*Worker, error) {
 	// Choose a temporary socket path.
 	sockPath := filepath.Join(os.TempDir(),
 		fmt.Sprintf("algo_gpu_%d.sock", os.Getpid()))
-	os.Remove(sockPath) //nolint:errcheck
+	os.Remove(sockPath)
 
 	cmd := exec.CommandContext(ctx, serverBin, "--socket", sockPath)
 	cmd.Stdout = os.Stderr // server log → caller's stderr
 	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
+
+	err := cmd.Start()
+	if err != nil {
 		return nil, fmt.Errorf("start GPU server %q: %w", serverBin, err)
 	}
 
@@ -70,6 +73,7 @@ func Start(ctx context.Context, serverBin string) (*Worker, error) {
 		closed: make(chan struct{}),
 	}
 	go w.loop()
+
 	return w, nil
 }
 
@@ -86,14 +90,16 @@ func (w *Worker) Close() error {
 	// Best-effort shutdown; ignore errors if already closed.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_, _ = w.do(ctx, MsgShutdown, nil) //nolint:errcheck
+
+	_, _ = w.do(ctx, MsgShutdown, nil)
 
 	close(w.closed)
-	w.conn.Close() //nolint:errcheck
+	w.conn.Close()
 
 	if w.cmd.Process != nil {
 		_ = w.cmd.Wait()
 	}
+
 	return nil
 }
 
@@ -102,17 +108,18 @@ func (w *Worker) Close() error {
 // serialises them.
 func (w *Worker) do(ctx context.Context, msgType uint16, payload []byte) ([]byte, error) {
 	result := make(chan callResult, 1)
+
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("context cancelled: %w", ctx.Err())
 	case <-w.closed:
-		return nil, fmt.Errorf("worker closed")
+		return nil, errors.New("worker closed")
 	case w.queue <- call{msgType: msgType, payload: payload, result: result}:
 	}
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("context cancelled: %w", ctx.Err())
 	case r := <-result:
 		return r.data, r.err
 	}
@@ -136,17 +143,22 @@ func (w *Worker) loop() {
 func (w *Worker) roundTrip(msgType uint16, payload []byte) ([]byte, error) {
 	// Build request.
 	var buf bytes.Buffer
+
 	hdr := reqHeader{
 		Type:       msgType,
 		Flags:      0,
-		PayloadLen: uint32(len(payload)),
+		PayloadLen: uint32(len(payload)), //nolint:gosec
 	}
-	if err := binary.Write(&buf, byteOrder, hdr); err != nil {
+
+	err := binary.Write(&buf, byteOrder, hdr)
+	if err != nil {
 		return nil, fmt.Errorf("encode header: %w", err)
 	}
+
 	buf.Write(payload)
 
-	if _, err := w.conn.Write(buf.Bytes()); err != nil {
+	_, err = w.conn.Write(buf.Bytes())
+	if err != nil {
 		return nil, fmt.Errorf("send request (type=0x%04x): %w", msgType, err)
 	}
 
@@ -155,6 +167,7 @@ func (w *Worker) roundTrip(msgType uint16, payload []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read response header: %w", err)
 	}
+
 	if rh.Status != StatusOK {
 		return nil, &ServerError{Code: rh.Status, MsgType: msgType}
 	}
@@ -163,10 +176,14 @@ func (w *Worker) roundTrip(msgType uint16, payload []byte) ([]byte, error) {
 	if rh.ResponseLen == 0 {
 		return nil, nil
 	}
+
 	body := make([]byte, rh.ResponseLen)
-	if _, err = io.ReadFull(w.conn, body); err != nil {
+
+	_, err = io.ReadFull(w.conn, body)
+	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
+
 	return body, nil
 }
 
@@ -178,6 +195,7 @@ type ServerError struct {
 
 func (e *ServerError) Error() string {
 	var name string
+
 	switch e.Code {
 	case StatusNotImpl:
 		name = "not implemented"
@@ -192,6 +210,7 @@ func (e *ServerError) Error() string {
 	default:
 		name = fmt.Sprintf("code %d", e.Code)
 	}
+
 	return fmt.Sprintf("GPU server error on msg 0x%04x: %s", e.MsgType, name)
 }
 
@@ -202,6 +221,7 @@ func IsNotImpl(err error) bool {
 	if ok := isServerError(err, &se); ok {
 		return se.Code == StatusNotImpl
 	}
+
 	return false
 }
 
@@ -209,10 +229,11 @@ func isServerError(err error, out **ServerError) bool {
 	if err == nil {
 		return false
 	}
-	if se, ok := err.(*ServerError); ok {
-		*out = se
+
+	if errors.As(err, out) {
 		return true
 	}
+
 	return false
 }
 
@@ -220,14 +241,17 @@ func isServerError(err error, out **ServerError) bool {
 // may take a moment to call listen(2) after being started).
 func dialUnix(path string, timeout time.Duration) (net.Conn, error) {
 	deadline := time.Now().Add(timeout)
+
 	for {
 		conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: path, Net: "unix"})
 		if err == nil {
 			return conn, nil
 		}
+
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("timeout waiting for socket %s: %w", path, err)
 		}
+
 		time.Sleep(50 * time.Millisecond)
 	}
 }

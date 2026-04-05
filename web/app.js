@@ -1,16 +1,16 @@
 import * as presets from "./app-presets.js";
+import * as appState from "./app-state.js";
 import * as sceneModule from "./app-scene.js";
 import * as audioModule from "./app-audio.js";
 import {
-  average,
-  capitalize,
   clamp,
   clampInt,
-  dbToLinear,
-  copyState,
-  downloadBytes,
   formatVec,
+  copyState,
+  capitalize,
   roundToStep,
+  downloadBytes,
+  dbToLinear,
 } from "./app-utils.js";
 
 const MATERIALS = presets.MATERIALS;
@@ -178,6 +178,67 @@ const refs = {
   audioPlayer: document.getElementById("audio-player"),
   renderLog: document.getElementById("render-log"),
 };
+
+const {
+  populateMaterialSelects,
+  populatePresetSelects,
+  updateMaterialSummary,
+  syncPresetSelects,
+  syncFormFromState,
+  syncDirectivityAvailability,
+  syncRoomModeAvailability,
+  syncModeButtons,
+  syncIrViewButtons,
+  syncPositionConstraints,
+  normalizeSpatialState,
+  applyRoomPreset,
+  applyMaterialPreset,
+  loadStateFromUrl,
+  applySerializedState,
+  assignRoomState,
+  assignMaterialState,
+  assignSourceState,
+  assignReceiverState,
+  assignRenderState,
+  normalizeSceneState,
+  normalizeCrossoverWindow,
+  encodeStateForUrl,
+  decodeStateFromUrl,
+  scheduleUrlSync,
+  syncUrlState,
+  base64UrlEncode,
+  base64UrlDecode,
+  buildRequest,
+  getSystemTheme,
+  applyTheme,
+  updateThemeToggle,
+  cycleTheme,
+  initTheme,
+} = appState;
+
+appState.setAppStateContext({
+  window,
+  document,
+  state,
+  refs,
+  POSITION_MARGIN,
+  DEFAULT_STATE,
+  THEME_KEY,
+  THEME_MODES,
+  THEME_ICONS,
+  MATERIALS,
+  ROOM_PRESETS,
+  ROOM_PRESET_GROUPS,
+  MATERIAL_PRESETS,
+  sceneModule,
+  updateSceneView,
+  getLastRender: () => lastRender,
+  getLatestEncodedState: () => latestEncodedState,
+  setLatestEncodedState: (value) => {
+    latestEncodedState = value;
+  },
+  drawWaveform,
+});
 
 let sceneView = null;
 let lastRender = null;
@@ -629,141 +690,6 @@ function populateMaterialSelects() {
   });
 }
 
-function syncFormFromState() {
-  refs.roomPreset.value = state.roomPreset;
-  refs.materialPreset.value = state.materialPreset;
-  refs.sourceDirectivity.value = state.source.directivity;
-  refs.sourceAzimuth.value = String(state.source.azimuthDegrees);
-  refs.sourceAzimuthValue.textContent = `${Math.round(state.source.azimuthDegrees)}°`;
-  refs.sourceFocus.value = String(state.source.cardioidOrder);
-  refs.sourceFocusValue.textContent = state.source.cardioidOrder.toFixed(2);
-  refs.sourceGain.value = String(state.source.gainDb);
-  refs.sourceGainValue.textContent = `${state.source.gainDb.toFixed(1)} dB`;
-
-  refs.roomWidth.value = state.room.width.toFixed(1);
-  refs.roomDepth.value = state.room.depth.toFixed(1);
-  refs.roomHeight.value = state.room.height.toFixed(1);
-  syncPositionConstraints();
-  syncRoomModeAvailability();
-  refs.sourceX.value = state.source.x.toFixed(2);
-  refs.sourceY.value = state.source.y.toFixed(2);
-  refs.sourceZ.value = state.source.z.toFixed(2);
-  refs.receiverX.value = state.receiver.x.toFixed(2);
-  refs.receiverY.value = state.receiver.y.toFixed(2);
-  refs.receiverZ.value = state.receiver.z.toFixed(2);
-
-  refs.wallWest.value = state.materials.west;
-  refs.wallEast.value = state.materials.east;
-  refs.wallSouth.value = state.materials.south;
-  refs.wallNorth.value = state.materials.north;
-  refs.wallFloor.value = state.materials.floor;
-  refs.wallCeiling.value = state.materials.ceiling;
-
-  refs.renderRays.value = String(state.render.numRays);
-  refs.renderRaysValue.textContent = `${state.render.numRays.toLocaleString()} rays`;
-  refs.renderOrder.value = String(state.render.maxOrder);
-  refs.renderOrderValue.textContent = `order ${state.render.maxOrder}`;
-  refs.renderDuration.value = String(state.render.durationSeconds);
-  refs.renderDurationValue.textContent = `${state.render.durationSeconds.toFixed(2)} s`;
-  refs.renderCrossover.max = String(
-    Math.max(0.03, state.render.durationSeconds * 0.85),
-  );
-  refs.renderCrossover.value = String(state.render.crossoverTimeSeconds);
-  refs.renderCrossoverValue.textContent = `${state.render.crossoverTimeSeconds.toFixed(2)} s`;
-  refs.renderWindow.value = state.render.crossoverWindow;
-  refs.sceneReflections.value = String(state.reflections);
-
-  syncModeButtons();
-  syncDirectivityAvailability();
-}
-
-function syncDirectivityAvailability() {
-  const isCardioid = state.source.directivity === "cardioid";
-  refs.sourceAzimuth.disabled = !isCardioid;
-  refs.sourceFocus.disabled = !isCardioid;
-}
-
-function syncRoomModeAvailability() {
-  const isMesh = state.room.kind === "mesh";
-  refs.roomWidth.disabled = false;
-  refs.roomDepth.disabled = false;
-  refs.roomHeight.disabled = false;
-  if (isMesh) {
-    refs.roomWidth.title = "Mesh preset uses bounding-box dimensions";
-    refs.roomDepth.title = "Mesh preset uses bounding-box dimensions";
-    refs.roomHeight.title = "Mesh preset uses bounding-box dimensions";
-  } else {
-    refs.roomWidth.removeAttribute("title");
-    refs.roomDepth.removeAttribute("title");
-    refs.roomHeight.removeAttribute("title");
-  }
-}
-
-function syncModeButtons() {
-  refs.renderModeButtons.forEach((button) => {
-    button.classList.toggle(
-      "is-active",
-      button.dataset.mode === state.render.mode,
-    );
-  });
-}
-
-function syncIrViewButtons() {
-  refs.irViewButtons.forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.view === state.irView);
-  });
-}
-
-function syncPositionConstraints() {
-  const fields = [
-    [refs.sourceX, state.room.width],
-    [refs.receiverX, state.room.width],
-    [refs.sourceY, state.room.depth],
-    [refs.receiverY, state.room.depth],
-    [refs.sourceZ, state.room.height],
-    [refs.receiverZ, state.room.height],
-  ];
-  fields.forEach(([element, maxValue]) => {
-    element.max = String(Math.max(POSITION_MARGIN, maxValue - POSITION_MARGIN));
-  });
-}
-
-function normalizeSpatialState() {
-  state.source.x = clamp(
-    state.source.x,
-    POSITION_MARGIN,
-    state.room.width - POSITION_MARGIN,
-  );
-  state.source.y = clamp(
-    state.source.y,
-    POSITION_MARGIN,
-    state.room.depth - POSITION_MARGIN,
-  );
-  state.source.z = clamp(
-    state.source.z,
-    POSITION_MARGIN,
-    state.room.height - POSITION_MARGIN,
-  );
-  state.receiver.x = clamp(
-    state.receiver.x,
-    POSITION_MARGIN,
-    state.room.width - POSITION_MARGIN,
-  );
-  state.receiver.y = clamp(
-    state.receiver.y,
-    POSITION_MARGIN,
-    state.room.depth - POSITION_MARGIN,
-  );
-  state.receiver.z = clamp(
-    state.receiver.z,
-    POSITION_MARGIN,
-    state.room.height - POSITION_MARGIN,
-  );
-  syncFormFromState();
-  updateSceneView();
-  scheduleUrlSync();
-}
-
 function onRenderButtonClick() {
   if (isRenderActive()) {
     requestRenderCancel();
@@ -1114,476 +1040,8 @@ function encodeAudioBufferToWav(audioBuffer) {
   return audioModule.encodeAudioBufferToWav(audioBuffer);
 }
 
-function populatePresetSelects() {
-  const roomOptions = ROOM_PRESET_GROUPS.map(({ label, presets }) => {
-    const options = presets
-      .filter((value) => value in ROOM_PRESETS)
-      .map((value) => `<option value="${value}">${ROOM_PRESETS[value].label}</option>`)
-      .join("");
-    return `<optgroup label="${label}">${options}</optgroup>`;
-  }).join("");
 
-  refs.roomPreset.innerHTML = `
-    <option value="custom">Custom</option>
-    ${roomOptions}
-  `;
-  refs.materialPreset.innerHTML = Object.entries(MATERIAL_PRESETS)
-    .map(([value, preset]) => `<option value="${value}">${preset.label}</option>`)
-    .join("");
-}
-
-function updateMaterialSummary() {
-  refs.materialSummary.innerHTML = Object.entries(state.materials)
-    .map(([wall, materialKey]) => {
-      const material = MATERIALS[materialKey];
-      const absorptionAverage = average(material.absorption);
-      return `
-        <div class="material-chip">
-          <span class="material-swatch" style="background:${material.color}"></span>
-          <strong>${capitalize(wall)}</strong>
-          <span>${material.label}</span>
-          <span>avg α ${absorptionAverage.toFixed(2)}</span>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function syncPresetSelects() {
-  refs.roomPreset.value = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
-  refs.materialPreset.value = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
-}
-
-function applyRoomPreset(presetName, options = {}) {
-  const preset = ROOM_PRESETS[presetName] ?? ROOM_PRESETS.custom;
-  state.roomPreset = presetName in ROOM_PRESETS ? presetName : "custom";
-
-  state.room.kind = preset.kind ?? "shoebox";
-  state.room.mesh = preset.mesh ? structuredClone(preset.mesh) : null;
-
-  if (preset.room) {
-    state.room.width = preset.room.width;
-    state.room.depth = preset.room.depth;
-    state.room.height = preset.room.height;
-  }
-
-  if (preset.source) {
-    state.source = structuredClone(preset.source);
-  }
-
-  if (preset.receiver) {
-    state.receiver = structuredClone(preset.receiver);
-  }
-
-  if (preset.materialPreset && preset.materialPreset in MATERIAL_PRESETS) {
-    state.materialPreset = preset.materialPreset;
-  }
-
-  if (preset.materials) {
-    state.materials = structuredClone(preset.materials);
-    state.materialPreset = "custom";
-  }
-
-  if (preset.renderMode) {
-    state.render.mode = preset.renderMode;
-  }
-
-  syncFormFromState();
-  updateSceneView();
-  drawWaveform(refs.waveformCanvas, lastRender?.samples ?? null, {
-    irView: state.irView,
-    renderMode: state.render.mode,
-    durationSeconds: state.render.durationSeconds,
-    crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-  });
-  if (!options.skipUrlSync) {
-    scheduleUrlSync();
-  }
-}
-
-function applyMaterialPreset(presetName, options = {}) {
-  const preset = MATERIAL_PRESETS[presetName] ?? MATERIAL_PRESETS.custom;
-  state.materialPreset = presetName in MATERIAL_PRESETS ? presetName : "custom";
-
-  if (preset.materials) {
-    state.materials = structuredClone(preset.materials);
-  }
-
-  syncFormFromState();
-  updateMaterialSummary();
-  updateSceneView();
-  if (!options.skipUrlSync) {
-    scheduleUrlSync();
-  }
-}
-
-function loadStateFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const encoded = params.get("scene");
-  if (!encoded) {
-    syncPresetSelects();
-    return;
-  }
-
-  try {
-    const decoded = decodeStateFromUrl(encoded);
-    applySerializedState(decoded);
-  } catch (error) {
-    console.warn("Ignoring invalid scene URL", error);
-  }
-}
-
-function applySerializedState(input) {
-  copyState(DEFAULT_STATE, state);
-
-  if (input && typeof input === "object") {
-    if (typeof input.roomPreset === "string" && input.roomPreset in ROOM_PRESETS) {
-      state.roomPreset = input.roomPreset;
-      applyRoomPreset(input.roomPreset, { skipUrlSync: true });
-    }
-    if (typeof input.materialPreset === "string" && input.materialPreset in MATERIAL_PRESETS) {
-      state.materialPreset = input.materialPreset;
-      applyMaterialPreset(input.materialPreset, { skipUrlSync: true });
-    }
-
-    assignRoomState(input.room);
-    assignMaterialState(input.materials);
-    assignSourceState(input.source);
-    assignReceiverState(input.receiver);
-    assignRenderState(input.render);
-    if (typeof input.reflections === "number" && Number.isFinite(input.reflections)) {
-      state.reflections = input.reflections;
-    }
-
-    if (typeof input.irView === "string" && input.irView) {
-      state.irView = input.irView;
-    }
-  }
-
-  normalizeSceneState();
-  syncFormFromState();
-  updateMaterialSummary();
-  updateSceneView();
-  drawWaveform(refs.waveformCanvas, lastRender?.samples ?? null, {
-    irView: state.irView,
-    renderMode: state.render.mode,
-    durationSeconds: state.render.durationSeconds,
-    crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-  });
-}
-
-function assignRoomState(room) {
-  if (!room || typeof room !== "object") {
-    return;
-  }
-
-  if (room.kind === "mesh" || room.kind === "shoebox") {
-    state.room.kind = room.kind;
-  }
-
-  if (typeof room.width === "number" && room.width > 0) {
-    state.room.width = room.width;
-  }
-  if (typeof room.depth === "number" && room.depth > 0) {
-    state.room.depth = room.depth;
-  }
-  if (typeof room.height === "number" && room.height > 0) {
-    state.room.height = room.height;
-  }
-
-  if (room.mesh && typeof room.mesh === "object") {
-    state.room.mesh = structuredClone(room.mesh);
-  }
-}
-
-function assignMaterialState(materials) {
-  if (!materials || typeof materials !== "object") {
-    return;
-  }
-
-  for (const key of ["west", "east", "south", "north", "floor", "ceiling"]) {
-    if (typeof materials[key] === "string" && materials[key] in MATERIALS) {
-      state.materials[key] = materials[key];
-    }
-  }
-}
-
-function assignSourceState(source) {
-  if (!source || typeof source !== "object") {
-    return;
-  }
-
-  for (const key of ["x", "y", "z", "gainDb", "azimuthDegrees", "cardioidOrder"]) {
-    if (typeof source[key] === "number" && Number.isFinite(source[key])) {
-      state.source[key] = source[key];
-    }
-  }
-  if (typeof source.directivity === "string") {
-    state.source.directivity = source.directivity;
-  }
-}
-
-function assignReceiverState(receiver) {
-  if (!receiver || typeof receiver !== "object") {
-    return;
-  }
-
-  for (const key of ["x", "y", "z"]) {
-    if (typeof receiver[key] === "number" && Number.isFinite(receiver[key])) {
-      state.receiver[key] = receiver[key];
-    }
-  }
-}
-
-function assignRenderState(render) {
-  if (!render || typeof render !== "object") {
-    return;
-  }
-
-  for (const key of ["maxOrder", "numRays"]) {
-    if (typeof render[key] === "number" && Number.isFinite(render[key])) {
-      state.render[key] = render[key];
-    }
-  }
-  for (const key of ["durationSeconds", "crossoverTimeSeconds", "crossoverWindowAlpha"]) {
-    if (typeof render[key] === "number" && Number.isFinite(render[key])) {
-      state.render[key] = render[key];
-    }
-  }
-  if (typeof render.mode === "string") {
-    state.render.mode = render.mode;
-  }
-  if (typeof render.crossoverWindow === "string") {
-    state.render.crossoverWindow = render.crossoverWindow;
-  }
-}
-
-function normalizeSceneState() {
-  state.room.width = clamp(state.room.width, 2.5, 16);
-  state.room.depth = clamp(state.room.depth, 2.5, 16);
-  state.room.height = clamp(state.room.height, 2.2, 7);
-
-  state.source.directivity = normalizeDirectivity(state.source.directivity, DEFAULT_STATE.source.directivity);
-  state.source.gainDb = clamp(state.source.gainDb, -24, 12);
-  state.source.azimuthDegrees = clamp(state.source.azimuthDegrees, -180, 180);
-  state.source.cardioidOrder = clamp(state.source.cardioidOrder, 0.25, 2.5);
-
-  state.render.mode = ["early", "late", "hybrid"].includes(state.render.mode)
-    ? state.render.mode
-    : DEFAULT_STATE.render.mode;
-  state.render.maxOrder = clampInt(Math.round(state.render.maxOrder), 1, 12);
-  state.render.numRays = clampInt(Math.round(state.render.numRays), 128, 16384);
-  state.render.durationSeconds = clamp(state.render.durationSeconds, 0.25, 3);
-  state.render.crossoverTimeSeconds = clamp(
-    state.render.crossoverTimeSeconds,
-    0.03,
-    state.render.durationSeconds * 0.85,
-  );
-  state.render.crossoverWindow = normalizeCrossoverWindow(
-    state.render.crossoverWindow,
-    DEFAULT_STATE.render.crossoverWindow,
-  );
-
-  state.source.x = clamp(
-    state.source.x,
-    POSITION_MARGIN,
-    state.room.width - POSITION_MARGIN,
-  );
-  state.source.y = clamp(
-    state.source.y,
-    POSITION_MARGIN,
-    state.room.depth - POSITION_MARGIN,
-  );
-  state.source.z = clamp(
-    state.source.z,
-    POSITION_MARGIN,
-    state.room.height - POSITION_MARGIN,
-  );
-  state.receiver.x = clamp(
-    state.receiver.x,
-    POSITION_MARGIN,
-    state.room.width - POSITION_MARGIN,
-  );
-  state.receiver.y = clamp(
-    state.receiver.y,
-    POSITION_MARGIN,
-    state.room.depth - POSITION_MARGIN,
-  );
-  state.receiver.z = clamp(
-    state.receiver.z,
-    POSITION_MARGIN,
-    state.room.height - POSITION_MARGIN,
-  );
-
-  state.roomPreset = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
-  state.materialPreset = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
-  state.reflections = clampInt(Math.round(state.reflections), 0, 6);
-
-  if (state.room.kind === "mesh" && !state.room.mesh) {
-    state.room.kind = "shoebox";
-  }
-  if (state.room.kind !== "mesh") {
-    state.room.mesh = null;
-  }
-}
-
-function normalizeCrossoverWindow(name, fallback) {
-  const trimmed = String(name ?? "").trim();
-  if (
-    trimmed === "hann" ||
-    trimmed === "hamming" ||
-    trimmed === "blackman" ||
-    trimmed === "blackman-harris" ||
-    trimmed === "flattop"
-  ) {
-    return trimmed;
-  }
-
-  return fallback;
-}
-
-function encodeStateForUrl() {
-  const payload = {
-    roomPreset: state.roomPreset,
-    materialPreset: state.materialPreset,
-    room: state.room,
-    materials: state.materials,
-    source: state.source,
-    receiver: state.receiver,
-    render: state.render,
-    irView: state.irView,
-    reflections: state.reflections,
-  };
-  return base64UrlEncode(JSON.stringify(payload));
-}
-
-function decodeStateFromUrl(encoded) {
-  const raw = base64UrlDecode(encoded);
-  return JSON.parse(raw);
-}
-
-function scheduleUrlSync() {
-  if (urlSyncTimer) {
-    clearTimeout(urlSyncTimer);
-  }
-
-  urlSyncTimer = window.setTimeout(syncUrlState, 120);
-}
-
-function syncUrlState() {
-  urlSyncTimer = 0;
-  const encoded = encodeStateForUrl();
-  if (latestEncodedState === encoded) {
-    return;
-  }
-
-  latestEncodedState = encoded;
-  const url = new URL(window.location.href);
-  url.searchParams.set("scene", encoded);
-  window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
-}
-
-function base64UrlEncode(value) {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function base64UrlDecode(value) {
-  let normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  while (normalized.length % 4 !== 0) {
-    normalized += "=";
-  }
-  const binary = atob(normalized);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
-function buildRequest() {
-  return {
-    roomPreset: state.roomPreset,
-    materialPreset: state.materialPreset,
-    room: state.room,
-    materials: state.materials,
-    source: state.source,
-    receiver: state.receiver,
-    render: state.render,
-    reflections: state.reflections,
-  };
-}
-
-function getSystemTheme() {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
-function applyTheme(mode) {
-  const theme = mode === "auto" ? getSystemTheme() : mode;
-  if (theme === "dark") {
-    document.documentElement.setAttribute("data-theme", "dark");
-  } else {
-    document.documentElement.removeAttribute("data-theme");
-  }
-
-  updateThemeToggle();
-  applySceneTheme();
-  updateSceneView();
-  drawWaveform(refs.waveformCanvas, lastRender?.samples ?? null, {
-    irView: state.irView,
-    renderMode: state.render.mode,
-    durationSeconds: state.render.durationSeconds,
-    crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-  });
-}
-
-function updateThemeToggle() {
-  if (!refs.themeToggle) {
-    return;
-  }
-
-  const label = refs.themeToggle.querySelector(".theme-toggle-label");
-  const icon = refs.themeToggle.querySelector(".theme-toggle-icon");
-  const labels = { auto: "Auto", light: "Light", dark: "Dark" };
-  const text = labels[currentThemeMode] ?? "Auto";
-
-  if (label) {
-    label.textContent = text;
-  }
-  if (icon) {
-    icon.innerHTML = THEME_ICONS[currentThemeMode] ?? THEME_ICONS.auto;
-  }
-
-  refs.themeToggle.setAttribute("aria-label", `Theme: ${text}`);
-  refs.themeToggle.title = `Theme: ${text}`;
-}
-
-function cycleTheme() {
-  const currentIndex = THEME_MODES.indexOf(currentThemeMode);
-  const nextIndex = (currentIndex + 1) % THEME_MODES.length;
-  currentThemeMode = THEME_MODES[nextIndex];
-  localStorage.setItem(THEME_KEY, currentThemeMode);
-  applyTheme(currentThemeMode);
-}
-
-function initTheme() {
-  const savedTheme = localStorage.getItem(THEME_KEY);
-  if (savedTheme && THEME_MODES.includes(savedTheme)) {
-    currentThemeMode = savedTheme;
-  }
-
-  mediaThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
-  mediaThemeQuery.addEventListener("change", () => {
-    if (currentThemeMode === "auto") {
-      applyTheme("auto");
-    }
-  });
-
-  applyTheme(currentThemeMode);
-}
+// State helpers moved to app-state.js.
 
 function scenePalette() {
   return sceneModule.scenePalette();

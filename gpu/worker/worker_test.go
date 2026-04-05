@@ -37,9 +37,12 @@ func TestProtocolStructSizes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := binary.Write(&buf, binary.LittleEndian, tt.val); err != nil {
+
+			err := binary.Write(&buf, binary.LittleEndian, tt.val)
+			if err != nil {
 				t.Fatalf("binary.Write: %v", err)
 			}
+
 			if got := buf.Len(); got != tt.want {
 				t.Errorf("size = %d bytes, want %d", got, tt.want)
 			}
@@ -56,6 +59,7 @@ func TestShmNameRoundTrip(t *testing.T) {
 	}
 	for _, c := range cases {
 		n := shmNameOf(c)
+
 		got := n.String()
 		if got != c {
 			t.Errorf("ShmName round-trip %q → %q", c, got)
@@ -70,7 +74,9 @@ func TestShmNameTruncation(t *testing.T) {
 	for i := range []byte(long) {
 		long = long[:i] + "a" + long[i+1:]
 	}
+
 	long = "a100chars" + long[:91]
+
 	n := shmNameOf(long)
 	if n[63] != 0 {
 		t.Error("last byte of ShmName should be NUL after truncation")
@@ -80,17 +86,25 @@ func TestShmNameTruncation(t *testing.T) {
 // TestReqHeaderRoundTrip encodes and decodes a request header.
 func TestReqHeaderRoundTrip(t *testing.T) {
 	h := reqHeader{Type: MsgRunFDTD, Flags: 0, PayloadLen: 92}
+
 	var buf bytes.Buffer
-	if err := h.writeTo(&buf); err != nil {
+
+	err := h.writeTo(&buf)
+	if err != nil {
 		t.Fatalf("writeTo: %v", err)
 	}
+
 	if buf.Len() != 8 {
 		t.Fatalf("header size %d, want 8", buf.Len())
 	}
+
 	var back reqHeader
-	if err := binary.Read(&buf, byteOrder, &back); err != nil {
+
+	err = binary.Read(&buf, byteOrder, &back)
+	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
+
 	if back != h {
 		t.Errorf("got %+v, want %+v", back, h)
 	}
@@ -99,14 +113,19 @@ func TestReqHeaderRoundTrip(t *testing.T) {
 // TestRespHeaderRoundTrip encodes and decodes a response header.
 func TestRespHeaderRoundTrip(t *testing.T) {
 	h := respHeader{Status: StatusOK, ResponseLen: 8}
+
 	var buf bytes.Buffer
-	if err := binary.Write(&buf, byteOrder, h); err != nil {
+
+	err := binary.Write(&buf, byteOrder, h)
+	if err != nil {
 		t.Fatalf("Write: %v", err)
 	}
+
 	back, err := readRespHeader(&buf)
 	if err != nil {
 		t.Fatalf("readRespHeader: %v", err)
 	}
+
 	if back != h {
 		t.Errorf("got %+v, want %+v", back, h)
 	}
@@ -130,6 +149,7 @@ func TestServerError(t *testing.T) {
 		if got := err.Error(); got == "" {
 			t.Errorf("code %d: empty error string", c.code)
 		}
+
 		if !contains(err.Error(), c.want) {
 			t.Errorf("code %d: %q does not contain %q", c.code, err.Error(), c.want)
 		}
@@ -144,6 +164,7 @@ func contains(s, sub string) bool {
 					return true
 				}
 			}
+
 			return false
 		}())
 }

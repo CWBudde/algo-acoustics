@@ -31,13 +31,16 @@ func TestRayTraceIntegration(t *testing.T) {
 	}
 
 	ctx := context.Background()
+
 	w, err := Start(ctx, bin)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer w.Close() //nolint:errcheck
 
-	if err := w.Ping(ctx); err != nil {
+	defer w.Close()
+
+	err = w.Ping(ctx)
+	if err != nil {
 		t.Fatalf("Ping: %v", err)
 	}
 
@@ -63,9 +66,11 @@ func TestRayTraceIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllocBVH: %v", err)
 	}
+
 	defer func() {
-		if err := w.FreeBVH(ctx, bvh); err != nil {
-			t.Logf("FreeBVH: %v", err)
+		freeErr := w.FreeBVH(ctx, bvh)
+		if freeErr != nil {
+			t.Logf("FreeBVH: %v", freeErr)
 		}
 	}()
 
@@ -87,27 +92,34 @@ func TestRayTraceIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TraceRays: %v", err)
 	}
+
 	if len(hits) != 2 {
 		t.Fatalf("got %d hit records, want 2", len(hits))
 	}
 
 	// Ray 0 — expect hit at t ≈ 5.0, tri_id = 42.
 	h0 := hits[0]
+
 	if math.IsNaN(float64(h0.T)) || math.IsInf(float64(h0.T), 0) {
 		t.Errorf("ray 0: T = %v (NaN or Inf)", h0.T)
 	}
+
 	if math.Abs(float64(h0.T)-5.0) > 1e-4 {
 		t.Errorf("ray 0: T = %v, want ~5.0", h0.T)
 	}
+
 	if h0.TriID != 42 {
 		t.Errorf("ray 0: TriID = %d, want 42", h0.TriID)
 	}
+
 	t.Logf("ray 0: t=%.6f  tri_id=%d", h0.T, h0.TriID)
 
 	// Ray 1 — expect miss: tri_id = -1.
 	h1 := hits[1]
+
 	if h1.TriID != -1 {
 		t.Errorf("ray 1: TriID = %d, want -1 (miss)", h1.TriID)
 	}
+
 	t.Logf("ray 1: t=%.6f  tri_id=%d", h1.T, h1.TriID)
 }
