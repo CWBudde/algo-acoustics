@@ -181,7 +181,6 @@ const refs = {
 };
 
 const {
-  populateMaterialSelects,
   populatePresetSelects,
   updateMaterialSummary,
   syncPresetSelects,
