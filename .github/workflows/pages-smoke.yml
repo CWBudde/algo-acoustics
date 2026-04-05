@@ -1,0 +1,45 @@
+name: Pages Smoke Test
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy to GitHub Pages
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pages: read
+
+concurrency:
+  group: pages-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        run: npm install --no-save --no-package-lock playwright@1.55.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve Pages URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "PAGE_URL=$(gh api repos/${{ github.repository }}/pages --jq .html_url)" >> "$GITHUB_ENV"
+
+      - name: Smoke test deployed demo
+        run: node scripts/pages-smoke.mjs "$PAGE_URL"
