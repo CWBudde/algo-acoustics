@@ -93,9 +93,27 @@ type demoRequest struct {
 }
 
 type demoRoom struct {
-	Width  float64 `json:"width"`
-	Depth  float64 `json:"depth"`
-	Height float64 `json:"height"`
+	Kind   string    `json:"kind"`
+	Width  float64   `json:"width"`
+	Depth  float64   `json:"depth"`
+	Height float64   `json:"height"`
+	Mesh   *demoMesh `json:"mesh,omitempty"`
+}
+
+type demoMesh struct {
+	Triangles []demoTriangle `json:"triangles"`
+}
+
+type demoTriangle struct {
+	V0 demoPoint `json:"v0"`
+	V1 demoPoint `json:"v1"`
+	V2 demoPoint `json:"v2"`
+}
+
+type demoPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
 }
 
 type demoMaterials struct {
@@ -148,7 +166,7 @@ type demoResult struct {
 
 func defaultDemoRequest() demoRequest {
 	return demoRequest{
-		Room: demoRoom{Width: 6.4, Depth: 4.8, Height: 2.9},
+		Room: demoRoom{Kind: "shoebox", Width: 6.4, Depth: 4.8, Height: 2.9},
 		Materials: demoMaterials{
 			West:    "perforatedWood",
 			East:    "glassWindow",
@@ -336,6 +354,15 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	defaults := defaultDemoRequest()
 
+	switch strings.TrimSpace(request.Room.Kind) {
+	case "", "shoebox":
+		request.Room.Kind = "shoebox"
+	case "mesh":
+		request.Room.Kind = "mesh"
+	default:
+		request.Room.Kind = defaults.Room.Kind
+	}
+
 	if request.Room.Width <= 0 {
 		request.Room.Width = defaults.Room.Width
 	}
@@ -371,6 +398,10 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	}
 
 	request.Render.Mode = mode
+	if request.Room.Kind == "mesh" {
+		request.Render.Mode = "late"
+		request.Render.CrossoverTimeSeconds = defaults.Render.CrossoverTimeSeconds
+	}
 	if request.Render.MaxOrder <= 0 {
 		request.Render.MaxOrder = defaults.Render.MaxOrder
 	}
@@ -434,23 +465,36 @@ func buildDemoScene(request demoRequest) (*scene.Scene, error) {
 		directivityModel = directivity.CardioidModel{Axis: axis, OrderN: request.Source.CardioidOrder}
 	}
 
-	sc := &scene.Scene{
-		Room: scene.Room{
-			Kind: scene.RoomKindShoebox,
-			Shoebox: &scene.Shoebox{
-				Width:  request.Room.Width,
-				Depth:  request.Room.Depth,
-				Height: request.Room.Height,
-				WallMaterials: [6]string{
-					request.Materials.West,
-					request.Materials.East,
-					request.Materials.South,
-					request.Materials.North,
-					request.Materials.Floor,
-					request.Materials.Ceiling,
-				},
+	room := scene.Room{
+		Kind: scene.RoomKindShoebox,
+		Shoebox: &scene.Shoebox{
+			Width:  request.Room.Width,
+			Depth:  request.Room.Depth,
+			Height: request.Room.Height,
+			WallMaterials: [6]string{
+				request.Materials.West,
+				request.Materials.East,
+				request.Materials.South,
+				request.Materials.North,
+				request.Materials.Floor,
+				request.Materials.Ceiling,
 			},
 		},
+	}
+
+	if request.Room.Kind == "mesh" {
+		mesh := buildDemoGeometryMesh(request.Room.Mesh)
+		if mesh == nil {
+			mesh = buildDemoLoftMesh(request.Room.Width, request.Room.Depth, request.Room.Height)
+		}
+		room = scene.Room{
+			Kind: scene.RoomKindMesh,
+			Mesh: mesh,
+		}
+	}
+
+	sc := &scene.Scene{
+		Room:       room,
 		Materials:  materials,
 		BandSpec:   acoustics.Octave6,
 		SampleRate: defaultDemoSampleRate,
@@ -471,6 +515,47 @@ func buildDemoScene(request demoRequest) (*scene.Scene, error) {
 	}
 
 	return sc, nil
+}
+
+func buildDemoLoftMesh(width, depth, height float64) *geometry.Mesh {
+	if width <= 0 || depth <= 0 || height <= 0 {
+		return &geometry.Mesh{}
+	}
+
+	v000 := geometry.Vec3{X: 0, Y: 0, Z: 0}
+	v100 := geometry.Vec3{X: width, Y: 0, Z: 0}
+	v010 := geometry.Vec3{X: width / 2, Y: depth, Z: 0}
+	v001 := geometry.Vec3{X: 0, Y: 0, Z: height}
+	v101 := geometry.Vec3{X: width, Y: 0, Z: height}
+	v011 := geometry.Vec3{X: width / 2, Y: depth, Z: height}
+
+	return &geometry.Mesh{Triangles: []geometry.Triangle{
+		{V0: v000, V1: v010, V2: v100},
+		{V0: v001, V1: v101, V2: v011},
+		{V0: v000, V1: v100, V2: v101},
+		{V0: v000, V1: v101, V2: v001},
+		{V0: v100, V1: v010, V2: v011},
+		{V0: v100, V1: v011, V2: v101},
+		{V0: v010, V1: v000, V2: v001},
+		{V0: v010, V1: v001, V2: v011},
+	}}
+}
+
+func buildDemoGeometryMesh(mesh *demoMesh) *geometry.Mesh {
+	if mesh == nil || len(mesh.Triangles) == 0 {
+		return nil
+	}
+
+	out := &geometry.Mesh{Triangles: make([]geometry.Triangle, 0, len(mesh.Triangles))}
+	for _, tri := range mesh.Triangles {
+		out.Triangles = append(out.Triangles, geometry.Triangle{
+			V0: geometry.Vec3{X: tri.V0.X, Y: tri.V0.Y, Z: tri.V0.Z},
+			V1: geometry.Vec3{X: tri.V1.X, Y: tri.V1.Y, Z: tri.V1.Z},
+			V2: geometry.Vec3{X: tri.V2.X, Y: tri.V2.Y, Z: tri.V2.Z},
+		})
+	}
+
+	return out
 }
 
 func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {

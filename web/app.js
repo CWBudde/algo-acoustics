@@ -47,9 +47,11 @@ const MATERIALS = {
 const ROOM_PRESETS = {
   custom: {
     label: "Custom",
+    kind: "shoebox",
   },
   shoebox: {
     label: "Shoebox",
+    kind: "shoebox",
     room: { width: 6.4, depth: 4.8, height: 2.9 },
     source: {
       x: 1.4,
@@ -61,34 +63,53 @@ const ROOM_PRESETS = {
       cardioidOrder: 1.15,
     },
     receiver: { x: 4.85, y: 2.9, z: 1.2 },
-  },
-  hall: {
-    label: "Simple Hall",
-    room: { width: 12, depth: 8, height: 4 },
-    source: {
-      x: 2.1,
-      y: 2.4,
-      z: 1.55,
-      gainDb: -1.5,
-      directivity: "cardioid",
-      azimuthDegrees: 15,
-      cardioidOrder: 1.3,
-    },
-    receiver: { x: 8.9, y: 4.1, z: 1.45 },
+    renderMode: "hybrid",
   },
   classroom: {
     label: "Classroom",
+    kind: "shoebox",
     room: { width: 8.8, depth: 6.4, height: 3.1 },
     source: {
-      x: 1.75,
-      y: 2,
+      x: 1.8,
+      y: 1.9,
       z: 1.35,
       gainDb: 0,
       directivity: "omni",
       azimuthDegrees: 0,
-      cardioidOrder: 1,
+      cardioidOrder: 1.1,
     },
-    receiver: { x: 6.9, y: 3.7, z: 1.35 },
+    receiver: { x: 6.7, y: 3.7, z: 1.35 },
+    materialPreset: "studio",
+    renderMode: "hybrid",
+  },
+  loft: {
+    label: "Loft Atrium",
+    kind: "mesh",
+    room: { width: 8.6, depth: 6.4, height: 3.2 },
+    source: {
+      x: 2.1,
+      y: 1.8,
+      z: 1.35,
+      gainDb: -1,
+      directivity: "cardioid",
+      azimuthDegrees: 18,
+      cardioidOrder: 1.35,
+    },
+    receiver: { x: 5.8, y: 3.7, z: 1.25 },
+    mesh: {
+      triangles: [
+        { v0: { x: 0, y: 0, z: 0 }, v1: { x: 4.3, y: 6.4, z: 0 }, v2: { x: 8.6, y: 0, z: 0 } },
+        { v0: { x: 0, y: 0, z: 3.2 }, v1: { x: 8.6, y: 0, z: 3.2 }, v2: { x: 4.3, y: 6.4, z: 3.2 } },
+        { v0: { x: 0, y: 0, z: 0 }, v1: { x: 8.6, y: 0, z: 0 }, v2: { x: 8.6, y: 0, z: 3.2 } },
+        { v0: { x: 0, y: 0, z: 0 }, v1: { x: 8.6, y: 0, z: 3.2 }, v2: { x: 0, y: 0, z: 3.2 } },
+        { v0: { x: 8.6, y: 0, z: 0 }, v1: { x: 4.3, y: 6.4, z: 0 }, v2: { x: 4.3, y: 6.4, z: 3.2 } },
+        { v0: { x: 8.6, y: 0, z: 0 }, v1: { x: 4.3, y: 6.4, z: 3.2 }, v2: { x: 8.6, y: 0, z: 3.2 } },
+        { v0: { x: 4.3, y: 6.4, z: 0 }, v1: { x: 0, y: 0, z: 0 }, v2: { x: 0, y: 0, z: 3.2 } },
+        { v0: { x: 4.3, y: 6.4, z: 0 }, v1: { x: 0, y: 0, z: 3.2 }, v2: { x: 4.3, y: 6.4, z: 3.2 } },
+      ],
+    },
+    materialPreset: "concertHall",
+    renderMode: "late",
   },
 };
 
@@ -134,7 +155,13 @@ const MATERIAL_PRESETS = {
 const DEFAULT_STATE = {
   roomPreset: "custom",
   materialPreset: "custom",
-  room: { width: 6.4, depth: 4.8, height: 2.9 },
+  room: {
+    kind: "shoebox",
+    width: 6.4,
+    depth: 4.8,
+    height: 2.9,
+    mesh: null,
+  },
   materials: {
     west: "perforatedWood",
     east: "glassWindow",
@@ -466,18 +493,24 @@ function bindEvents() {
 
   bindNumber(refs.roomWidth, (value) => {
     state.room.width = clamp(value, 2.5, 16);
+    state.room.kind = "shoebox";
+    state.room.mesh = null;
     state.roomPreset = "custom";
     normalizeSpatialState();
     syncPresetSelects();
   });
   bindNumber(refs.roomDepth, (value) => {
     state.room.depth = clamp(value, 2.5, 16);
+    state.room.kind = "shoebox";
+    state.room.mesh = null;
     state.roomPreset = "custom";
     normalizeSpatialState();
     syncPresetSelects();
   });
   bindNumber(refs.roomHeight, (value) => {
     state.room.height = clamp(value, 2.2, 7);
+    state.room.kind = "shoebox";
+    state.room.mesh = null;
     state.roomPreset = "custom";
     normalizeSpatialState();
     syncPresetSelects();
@@ -703,6 +736,7 @@ function syncFormFromState() {
   refs.roomDepth.value = state.room.depth.toFixed(1);
   refs.roomHeight.value = state.room.height.toFixed(1);
   syncPositionConstraints();
+  syncRoomModeAvailability();
   refs.sourceX.value = state.source.x.toFixed(2);
   refs.sourceY.value = state.source.y.toFixed(2);
   refs.sourceZ.value = state.source.z.toFixed(2);
@@ -738,6 +772,22 @@ function syncDirectivityAvailability() {
   const isCardioid = state.source.directivity === "cardioid";
   refs.sourceAzimuth.disabled = !isCardioid;
   refs.sourceFocus.disabled = !isCardioid;
+}
+
+function syncRoomModeAvailability() {
+  const isMesh = state.room.kind === "mesh";
+  refs.roomWidth.disabled = false;
+  refs.roomDepth.disabled = false;
+  refs.roomHeight.disabled = false;
+  if (isMesh) {
+    refs.roomWidth.title = "Mesh preset uses bounding-box dimensions";
+    refs.roomDepth.title = "Mesh preset uses bounding-box dimensions";
+    refs.roomHeight.title = "Mesh preset uses bounding-box dimensions";
+  } else {
+    refs.roomWidth.removeAttribute("title");
+    refs.roomDepth.removeAttribute("title");
+    refs.roomHeight.removeAttribute("title");
+  }
 }
 
 function syncModeButtons() {
@@ -1300,8 +1350,13 @@ function applyRoomPreset(presetName, options = {}) {
   const preset = ROOM_PRESETS[presetName] ?? ROOM_PRESETS.custom;
   state.roomPreset = presetName in ROOM_PRESETS ? presetName : "custom";
 
+  state.room.kind = preset.kind ?? "shoebox";
+  state.room.mesh = preset.mesh ? structuredClone(preset.mesh) : null;
+
   if (preset.room) {
-    state.room = structuredClone(preset.room);
+    state.room.width = preset.room.width;
+    state.room.depth = preset.room.depth;
+    state.room.height = preset.room.height;
   }
 
   if (preset.source) {
@@ -1310,6 +1365,14 @@ function applyRoomPreset(presetName, options = {}) {
 
   if (preset.receiver) {
     state.receiver = structuredClone(preset.receiver);
+  }
+
+  if (preset.materialPreset && preset.materialPreset in MATERIAL_PRESETS) {
+    state.materialPreset = preset.materialPreset;
+  }
+
+  if (preset.renderMode) {
+    state.render.mode = preset.renderMode;
   }
 
   syncFormFromState();
@@ -1388,6 +1451,10 @@ function assignRoomState(room) {
     return;
   }
 
+  if (room.kind === "mesh" || room.kind === "shoebox") {
+    state.room.kind = room.kind;
+  }
+
   if (typeof room.width === "number" && room.width > 0) {
     state.room.width = room.width;
   }
@@ -1396,6 +1463,10 @@ function assignRoomState(room) {
   }
   if (typeof room.height === "number" && room.height > 0) {
     state.room.height = room.height;
+  }
+
+  if (room.mesh && typeof room.mesh === "object") {
+    state.room.mesh = structuredClone(room.mesh);
   }
 }
 
@@ -1520,6 +1591,13 @@ function normalizeSceneState() {
 
   state.roomPreset = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
   state.materialPreset = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
+
+  if (state.room.kind === "mesh" && !state.room.mesh) {
+    state.room.kind = "shoebox";
+  }
+  if (state.room.kind !== "mesh") {
+    state.room.mesh = null;
+  }
 }
 
 function normalizeCrossoverWindow(name, fallback) {
@@ -1935,44 +2013,50 @@ function updateSceneView() {
   const height = state.room.height;
   const palette = scenePalette();
 
-  const walls = [
-    createWallMesh("west", depth, height, state.materials.west, (mesh) => {
-      mesh.rotation.y = Math.PI / 2;
-      mesh.position.set(0, height / 2, depth / 2);
-    }),
-    createWallMesh("east", depth, height, state.materials.east, (mesh) => {
-      mesh.rotation.y = -Math.PI / 2;
-      mesh.position.set(width, height / 2, depth / 2);
-    }),
-    createWallMesh("south", width, height, state.materials.south, (mesh) => {
-      mesh.position.set(width / 2, height / 2, 0);
-    }),
-    createWallMesh("north", width, height, state.materials.north, (mesh) => {
-      mesh.rotation.y = Math.PI;
-      mesh.position.set(width / 2, height / 2, depth);
-    }),
-    createWallMesh("floor", width, depth, state.materials.floor, (mesh) => {
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(width / 2, 0, depth / 2);
-    }),
-    createWallMesh("ceiling", width, depth, state.materials.ceiling, (mesh) => {
-      mesh.rotation.x = Math.PI / 2;
-      mesh.position.set(width / 2, height, depth / 2);
-    }),
-  ];
+  if (state.room.kind === "mesh" && state.room.mesh?.triangles?.length) {
+    const meshPreview = createMeshRoomPreview(state.room.mesh, palette);
+    roomGroup.add(meshPreview.mesh);
+    roomGroup.add(meshPreview.edges);
+  } else {
+    const walls = [
+      createWallMesh("west", depth, height, state.materials.west, (mesh) => {
+        mesh.rotation.y = Math.PI / 2;
+        mesh.position.set(0, height / 2, depth / 2);
+      }),
+      createWallMesh("east", depth, height, state.materials.east, (mesh) => {
+        mesh.rotation.y = -Math.PI / 2;
+        mesh.position.set(width, height / 2, depth / 2);
+      }),
+      createWallMesh("south", width, height, state.materials.south, (mesh) => {
+        mesh.position.set(width / 2, height / 2, 0);
+      }),
+      createWallMesh("north", width, height, state.materials.north, (mesh) => {
+        mesh.rotation.y = Math.PI;
+        mesh.position.set(width / 2, height / 2, depth);
+      }),
+      createWallMesh("floor", width, depth, state.materials.floor, (mesh) => {
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(width / 2, 0, depth / 2);
+      }),
+      createWallMesh("ceiling", width, depth, state.materials.ceiling, (mesh) => {
+        mesh.rotation.x = Math.PI / 2;
+        mesh.position.set(width / 2, height, depth / 2);
+      }),
+    ];
 
-  walls.forEach((wall) => roomGroup.add(wall));
+    walls.forEach((wall) => roomGroup.add(wall));
 
-  const edgeBox = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(width, height, depth)),
-    new THREE.LineBasicMaterial({
-      color: palette.edge,
-      transparent: true,
-      opacity: 1,
-    }),
-  );
-  edgeBox.position.set(width / 2, height / 2, depth / 2);
-  roomGroup.add(edgeBox);
+    const edgeBox = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(width, height, depth)),
+      new THREE.LineBasicMaterial({
+        color: palette.edge,
+        transparent: true,
+        opacity: 1,
+      }),
+    );
+    edgeBox.position.set(width / 2, height / 2, depth / 2);
+    roomGroup.add(edgeBox);
+  }
 
   const sourceMarker = createMarkerSphere(state.source, 0xff6b4a, 0.12, "source");
   const receiverMarker = createMarkerSphere(state.receiver, 0x0f9d92, 0.14, "receiver");
@@ -2009,6 +2093,42 @@ function createWallMesh(name, width, height, materialKey, configure) {
   );
   configure(mesh);
   return mesh;
+}
+
+function createMeshRoomPreview(meshSpec, palette) {
+  const geometry = new THREE.BufferGeometry();
+  const positions = [];
+  const triangles = meshSpec?.triangles ?? [];
+
+  for (const tri of triangles) {
+    for (const vertex of [tri.v0, tri.v1, tri.v2]) {
+      positions.push(vertex.x, vertex.z, vertex.y);
+    }
+  }
+
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshPhysicalMaterial({
+    color: MATERIALS.perforatedWood.color,
+    transparent: true,
+    opacity: 0.22,
+    roughness: 0.5,
+    metalness: 0.02,
+    side: THREE.DoubleSide,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({
+      color: palette.edge,
+      transparent: true,
+      opacity: 1,
+    }),
+  );
+
+  return { mesh, edges };
 }
 
 function createMarkerSphere(position, color, radius, target) {

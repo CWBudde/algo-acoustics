@@ -1183,9 +1183,9 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 ### 16.1 WASM build pipeline
 
 - [x] Add a WASM build target to justfile (`build-web-demo` / `web-demo`)
-- [ ] Strip debug info (`-ldflags="-s -w"`), avoid importing `fmt` / `encoding/json` in hot paths
+- [x] Strip debug info (`-ldflags="-s -w"`); keep the browser build on standard Go rather than TinyGo
 - [x] Automate the current browser build flow: `./web/build-wasm.sh` produces `web/algo_acoustics_demo.wasm` and copies `web/wasm_exec.js`
-- [ ] **Decision**: standard Go vs. TinyGo based on binary size vs. feature coverage trade-off
+- [x] **Decision**: standard Go vs. TinyGo based on binary size vs. feature coverage trade-off
 
 ### 16.2 Go/WASM API surface (`cmd/wasm/`)
 
@@ -1196,7 +1196,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
   - `simulate(options) → Float32Array` (impulse response)
   - `getParameters() → {rt60, c80, d50, ...}`
 - [x] Data transfer for typed arrays uses `js.CopyBytesToJS` (`Float32Array` for samples, `Uint8Array` for WAV bytes)
-- [ ] Progress callback from WASM → JS for progress bar during simulation
+- [x] Progress callback from WASM → JS for progress bar during simulation
 - [ ] Memory budget: target < 512 MB peak for broad device compatibility
 
 ### 16.3 HTML/JS frontend scaffold
@@ -1225,10 +1225,10 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 16.6 Demo presets and deployment
 
-- [ ] 2–3 built-in room geometries: shoebox, simple hall, classroom
-- [ ] Pre-selected material presets: concert hall, studio, bathroom
+- [x] 2–3 built-in room geometries: shoebox, classroom, and a non-rectangular loft atrium mesh
+- [x] Pre-selected material presets: concert hall, studio, bathroom
 - [x] "Reset to default" button
-- [ ] URL parameter encoding for shareable room configurations
+- [x] URL parameter encoding for shareable room configurations
 - [x] Deploy as static site (GitHub Pages)
 - [ ] Correct MIME type for `.wasm` (`application/wasm`), cache headers for WASM binary
 - [ ] If using `SharedArrayBuffer` for Web Workers: set COOP/COEP headers
@@ -1236,7 +1236,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 ### 16.7 Performance constraints
 
 - [ ] Define demo limits: max 50 surfaces, max 50k rays, IR up to 3 s at 48 kHz
-- [ ] Simulation runs in Web Worker (keep UI responsive)
+- [x] Simulation runs in Web Worker (keep UI responsive)
 - [ ] Use progressive rendering from Phase 15 — show Tier 1/2 results immediately, refine in background
 - [ ] Fallback: if computation exceeds 10 s timeout, return partial result with warning
 
