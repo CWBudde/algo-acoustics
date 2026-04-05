@@ -12,6 +12,7 @@ import {
   downloadBytes,
   dbToLinear,
 } from "./app-utils.js";
+import { normalizeReflectionOrder } from "./reflection-preview.mjs";
 
 const MATERIALS = presets.MATERIALS;
 const ROOM_PRESETS = presets.ROOM_PRESETS;
@@ -573,7 +574,7 @@ function bindEvents() {
   refs.sceneReflections.addEventListener("input", () => {
     const value = Number(refs.sceneReflections.value);
     if (Number.isFinite(value)) {
-      state.reflections = clampInt(Math.round(value), 0, 6);
+      state.reflections = normalizeReflectionOrder(value);
     }
     refs.sceneReflections.value = String(state.reflections);
     updateSceneView();

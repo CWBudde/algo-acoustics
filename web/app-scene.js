@@ -5,11 +5,11 @@ import { MATERIALS } from "./app-presets.js";
 import {
   average,
   clamp,
-  clampInt,
   cssNumber,
   cssVar,
   isWithin,
 } from "./app-utils.js";
+import { getReflectionPreviewConfig } from "./reflection-preview.mjs";
 
 let sceneState = null;
 let sceneView = null;
@@ -240,11 +240,11 @@ export function updateSceneView() {
     roomGroup.add(edgeBox);
   }
 
-  const reflections = clampInt(Math.round(sceneState.reflections), 0, 2);
+  const reflections = getReflectionPreviewConfig(sceneState.reflections);
   const sourceMarker = createMarkerSphere(sceneState.source, 0xff6b4a, 0.12, "source");
   const receiverMarker = createMarkerSphere(sceneState.receiver, 0x0f9d92, 0.14, "receiver");
   const directPath = createDirectPathLine(sceneState, palette);
-  directPath.visible = reflections === 0;
+  directPath.visible = reflections.showDirectPath;
   pathGroup.add(directPath);
   sceneView.animatedPathMaterials.push(directPath.material);
 
@@ -458,43 +458,41 @@ function createDirectPathLine(state, palette) {
 }
 
 function createRayPathOverlay(state, view, palette) {
-  const reflections = clampInt(Math.round(state.reflections), 0, 2);
-  if (reflections <= 0) {
+  const reflections = getReflectionPreviewConfig(state.reflections);
+  if (!reflections.reflectionOrders.length) {
     return [];
   }
 
   if (state.room.kind === "shoebox") {
-    return createShoeboxReflectionPaths(state, reflections, palette);
+    return createShoeboxReflectionPaths(state, reflections.reflectionOrders, palette);
   }
 
   if (view?.roomSurfaces?.length) {
-    const path = traceProbeRayPath(
-      state,
-      view.roomSurfaces,
-      reflections,
-      createProbeTargetPoint(state),
-    );
-    if (path.length >= 2) {
-      return [makePathLine(path, palette.ray, 0.72)];
-    }
+    return reflections.reflectionOrders.flatMap((order) => {
+      const path = traceProbeRayPath(
+        state,
+        view.roomSurfaces,
+        order,
+        createProbeTargetPoint(state),
+      );
+      if (path.length >= 2) {
+        return [makePathLine(path, palette.ray, order === 1 ? 0.72 : 0.58)];
+      }
+      return [];
+    });
   }
 
   return [];
 }
 
-function createShoeboxReflectionPaths(state, reflections, palette) {
+function createShoeboxReflectionPaths(state, reflectionOrders, palette) {
   const walls = buildShoeboxWalls(state);
   const paths = [];
 
-  const firstOrder = pickBestReflectionPath(state, walls, 1);
-  if (firstOrder) {
-    paths.push(makePathLine(firstOrder, palette.ray, 0.8));
-  }
-
-  if (reflections >= 2) {
-    const secondOrder = pickBestReflectionPath(state, walls, 2);
-    if (secondOrder) {
-      paths.push(makePathLine(secondOrder, palette.ray, 0.62));
+  for (const order of reflectionOrders) {
+    const path = pickBestReflectionPath(state, walls, order);
+    if (path) {
+      paths.push(makePathLine(path, palette.ray, order === 1 ? 0.8 : 0.62));
     }
   }
 

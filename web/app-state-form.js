@@ -7,6 +7,7 @@ import {
 } from "./app-utils.js";
 import { requireAppStateContext } from "./app-state-context.js";
 import { decodeStateFromUrl, scheduleUrlSync } from "./app-state-url.js";
+import { normalizeReflectionOrder } from "./reflection-preview.mjs";
 
 function requireCtx() {
   return requireAppStateContext();
@@ -472,7 +473,7 @@ export function normalizeSceneState() {
   normalizeSpatialState();
   state.roomPreset = state.roomPreset in requireCtx().ROOM_PRESETS ? state.roomPreset : "custom";
   state.materialPreset = state.materialPreset in requireCtx().MATERIAL_PRESETS ? state.materialPreset : "custom";
-  state.reflections = clampInt(Math.round(state.reflections), 0, 6);
+  state.reflections = normalizeReflectionOrder(state.reflections);
   if (state.room.kind === "mesh" && !state.room.mesh) {
     state.room.kind = "shoebox";
   }
