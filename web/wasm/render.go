@@ -198,7 +198,7 @@ func defaultDemoRequest() demoRequest {
 }
 
 func runDemoRenderJSON(payload string) (demoResult, error) {
-	request := defaultDemoRequest()
+	request := currentDemoAPIState.snapshotRequest()
 	if strings.TrimSpace(payload) != "" {
 		err := json.Unmarshal([]byte(payload), &request)
 		if err != nil {
@@ -317,6 +317,8 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		return demoResult{}, errors.New("render cancelled")
 	}
 
+	currentDemoAPIState.storeResult(demoResult{}, buffer)
+
 	reportDemoProgress("encode", 95, "Encoding WAV")
 	wavBytes, err := encodeMonoWAVBytes(buffer)
 	if err != nil {
@@ -337,7 +339,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		floatSamples[index] = float32(sample)
 	}
 
-	return demoResult{
+	result := demoResult{
 		SampleRate:      buffer.SampleRate,
 		DurationSeconds: normalized.Render.DurationSeconds,
 		EarlyEventCount: len(earlyEvents),
@@ -348,7 +350,11 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		RenderMS:        float64(time.Since(started).Milliseconds()),
 		Samples:         floatSamples,
 		WAVBytes:        wavBytes,
-	}, nil
+	}
+	currentDemoAPIState.storeResult(result, buffer)
+	currentDemoAPIState.storeRequest(normalized)
+
+	return result, nil
 }
 
 func normalizeDemoRequest(request demoRequest) (demoRequest, error) {

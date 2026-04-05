@@ -1818,6 +1818,8 @@ function createSceneView(canvas) {
     alpha: true,
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const clock = new THREE.Clock();
+  const animatedPathMaterials = [];
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
@@ -1846,6 +1848,8 @@ function createSceneView(canvas) {
 
   const roomGroup = new THREE.Group();
   scene.add(roomGroup);
+  const pathGroup = new THREE.Group();
+  scene.add(pathGroup);
 
   function resize() {
     const width = canvas.clientWidth;
@@ -1860,6 +1864,12 @@ function createSceneView(canvas) {
 
   function animate() {
     resize();
+    const delta = clock.getDelta();
+    for (const material of animatedPathMaterials) {
+      if (material && typeof material.dashOffset === "number") {
+        material.dashOffset -= delta * 0.8;
+      }
+    }
     controls.target.set(
       state.room.width / 2,
       state.room.height / 2,
@@ -1877,6 +1887,9 @@ function createSceneView(canvas) {
     controls,
     renderer,
     roomGroup,
+    pathGroup,
+    roomSurfaces: [],
+    animatedPathMaterials,
     ambientLight,
     keyLight,
     fillLight,
@@ -2005,8 +2018,11 @@ function updateSceneView() {
     return;
   }
 
-  const { roomGroup } = sceneView;
+  const { roomGroup, pathGroup } = sceneView;
   roomGroup.clear();
+  pathGroup.clear();
+  sceneView.roomSurfaces = [];
+  sceneView.animatedPathMaterials.length = 0;
 
   const width = state.room.width;
   const depth = state.room.depth;
@@ -2017,6 +2033,7 @@ function updateSceneView() {
     const meshPreview = createMeshRoomPreview(state.room.mesh, palette);
     roomGroup.add(meshPreview.mesh);
     roomGroup.add(meshPreview.edges);
+    sceneView.roomSurfaces = [meshPreview.mesh];
   } else {
     const walls = [
       createWallMesh("west", depth, height, state.materials.west, (mesh) => {
@@ -2045,6 +2062,7 @@ function updateSceneView() {
     ];
 
     walls.forEach((wall) => roomGroup.add(wall));
+    sceneView.roomSurfaces = walls;
 
     const edgeBox = new THREE.LineSegments(
       new THREE.EdgesGeometry(new THREE.BoxGeometry(width, height, depth)),
@@ -2061,10 +2079,17 @@ function updateSceneView() {
   const sourceMarker = createMarkerSphere(state.source, 0xff6b4a, 0.12, "source");
   const receiverMarker = createMarkerSphere(state.receiver, 0x0f9d92, 0.14, "receiver");
   const directPath = createDirectPathLine(palette);
+  pathGroup.add(directPath);
+  sceneView.animatedPathMaterials.push(directPath.material);
+
+  const rayPaths = createRayPathOverlay(palette);
+  rayPaths.forEach((pathLine) => {
+    pathGroup.add(pathLine);
+    sceneView.animatedPathMaterials.push(pathLine.material);
+  });
 
   roomGroup.add(sourceMarker);
   roomGroup.add(receiverMarker);
-  roomGroup.add(directPath);
 
   if (state.source.directivity === "cardioid") {
     roomGroup.add(createDirectivityCone(palette));
@@ -2151,7 +2176,7 @@ function createDirectPathLine(palette) {
     new THREE.Vector3(state.source.x, state.source.z, state.source.y),
     new THREE.Vector3(state.receiver.x, state.receiver.z, state.receiver.y),
   ]);
-  return new THREE.Line(
+  const line = new THREE.Line(
     geometry,
     new THREE.LineDashedMaterial({
       color: palette.path,
@@ -2161,6 +2186,167 @@ function createDirectPathLine(palette) {
       transparent: true,
     }),
   );
+  line.computeLineDistances();
+  return line;
+}
+
+function createRayPathOverlay(palette) {
+  if (state.room.kind === "mesh" && sceneView?.roomSurfaces?.length) {
+    const path = traceProbeRayPath(sceneView.roomSurfaces, 4);
+    if (path.length >= 2) {
+      return [makePathLine(path, palette.ray, 0.78)];
+    }
+
+    return [];
+  }
+
+  return traceShoeboxReflectionPaths().map((points) =>
+    makePathLine(points, palette.ray, 0.72),
+  );
+}
+
+function makePathLine(points, color, opacity) {
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineDashedMaterial({
+    color,
+    dashSize: 0.18,
+    gapSize: 0.12,
+    opacity,
+    transparent: true,
+  });
+  const line = new THREE.Line(geometry, material);
+  line.computeLineDistances();
+  return line;
+}
+
+function traceShoeboxReflectionPaths() {
+  if (state.room.kind !== "shoebox") {
+    return [];
+  }
+
+  const room = state.room;
+  const source = state.source;
+  const receiver = state.receiver;
+  const walls = [
+    { axis: "x", coord: 0, minA: 0, maxA: room.depth, minB: 0, maxB: room.height },
+    { axis: "x", coord: room.width, minA: 0, maxA: room.depth, minB: 0, maxB: room.height },
+    { axis: "y", coord: 0, minA: 0, maxA: room.width, minB: 0, maxB: room.height },
+    { axis: "y", coord: room.depth, minA: 0, maxA: room.width, minB: 0, maxB: room.height },
+    { axis: "z", coord: 0, minA: 0, maxA: room.width, minB: 0, maxB: room.depth },
+    { axis: "z", coord: room.height, minA: 0, maxA: room.width, minB: 0, maxB: room.depth },
+  ];
+
+  const paths = [];
+  for (const wall of walls) {
+    const image = reflectPointAcrossWall(source, wall.axis, wall.coord);
+    const direction = {
+      x: receiver.x - image.x,
+      y: receiver.y - image.y,
+      z: receiver.z - image.z,
+    };
+    const denom = direction[wall.axis];
+    if (Math.abs(denom) < 1e-9) {
+      continue;
+    }
+
+    const t = (wall.coord - image[wall.axis]) / denom;
+    if (t <= 0 || t >= 1) {
+      continue;
+    }
+
+    const hit = {
+      x: image.x + direction.x * t,
+      y: image.y + direction.y * t,
+      z: image.z + direction.z * t,
+    };
+
+    if (wall.axis === "x") {
+      if (!isWithin(hit.y, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
+        continue;
+      }
+    } else if (wall.axis === "y") {
+      if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
+        continue;
+      }
+    } else if (wall.axis === "z") {
+      if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.y, wall.minB, wall.maxB)) {
+        continue;
+      }
+    }
+
+    paths.push([
+      new THREE.Vector3(source.x, source.z, source.y),
+      new THREE.Vector3(hit.x, hit.z, hit.y),
+      new THREE.Vector3(receiver.x, receiver.z, receiver.y),
+    ]);
+  }
+
+  return paths;
+}
+
+function traceProbeRayPath(roomSurfaces, maxBounces) {
+  const points = [new THREE.Vector3(state.source.x, state.source.z, state.source.y)];
+  if (!roomSurfaces?.length) {
+    return points;
+  }
+
+  const raycaster = new THREE.Raycaster();
+  let origin = points[0].clone();
+  const target = new THREE.Vector3(state.receiver.x, state.receiver.z, state.receiver.y);
+  let direction = target.clone().sub(origin);
+  if (direction.lengthSq() === 0) {
+    direction.set(1, 0, 0);
+  }
+  direction.normalize();
+
+  for (let bounce = 0; bounce < maxBounces; bounce += 1) {
+    raycaster.set(origin, direction);
+    const hits = raycaster.intersectObjects(roomSurfaces, false);
+    const hit = hits.find((candidate) => candidate.distance > 1e-4);
+    if (!hit) {
+      break;
+    }
+
+    points.push(hit.point.clone());
+    const normal = getWorldFaceNormal(hit);
+    if (!normal) {
+      break;
+    }
+
+    direction = reflectDirection(direction, normal).normalize();
+    origin = hit.point.clone().add(direction.clone().multiplyScalar(1e-3));
+  }
+
+  return points;
+}
+
+function getWorldFaceNormal(hit) {
+  if (!hit?.face) {
+    return null;
+  }
+
+  const normal = hit.face.normal.clone();
+  normal.transformDirection(hit.object.matrixWorld);
+  return normal.normalize();
+}
+
+function reflectDirection(direction, normal) {
+  const n = normal.clone().normalize();
+  return direction.clone().sub(n.multiplyScalar(2 * direction.dot(n)));
+}
+
+function reflectPointAcrossWall(point, axis, coord) {
+  if (axis === "x") {
+    return { x: coord + (coord - point.x), y: point.y, z: point.z };
+  }
+  if (axis === "y") {
+    return { x: point.x, y: coord + (coord - point.y), z: point.z };
+  }
+  return { x: point.x, y: point.y, z: coord + (coord - point.z) };
+}
+
+function isWithin(value, minValue, maxValue) {
+  return value >= minValue - 1e-9 && value <= maxValue + 1e-9;
 }
 
 function createDirectivityCone(palette) {

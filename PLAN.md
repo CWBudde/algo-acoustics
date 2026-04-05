@@ -1189,12 +1189,12 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 16.2 Go/WASM API surface (`cmd/wasm/`)
 
-- [ ] Define exported functions callable from JS via `syscall/js`:
-  - `createRoom(jsonGeometry) → roomID`
-  - `setMaterial(surfaceID, absorptionCoeffs, scatteringCoeffs)`
-  - `setSource(x, y, z)` / `setReceiver(x, y, z)`
-  - `simulate(options) → Float32Array` (impulse response)
-  - `getParameters() → {rt60, c80, d50, ...}`
+- [x] Define exported functions callable from JS via `syscall/js`:
+  - [x] `createRoom(jsonGeometry) → roomID`
+  - [x] `setMaterial(surfaceID, absorptionCoeffs, scatteringCoeffs)`
+  - [x] `setSource(x, y, z)` / `setReceiver(x, y, z)`
+  - [x] `simulate(options) → Float32Array` (impulse response)
+  - [x] `getParameters() → {rt60, c80, d50, ...}`
 - [x] Data transfer for typed arrays uses `js.CopyBytesToJS` (`Float32Array` for samples, `Uint8Array` for WAV bytes)
 - [x] Progress callback from WASM → JS for progress bar during simulation
 - [ ] Memory budget: target < 512 MB peak for broad device compatibility
@@ -1212,7 +1212,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 - [x] Room geometry renderer: color-coded room surfaces plus outline and source/receiver markers
 - [x] Draggable source (sphere) and receiver (sphere) markers with `THREE.Raycaster` picking
 - [x] `OrbitControls` for camera (orbit, pan, zoom)
-- [ ] Optional: ray path visualization (animated `THREE.Line` showing reflection sequences)
+- [x] Optional: ray path visualization (animated `THREE.Line` showing reflection sequences)
 - [ ] Optional: SPL heatmap texture on surfaces from simulation results
 
 ### 16.5 Web Audio API auralization

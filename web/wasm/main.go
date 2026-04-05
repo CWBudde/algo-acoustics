@@ -8,9 +8,7 @@ import (
 )
 
 func main() {
-	api := js.Global().Get("Object").New()
-	api.Set("renderScene", js.FuncOf(renderSceneJS))
-	js.Global().Set("algoAcousticsDemo", api)
+	registerDemoAPI()
 	js.Global().Set("algoAcousticsDemoReady", true)
 	js.Global().Call("dispatchEvent", js.Global().Get("Event").New("algo-acoustics-demo-ready"))
 
