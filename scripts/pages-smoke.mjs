@@ -20,6 +20,66 @@ try {
     viewport: { width: 1440, height: 960 },
   });
   log("page created");
+  await page.addInitScript(() => {
+    const startedAt = performance.now();
+    const stamp = () => `+[${Math.round(performance.now() - startedAt)}ms]`;
+    const originalWorker = window.Worker;
+    window.__pagesSmoke = {
+      workerEvents: [],
+      fetches: [],
+      windowErrors: [],
+    };
+
+    window.addEventListener("error", (event) => {
+      const text = `${stamp()} [window.error] ${event.message} @ ${event.filename}:${event.lineno}:${event.colno}`;
+      console.log(text);
+      window.__pagesSmoke.windowErrors.push(text);
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      const text = `${stamp()} [window.unhandledrejection] ${String(event.reason)}`;
+      console.log(text);
+      window.__pagesSmoke.windowErrors.push(text);
+    });
+
+    window.Worker = new Proxy(originalWorker, {
+      construct(target, args, newTarget) {
+        const [scriptUrl, options] = args;
+        const text = `${stamp()} [worker.construct] ${String(scriptUrl)} ${options ? JSON.stringify(options) : ""}`.trim();
+        console.log(text);
+        const worker = Reflect.construct(target, args, newTarget);
+        worker.addEventListener("message", (event) => {
+          const payload = typeof event.data === "string" ? event.data : JSON.stringify(event.data);
+          const message = `${stamp()} [worker.message] ${payload}`;
+          console.log(message);
+          window.__pagesSmoke.workerEvents.push(message);
+        });
+        worker.addEventListener("error", (event) => {
+          const text = `${stamp()} [worker.error] ${event.message} @ ${event.filename}:${event.lineno}:${event.colno}`;
+          console.log(text);
+          window.__pagesSmoke.workerEvents.push(text);
+        });
+        return worker;
+      },
+    });
+
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const [input] = args;
+      const url = typeof input === "string" ? input : input?.url ?? String(input);
+      const text = `${stamp()} [fetch] ${url}`;
+      console.log(text);
+      window.__pagesSmoke.fetches.push(text);
+      try {
+        const response = await originalFetch(...args);
+        console.log(`${stamp()} [fetch.response] ${response.status} ${url}`);
+        return response;
+      } catch (error) {
+        console.log(`${stamp()} [fetch.error] ${url} ${error?.stack || error?.message || String(error)}`);
+        throw error;
+      }
+    };
+  });
 
   page.on("console", (message) => {
     const text = `[console:${message.type()}] ${message.text()}`;
@@ -112,6 +172,7 @@ async function collectDiagnostics(page) {
       engineStatus: document.getElementById("engine-status")?.textContent?.trim() ?? null,
       renderBadge: document.getElementById("render-badge")?.textContent?.trim() ?? null,
       hasCanvas: Boolean(document.getElementById("scene-canvas")),
+      smoke: window.__pagesSmoke ?? null,
     }))
     .catch((error) => ({ error: error?.stack || error?.message || String(error) }));
 
