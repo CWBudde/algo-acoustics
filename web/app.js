@@ -2798,6 +2798,10 @@ function clamp(value, minValue, maxValue) {
   return Math.min(Math.max(value, minValue), maxValue);
 }
 
+function clampInt(value, minValue, maxValue) {
+  return Math.round(clamp(value, minValue, maxValue));
+}
+
 function dbToLinear(valueDb) {
   return Math.pow(10, valueDb / 20);
 }
