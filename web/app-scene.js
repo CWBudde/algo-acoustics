@@ -490,35 +490,28 @@ function createShoeboxReflectionPaths(state, reflectionOrders, palette) {
   const paths = [];
 
   for (const order of reflectionOrders) {
-    const path = pickBestReflectionPath(state, walls, order);
-    if (path) {
-      paths.push(makePathLine(path, palette.ray, order === 1 ? 0.8 : 0.62));
+    const opacity = order === 1 ? 0.8 : 0.62;
+    for (const path of getAllReflectionPaths(state, walls, order)) {
+      paths.push(makePathLine(path, palette.ray, opacity));
     }
   }
 
   return paths;
 }
 
-function pickBestReflectionPath(state, walls, order) {
+function getAllReflectionPaths(state, walls, order) {
   if (order <= 0) {
-    return null;
+    return [];
   }
 
   const indices = walls.map((_, index) => index);
-  let bestPath = null;
-  let bestLength = Infinity;
+  const paths = [];
 
   const visit = (sequence, depth) => {
     if (depth === order) {
       const path = buildReflectionPath(state, sequence, walls);
-      if (!path || path.length < 2) {
-        return;
-      }
-
-      const length = totalPathLength(path);
-      if (length < bestLength) {
-        bestLength = length;
-        bestPath = path;
+      if (path && path.length >= 2) {
+        paths.push(path);
       }
       return;
     }
@@ -531,7 +524,7 @@ function pickBestReflectionPath(state, walls, order) {
   };
 
   visit([], 0);
-  return bestPath;
+  return paths;
 }
 
 function buildReflectionPath(state, sequence, walls) {
