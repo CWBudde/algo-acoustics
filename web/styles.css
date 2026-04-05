@@ -46,9 +46,9 @@
   --overlay-ink: rgba(255, 255, 255, 0.86);
   --scene-grid-major: #2f3d4a;
   --scene-grid-minor: #1e2934;
-  --scene-edge: rgba(243, 245, 248, 0.5);
-  --scene-ray: rgba(248, 250, 252, 0.18);
-  --scene-path: rgba(242, 239, 231, 0.85);
+  --scene-edge: #f3f5f8;
+  --scene-ray: #f8fafc;
+  --scene-path: #f2efe7;
   --scene-key: #fff2dc;
   --scene-fill: #7dd3c7;
   --scene-ambient: 0.8;
@@ -108,9 +108,9 @@
   --overlay-ink: rgba(241, 245, 249, 0.9);
   --scene-grid-major: #587086;
   --scene-grid-minor: #253443;
-  --scene-edge: rgba(226, 236, 244, 0.34);
-  --scene-ray: rgba(211, 223, 232, 0.12);
-  --scene-path: rgba(243, 232, 215, 0.74);
+  --scene-edge: #e2ecf4;
+  --scene-ray: #d3dfe8;
+  --scene-path: #f3e8d7;
   --scene-key: #ffd3aa;
   --scene-fill: #7de8dd;
   --scene-ambient: 0.72;
