@@ -1,4 +1,4 @@
-import { clamp, cssVar, dbToLinear } from "./app-utils.js";
+import { clamp, cssVar } from "./app-utils.js";
 
 export function waveformPalette(context, width) {
   const gradient = context.createLinearGradient(0, 0, width, 0);
@@ -128,4 +128,155 @@ export function encodeAudioBufferToWav(audioBuffer) {
   }
 
   return new Uint8Array(buffer);
+}
+
+export function drawWaveform(canvas, samples = null, state = {}) {
+  const context = canvas.getContext("2d");
+  const width = canvas.clientWidth || canvas.width || 640;
+  const height = canvas.clientHeight || canvas.height || 280;
+  const palette = waveformPalette(context, width);
+  canvas.width = width * Math.min(window.devicePixelRatio || 1, 2);
+  canvas.height = height * Math.min(window.devicePixelRatio || 1, 2);
+  context.setTransform(
+    canvas.width / width,
+    0,
+    0,
+    canvas.height / height,
+    0,
+    0,
+  );
+
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = palette.background;
+  context.fillRect(0, 0, width, height);
+
+  drawWaveGrid(context, width, height, palette);
+
+  if (!samples || samples.length === 0) {
+    context.fillStyle = palette.empty;
+    context.font = '600 16px "Manrope"';
+    context.fillText(
+      "Render a scene to inspect the impulse response.",
+      22,
+      height / 2,
+    );
+    return;
+  }
+
+  const downsampled = downsampleForCanvas(samples, width);
+  const maxAmplitude = robustPeakAmplitude(downsampled);
+  const pad = 12;
+
+  if (state.irView === "dB") {
+    const dynRange = 60;
+
+    context.strokeStyle = palette.trace;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    downsampled.forEach((sample, index) => {
+      const x = (index / Math.max(1, downsampled.length - 1)) * width;
+      const abs = Math.abs(sample);
+      const dB = abs > 0 ? 20 * Math.log10(abs / maxAmplitude) : -dynRange;
+      const clampedDB = Math.max(dB, -dynRange);
+      const normalized = 1 + clampedDB / dynRange;
+      const y = pad + (1 - normalized) * (height - 2 * pad);
+      if (index === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+    });
+    context.stroke();
+  } else {
+    const mid = height / 2;
+
+    context.strokeStyle = palette.grid;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    context.moveTo(0, mid);
+    context.lineTo(width, mid);
+    context.stroke();
+
+    context.strokeStyle = palette.trace;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    downsampled.forEach((sample, index) => {
+      const x = (index / Math.max(1, downsampled.length - 1)) * width;
+      const y = mid - (sample / maxAmplitude) * (mid - pad);
+      if (index === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+    });
+    context.stroke();
+  }
+
+  if (state.renderMode === "hybrid") {
+    const x = (state.crossoverTimeSeconds / state.durationSeconds) * width;
+    context.strokeStyle = palette.divider;
+    context.setLineDash([6, 6]);
+    context.beginPath();
+    context.moveTo(x, 18);
+    context.lineTo(x, height - 18);
+    context.stroke();
+    context.setLineDash([]);
+  }
+}
+
+function drawWaveGrid(context, width, height, palette) {
+  context.strokeStyle = palette.grid;
+  context.lineWidth = 1;
+  for (let index = 1; index < 5; index += 1) {
+    const x = (index / 5) * width;
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, height);
+    context.stroke();
+  }
+  for (let index = 1; index < 4; index += 1) {
+    const y = (index / 4) * height;
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+    context.stroke();
+  }
+}
+
+function downsampleForCanvas(samples, targetWidth) {
+  const blockSize = Math.max(
+    1,
+    Math.floor(samples.length / Math.max(1, targetWidth)),
+  );
+  const output = [];
+  for (let index = 0; index < samples.length; index += blockSize) {
+    let peak = 0;
+    for (
+      let inner = index;
+      inner < Math.min(index + blockSize, samples.length);
+      inner += 1
+    ) {
+      if (Math.abs(samples[inner]) > Math.abs(peak)) {
+        peak = samples[inner];
+      }
+    }
+    output.push(peak);
+  }
+  return output;
+}
+
+function robustPeakAmplitude(samples) {
+  if (!samples || samples.length === 0) {
+    return 1e-6;
+  }
+
+  const magnitudes = samples
+    .map((value) => Math.abs(value))
+    .sort((left, right) => left - right);
+
+  const index = Math.floor((magnitudes.length - 1) * 0.995);
+  const percentile = magnitudes[Math.max(0, index)] || 0;
+  const absoluteMax = magnitudes[magnitudes.length - 1] || 0;
+
+  return Math.max(percentile, absoluteMax * 0.2, 1e-6);
 }

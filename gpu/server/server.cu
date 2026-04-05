@@ -25,6 +25,7 @@
 
 #include "protocol.h"
 #include "../fdtd/fdtd_kernel.cuh"
+#include "../raytrace/bvh_kernel.h"
 
 // -----------------------------------------------------------------------
 // Shared-memory helpers (Linux /dev/shm implementation)
@@ -271,24 +272,130 @@ static void handle_run_fdtd(int conn, const uint8_t *payload, uint32_t len) {
 }
 
 // -----------------------------------------------------------------------
-// BVH / ray-tracing handler stubs (Phase 14.5)
+// BVHState — persistent BVH + triangle mesh in GPU VRAM (Phase 14.5).
+//
+// AllocBVH uploads nodes[] and tris[] once; they stay in VRAM across
+// multiple TraceRays calls.  Handle = BVHState* cast to uint64_t.
+// -----------------------------------------------------------------------
+
+struct BVHState {
+    BVHNode  *d_nodes;
+    Triangle *d_tris;
+    uint32_t  node_count;
+    uint32_t  tri_count;
+};
+
+// -----------------------------------------------------------------------
+// BVH / ray-tracing handlers (Phase 14.5)
 // -----------------------------------------------------------------------
 
 static void handle_alloc_bvh(int conn, const uint8_t *payload, uint32_t len) {
-    (void)payload; (void)len;
-    fprintf(stderr, "[gpu-server] AllocBVH: not yet implemented (phase 14.5)\n");
-    send_response(conn, STATUS_NOT_IMPL);
+    if (len < sizeof(alloc_bvh_req_t)) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    alloc_bvh_req_t req;
+    memcpy(&req, payload, sizeof(req));
+
+    const size_t node_sz = (size_t)req.node_count * sizeof(BVHNode);
+    const size_t tri_sz  = (size_t)req.tri_count  * sizeof(Triangle);
+
+    // Shared memory layout: [nodes (node_count × BVHNode) | tris (tri_count × Triangle)]
+    void *p = shm_open_read(req.shm_name.s, node_sz + tri_sz);
+    if (!p) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+
+    auto *b = new BVHState{};
+    b->node_count = req.node_count;
+    b->tri_count  = req.tri_count;
+
+    bool ok = (cudaMalloc(&b->d_nodes, node_sz) == cudaSuccess &&
+               cudaMalloc(&b->d_tris,  tri_sz)  == cudaSuccess);
+    if (ok) {
+        ok = (cudaMemcpy(b->d_nodes, p,                      node_sz, cudaMemcpyHostToDevice) == cudaSuccess &&
+              cudaMemcpy(b->d_tris,  (const char *)p + node_sz, tri_sz,  cudaMemcpyHostToDevice) == cudaSuccess);
+    }
+    shm_close(p, node_sz + tri_sz);
+
+    if (!ok) {
+        cudaFree(b->d_nodes);
+        cudaFree(b->d_tris);
+        delete b;
+        send_response(conn, STATUS_OOM);
+        return;
+    }
+
+    fprintf(stderr, "[gpu-server] AllocBVH %u nodes %u tris  handle=0x%llx\n",
+            req.node_count, req.tri_count, (unsigned long long)(uintptr_t)b);
+
+    alloc_bvh_resp_t resp = { (uint64_t)(uintptr_t)b };
+    send_response(conn, STATUS_OK, &resp, sizeof(resp));
 }
 
 static void handle_free_bvh(int conn, const uint8_t *payload, uint32_t len) {
-    (void)payload; (void)len;
-    send_response(conn, STATUS_NOT_IMPL);
+    if (len < sizeof(free_bvh_req_t)) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    free_bvh_req_t req;
+    memcpy(&req, payload, sizeof(req));
+    auto *b = reinterpret_cast<BVHState *>((uintptr_t)req.handle);
+    cudaFree(b->d_nodes);
+    cudaFree(b->d_tris);
+    delete b;
+    send_response(conn, STATUS_OK);
 }
 
 static void handle_trace_rays(int conn, const uint8_t *payload, uint32_t len) {
-    (void)payload; (void)len;
-    fprintf(stderr, "[gpu-server] TraceRays: not yet implemented (phase 14.5)\n");
-    send_response(conn, STATUS_NOT_IMPL);
+    if (len < sizeof(trace_rays_req_t)) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    trace_rays_req_t req;
+    memcpy(&req, payload, sizeof(req));
+    auto *b = reinterpret_cast<BVHState *>((uintptr_t)req.handle);
+
+    const size_t ray_sz = (size_t)req.ray_count * sizeof(Ray);
+    const size_t hit_sz = (size_t)req.ray_count * sizeof(HitRecord);
+
+    // Upload rays from shared memory.
+    void *rays_p = shm_open_read(req.rays_shm.s, ray_sz);
+    if (!rays_p) {
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    Ray *d_rays = nullptr;
+    cudaMalloc(&d_rays, ray_sz);
+    cudaMemcpy(d_rays, rays_p, ray_sz, cudaMemcpyHostToDevice);
+    shm_close(rays_p, ray_sz);
+
+    // Allocate hit buffer on device.
+    HitRecord *d_hits = nullptr;
+    cudaMalloc(&d_hits, hit_sz);
+
+    // Launch traversal.
+    launch_trace_rays(b->d_nodes, b->d_tris, d_rays, d_hits,
+                      (int)req.ray_count, /*stream=*/0);
+    cudaDeviceSynchronize();
+
+    // Write hits to pre-created shared memory.
+    void *hits_p = shm_open_write(req.hits_shm.s, hit_sz);
+    if (!hits_p) {
+        cudaFree(d_rays);
+        cudaFree(d_hits);
+        send_response(conn, STATUS_BAD_MSG);
+        return;
+    }
+    cudaMemcpy(hits_p, d_hits, hit_sz, cudaMemcpyDeviceToHost);
+    shm_close(hits_p, hit_sz);
+
+    cudaFree(d_rays);
+    cudaFree(d_hits);
+
+    fprintf(stderr, "[gpu-server] TraceRays %u rays\n", req.ray_count);
+    send_response(conn, STATUS_OK);
 }
 
 // -----------------------------------------------------------------------

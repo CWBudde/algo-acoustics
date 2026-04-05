@@ -1086,13 +1086,15 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 14.5 Ray tracing GPU integration (`raytrace/`)
 
-- [ ] Implement GPU ray tracing module:
+- [x] Implement GPU ray tracing module:
   - Upload BVH + mesh once (< 1 MB for shoebox, ~8 MB for 10K-triangle mesh)
   - Per-batch: upload ray origins/directions (~4 MB for 64K rays), download hit results (point, normal, triangle ID, distance)
   - Accumulate energy histograms on GPU (avoid per-ray download)
   - **Amdahl context:** at 64K rays raytrace = 99% of pipeline wall-clock, ceiling ~100× vs single-core — strong GPU case; at 4K rays ceiling ~9.5× — GPU unlikely to clear 5× bar vs 12-core CPU
   - Target production mode: 64K rays; preview mode (4K rays) can remain CPU-only
 - [ ] End-to-end benchmark: full ray-traced IR with GPU, wall-clock time vs. CPU-only (baseline: `BenchmarkRayTrace_64K` in root package)
+
+> **14.5 findings:** Implemented AllocBVH / FreeBVH / TraceRays in `gpu/server/server.cu`. Added `gpu/raytrace/bvh_kernel.h` (launcher declaration) so server.cu can include it without duplicating the prototype. BVHState follows the same pointer-as-handle pattern as GridState. `TraceRays` uploads rays from shm H→D, launches `trace_rays_kernel`, `cudaDeviceSynchronize`, then downloads hits D→H to the pre-created result shm — two PCIe transfers per batch. Added BVHNode/Triangle/Ray/HitRecord size tests to `worker_test.go` (32/40/32/8 bytes, matching C layout). Integration test (`TestRayTraceIntegration`) confirmed on T550: single-triangle BVH, ray 0 hits at t=5.000000 tri_id=42, ray 1 misses — correct. End-to-end benchmark deferred to 14.6.
 
 ### 14.6 Production hardening
 

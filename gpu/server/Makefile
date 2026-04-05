@@ -15,13 +15,14 @@ NVCCFLAGS := -arch=$(ARCH) -std=$(CXXSTD) -O3 \
              -Xcompiler -Wall,-Wextra
 
 TARGET    := algo-acoustics-gpu
-SRCS      := server.cu ../fdtd/fdtd_kernel.cu
+SRCS      := server.cu ../fdtd/fdtd_kernel.cu ../raytrace/bvh_kernel.cu
 
 .PHONY: all clean install
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS) protocol.h ../fdtd/fdtd_kernel.cuh
+$(TARGET): $(SRCS) protocol.h ../fdtd/fdtd_kernel.cuh \
+           ../raytrace/bvh.h ../raytrace/bvh_kernel.h
 	$(NVCC) $(NVCCFLAGS) -o $@ $(SRCS)
 
 install: $(TARGET)

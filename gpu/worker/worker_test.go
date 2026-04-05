@@ -28,6 +28,11 @@ func TestProtocolStructSizes(t *testing.T) {
 		{"allocBVHResp", allocBVHResp{}, 8},
 		{"freeBVHReq", freeBVHReq{}, 8},
 		{"traceRaysReq", traceRaysReq{}, 140},
+		// Raytrace data structures — must match C layout in gpu/raytrace/bvh.h.
+		{"BVHNode", BVHNode{}, 32},
+		{"Triangle", Triangle{}, 40},
+		{"Ray", Ray{}, 32},
+		{"HitRecord", HitRecord{}, 8},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
