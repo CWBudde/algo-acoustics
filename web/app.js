@@ -2566,6 +2566,10 @@ function totalPathLength(points) {
   return length;
 }
 
+function isWithin(value, min, max) {
+  return value >= min - 1e-9 && value <= max + 1e-9;
+}
+
 function toAcousticPoint(point) {
   return { x: point.x, y: point.y, z: point.z };
 }
