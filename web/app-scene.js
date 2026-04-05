@@ -468,21 +468,86 @@ function createRayPathOverlay(state, view, palette) {
   }
 
   if (view?.roomSurfaces?.length) {
-    return reflections.reflectionOrders.flatMap((order) => {
-      const path = traceProbeRayPath(
-        state,
-        view.roomSurfaces,
-        order,
-        createProbeTargetPoint(state),
-      );
-      if (path.length >= 2) {
-        return [makePathLine(path, palette.ray, order === 1 ? 0.72 : 0.58)];
-      }
-      return [];
-    });
+    return createMeshReflectionPaths(state, view.roomSurfaces, reflections.reflectionOrders, palette);
   }
 
   return [];
+}
+
+function createMeshReflectionPaths(state, surfaces, reflectionOrders, palette) {
+  const src = new THREE.Vector3(state.source.x, state.source.z, state.source.y);
+  const rcv = new THREE.Vector3(state.receiver.x, state.receiver.z, state.receiver.y);
+  const paths = [];
+
+  if (reflectionOrders.includes(1)) {
+    const raycaster = new THREE.Raycaster();
+    const seenPlanes = [];
+
+    for (const surface of surfaces) {
+      const geo = surface.geometry;
+      if (!geo?.attributes?.position) continue;
+
+      const pos = geo.attributes.position;
+      const idx = geo.index;
+      const mat = surface.matrixWorld;
+      const triCount = idx ? idx.count / 3 : pos.count / 3;
+
+      const getVertex = (i) => {
+        const vi = idx ? idx.getX(i) : i;
+        return new THREE.Vector3().fromBufferAttribute(pos, vi).applyMatrix4(mat);
+      };
+
+      for (let t = 0; t < triCount; t++) {
+        const v0 = getVertex(t * 3);
+        const v1 = getVertex(t * 3 + 1);
+        const v2 = getVertex(t * 3 + 2);
+
+        const normal = new THREE.Vector3()
+          .crossVectors(v1.clone().sub(v0), v2.clone().sub(v0))
+          .normalize();
+        const d = normal.dot(v0);
+
+        // Skip coplanar duplicates (same plane already processed)
+        const isDuplicate = seenPlanes.some(
+          (p) => p.normal.dot(normal) > 0.9999 && Math.abs(p.d - d) < 0.01,
+        );
+        if (isDuplicate) continue;
+        seenPlanes.push({ normal: normal.clone(), d });
+
+        // Both source and receiver must be on the front side of the face
+        const distSrc = normal.dot(src) - d;
+        if (distSrc <= 1e-4) continue;
+        const distRcv = normal.dot(rcv) - d;
+        if (distRcv <= 1e-4) continue;
+
+        // Image source: mirror of src across the face plane
+        const imageSrc = src.clone().sub(normal.clone().multiplyScalar(2 * distSrc));
+
+        // Cast ray from image source toward receiver — hit point is the ISM reflection point
+        const imgToRcv = rcv.clone().sub(imageSrc);
+        const imgToRcvLen = imgToRcv.length();
+        raycaster.set(imageSrc, imgToRcv.clone().divideScalar(imgToRcvLen));
+        raycaster.far = imgToRcvLen + 0.01;
+        const hits = raycaster.intersectObjects(surfaces, false);
+        const hit = hits.find((h) => h.distance > 1e-4);
+        if (!hit) continue;
+
+        paths.push(makePathLine([src.clone(), hit.point.clone(), rcv.clone()], palette.ray, 0.72));
+      }
+    }
+  }
+
+  // For higher orders fall back to forward ray tracing, ending at the receiver
+  for (const order of reflectionOrders) {
+    if (order <= 1) continue;
+    const traced = traceProbeRayPath(state, surfaces, order, createProbeTargetPoint(state));
+    if (traced.length >= 2) {
+      traced.push(rcv.clone());
+      paths.push(makePathLine(traced, palette.ray, 0.58));
+    }
+  }
+
+  return paths;
 }
 
 function createShoeboxReflectionPaths(state, reflectionOrders, palette) {
@@ -571,13 +636,6 @@ function buildShoeboxWalls(state) {
   ];
 }
 
-function totalPathLength(points) {
-  let length = 0;
-  for (let index = 1; index < points.length; index += 1) {
-    length += points[index - 1].distanceTo(points[index]);
-  }
-  return length;
-}
 
 function toAcousticPoint(point) {
   return { x: point.x, y: point.y, z: point.z };
