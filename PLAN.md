@@ -1032,7 +1032,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 >
 > **Amdahl fractions** — Ray tracing dominates the geometric pipeline: 89% at 4 096 rays, 99% at 65 536 rays. ISM is < 0.15% and not a GPU target. PDE shoebox sweep (Poisson solver per frequency point) is separate from the FDTD stencil and not a GPU target.
 >
-> **Critical: both hot paths are strictly single-threaded.** GOMAXPROCS sweep shows raytrace is 52% *slower* at 8 cores; FDTD is 45% slower. Neither path has been parallelised at all. This means the fair GPU comparison baseline is single-core CPU time — and parallelising on CPU (goroutines over ray batches; domain decomposition for FDTD) would itself give near-linear speedup before any GPU work.
+> **Critical: both hot paths are strictly single-threaded.** GOMAXPROCS sweep shows raytrace is 52% _slower_ at 8 cores; FDTD is 45% slower. Neither path has been parallelised at all. This means the fair GPU comparison baseline is single-core CPU time — and parallelising on CPU (goroutines over ray batches; domain decomposition for FDTD) would itself give near-linear speedup before any GPU work.
 >
 > **Amdahl ceilings** — Raytrace at 64K rays: ~100× vs single-core (clears the 5× bar with large margin). FDTD at h ≤ 0.025 m: P ≈ 1.0, fully data-parallel per step — clearest GPU win. Raytrace at 4K rays (preview): ceiling ~9.5× vs single-core, borderline vs a 12-core parallel CPU.
 >
@@ -1053,7 +1053,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
   - **CPU baseline to beat:** ~714 ms for 65K rays single-core; 12-core parallel CPU would give ~60 ms (theoretical); GPU target ≤ 12 ms to clear 5× bar vs parallel CPU
   - Compare against Go CPU baseline including transfer time (ray buffer: ~4 MB for 64K rays — cheap upload)
 - [x] **Decision gate**: if GPU kernel + transfer is less than 5× faster than **parallel** CPU (12-core) for actual problem sizes, reconsider GPU investment
-  - Note: current CPU baseline is *single-core* (neither path is parallelised); parallelising on CPU is lower-risk and should be evaluated first if GPU complexity is not justified
+  - Note: current CPU baseline is _single-core_ (neither path is parallelised); parallelising on CPU is lower-risk and should be evaluated first if GPU complexity is not justified
 
 > **14.2 Findings (T550 Laptop GPU, sm_75, 96 GB/s, 2026-04-04):** Full results in `docs/profiling-14.2-gpu-kernels.md`.
 >

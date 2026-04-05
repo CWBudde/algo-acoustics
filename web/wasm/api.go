@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"syscall/js"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/metrics"
 	"github.com/cwbudde/algo-acoustics/scene"
-	"syscall/js"
 )
 
 type demoAPIState struct {

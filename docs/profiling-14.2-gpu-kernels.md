@@ -26,27 +26,28 @@ Two variants:
 Grid spacing h = 0.025 m, λ = 0.301 (CFL = 0.95/√3).
 
 | Grid        | Kernel | ms/step | Gcells/s | EffBW (GB/s) | vs CPU single-core |
-|-------------|--------|---------|----------|-------------|---------------------|
-| 128×128×128 | naive  |   0.32  |   6.47   |   207       | **33.5×**          |
-| 128×128×128 | tiled  |   0.32  |   6.48   |   132       | **33.6×**          |
-| 256×256×256 | naive  |   3.76  |   4.46   |   143       | **23.1×**          |
-| 256×256×256 | tiled  |   3.84  |   4.37   |    89       | **22.6×**          |
-| 512×512×512 | naive  |  30.34  |   4.42   |   142       | **22.9×**          |
-| 512×512×512 | tiled  |  30.70  |   4.37   |    89       | **22.7×**          |
+| ----------- | ------ | ------- | -------- | ------------ | ------------------ |
+| 128×128×128 | naive  | 0.32    | 6.47     | 207          | **33.5×**          |
+| 128×128×128 | tiled  | 0.32    | 6.48     | 132          | **33.6×**          |
+| 256×256×256 | naive  | 3.76    | 4.46     | 143          | **23.1×**          |
+| 256×256×256 | tiled  | 3.84    | 4.37     | 89           | **22.6×**          |
+| 512×512×512 | naive  | 30.34   | 4.42     | 142          | **22.9×**          |
+| 512×512×512 | tiled  | 30.70   | 4.37     | 89           | **22.7×**          |
 
 CPU single-core reference (i7-1255U, scaled from 43³ baseline):
 
-| Grid        | CPU est. ms/step | GPU naive speedup |
-|-------------|-----------------|-------------------|
-| 128³        | 10.7 ms         | 33.5×             |
-| 256³        | 86.8 ms         | 23.1×             |
-| 512³        | 694 ms          | 22.9×             |
+| Grid | CPU est. ms/step | GPU naive speedup |
+| ---- | ---------------- | ----------------- |
+| 128³ | 10.7 ms          | 33.5×             |
+| 256³ | 86.8 ms          | 23.1×             |
+| 512³ | 694 ms           | 22.9×             |
 
 ### Analysis
 
 **Effective bandwidth:** The naive kernel achieves 143–207 GB/s effective bandwidth (149–216% of peak 96 GB/s). Values above 100% are possible because the ROOFLINE model for `EffBW` counts 7R+1W per cell but many reads hit L1/L2 cache — the actual DRAM BW is lower. At 512³ (1.5 GB fields), the L2 is saturated and reads spill to DRAM, giving a realistic ~96 GB/s DRAM utilisation.
 
-**Tiled vs naive:** The tiled kernel is marginally *slower* at all grid sizes. For this stencil, the shared memory overhead (halo loading, `__syncthreads()`, reduced register count for occupancy) outweighs the bandwidth saving because:
+**Tiled vs naive:** The tiled kernel is marginally _slower_ at all grid sizes. For this stencil, the shared memory overhead (halo loading, `__syncthreads()`, reduced register count for occupancy) outweighs the bandwidth saving because:
+
 1. The naive kernel with correct IZ coalescing already achieves near-peak DRAM BW.
 2. The ±IY neighbours are in L1 cache most of the time on the T550's 16 SM × 32 KB L1.
 3. The 34×10-float slab uses only 1.4 KB shared memory, too small to justify the sync cost.
@@ -68,11 +69,11 @@ BVH uploaded once; rays uploaded per batch.
 
 ### Results
 
-| Rays      | Mrays/s | vs CPU single-core | ms/batch |
-|-----------|---------|-------------------|----------|
-| 100 000   |  35.1   | **382×**          |   2.85   |
-| 1 000 000 |  46.9   | **511×**          |  21.3    |
-| 10 000 000|  32.6   | **355×**          | 307      |
+| Rays       | Mrays/s | vs CPU single-core | ms/batch |
+| ---------- | ------- | ------------------ | -------- |
+| 100 000    | 35.1    | **382×**           | 2.85     |
+| 1 000 000  | 46.9    | **511×**           | 21.3     |
+| 10 000 000 | 32.6    | **355×**           | 307      |
 
 CPU single-core reference: 65 536 rays → 714 ms → 0.092 Mrays/s (i7-1255U, from 14.1).
 
@@ -92,9 +93,9 @@ Peak throughput at 1M rays: **46.9 Mrays/s** (511× single-core CPU).
 
 ## Summary vs Decision Gate
 
-| Path | GPU speedup vs 1-core | GPU speedup vs 12-core (est.) | Gate (5×) | Verdict |
-|------|----------------------|-------------------------------|-----------|---------|
-| FDTD stencil (256³) | 23× | ~2× T550 / ~20× A100 | 5× | Pass on datacenter; marginal T550 |
-| Ray tracing (1M rays) | 511× | ~43× | 5× | **Pass** |
+| Path                  | GPU speedup vs 1-core | GPU speedup vs 12-core (est.) | Gate (5×) | Verdict                           |
+| --------------------- | --------------------- | ----------------------------- | --------- | --------------------------------- |
+| FDTD stencil (256³)   | 23×                   | ~2× T550 / ~20× A100          | 5×        | Pass on datacenter; marginal T550 |
+| Ray tracing (1M rays) | 511×                  | ~43×                          | 5×        | **Pass**                          |
 
 **Next steps:** Proceed to 14.3 (integration architecture). For FDTD, the T550 bottleneck is memory bandwidth (96 GB/s laptop vs 900+ GB/s server). Any datacenter-class GPU (A100, H100, RTX 4090) will deliver 10–30× speedup over 12-core CPU. For ray tracing, install OptiX SDK before 14.5 to leverage RT cores.

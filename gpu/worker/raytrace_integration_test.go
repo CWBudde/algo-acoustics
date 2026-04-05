@@ -48,10 +48,12 @@ func TestRayTraceIntegration(t *testing.T) {
 	// Build a minimal BVH: one leaf node, one triangle.
 	// ------------------------------------------------------------------
 	tris := []Triangle{
-		{V0X: 0, V0Y: 0, V0Z: 0,
+		{
+			V0X: 0, V0Y: 0, V0Z: 0,
 			V1X: 10, V1Y: 0, V1Z: 0,
 			V2X: 0, V2Y: 0, V2Z: 10,
-			ID: 42},
+			ID: 42,
+		},
 	}
 	nodes := []BVHNode{
 		{
@@ -79,13 +81,17 @@ func TestRayTraceIntegration(t *testing.T) {
 	// ------------------------------------------------------------------
 	rays := []Ray{
 		// Ray 0: hits the triangle
-		{OriginX: 1, OriginY: 5, OriginZ: 1,
+		{
+			OriginX: 1, OriginY: 5, OriginZ: 1,
 			DirX: 0, DirY: -1, DirZ: 0,
-			Tmin: 0, Tmax: 100},
+			Tmin: 0, Tmax: 100,
+		},
 		// Ray 1: misses (pointing up)
-		{OriginX: 1, OriginY: 5, OriginZ: 1,
+		{
+			OriginX: 1, OriginY: 5, OriginZ: 1,
 			DirX: 0, DirY: 1, DirZ: 0,
-			Tmin: 0, Tmax: 100},
+			Tmin: 0, Tmax: 100,
+		},
 	}
 
 	hits, err := w.TraceRays(ctx, bvh, rays)

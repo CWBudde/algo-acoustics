@@ -17,8 +17,10 @@ import (
 // We implement the same semantics directly to avoid depending on cgo for the
 // shm_open(3) glibc wrapper.
 
-const shmDir = "/dev/shm/"
-const shmPrefix = "algo_gpu_"
+const (
+	shmDir    = "/dev/shm/"
+	shmPrefix = "algo_gpu_"
+)
 
 // shmPath converts a logical name ("algo_gpu_deadbeef") to its filesystem path.
 func shmPath(name string) string { return shmDir + name }
@@ -37,7 +39,7 @@ func createShm(size int) (name string, data []byte, err error) {
 	name = shmPrefix + hex.EncodeToString(raw[:])
 	path := shmPath(name)
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
 	if err != nil {
 		return "", nil, fmt.Errorf("create shm %s: %w", path, err)
 	}
