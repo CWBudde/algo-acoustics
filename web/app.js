@@ -248,6 +248,25 @@ const ROOM_PRESETS = {
   ),
 };
 
+const ROOM_PRESET_GROUPS = [
+  {
+    label: "Compact Rooms",
+    presets: ["shoebox", "podcastBooth", "rehearsalRoom"],
+  },
+  {
+    label: "Medium Rooms",
+    presets: ["classroom", "library"],
+  },
+  {
+    label: "Large Rooms",
+    presets: ["lectureHall", "chapel"],
+  },
+  {
+    label: "Non-Rectangular",
+    presets: ["loft", "wedgeHall", "cornerGallery"],
+  },
+];
+
 const MATERIAL_PRESETS = {
   custom: {
     label: "Custom",
@@ -381,6 +400,10 @@ const DEFAULT_STATE = {
     crossoverWindow: "hann",
   },
   irView: "linear",
+  view: {
+    spatialVisible: true,
+    reflections: 2,
+  },
 };
 
 const POSITION_MARGIN = 0.15;
@@ -474,6 +497,8 @@ const refs = {
   renderCrossover: document.getElementById("render-crossover"),
   renderCrossoverValue: document.getElementById("render-crossover-value"),
   renderWindow: document.getElementById("render-window"),
+  sceneVisibility: document.getElementById("scene-visibility"),
+  sceneReflections: document.getElementById("scene-reflections"),
   renderModeButtons: Array.from(
     document.querySelectorAll("#render-mode-switch .mode-button"),
   ),
@@ -501,6 +526,8 @@ const refs = {
   sceneCanvas: document.getElementById("scene-canvas"),
   audioPlayer: document.getElementById("audio-player"),
   renderLog: document.getElementById("render-log"),
+  sceneEmpty: document.getElementById("scene-empty"),
+  viewportCard: document.querySelector(".viewport-card"),
 };
 
 let sceneView = null;
@@ -818,6 +845,22 @@ function bindEvents() {
     scheduleUrlSync();
   });
 
+  refs.sceneVisibility.addEventListener("change", () => {
+    state.view.spatialVisible = refs.sceneVisibility.checked;
+    syncSpatialViewVisibility();
+    scheduleUrlSync();
+  });
+
+  refs.sceneReflections.addEventListener("input", () => {
+    const value = Number(refs.sceneReflections.value);
+    if (Number.isFinite(value)) {
+      state.view.reflections = clampInt(Math.round(value), 0, 6);
+    }
+    refs.sceneReflections.value = String(state.view.reflections);
+    updateSceneView();
+    scheduleUrlSync();
+  });
+
   [
     [refs.wallWest, "west"],
     [refs.wallEast, "east"],
@@ -955,9 +998,12 @@ function syncFormFromState() {
   refs.renderCrossover.value = String(state.render.crossoverTimeSeconds);
   refs.renderCrossoverValue.textContent = `${state.render.crossoverTimeSeconds.toFixed(2)} s`;
   refs.renderWindow.value = state.render.crossoverWindow;
+  refs.sceneVisibility.checked = state.view.spatialVisible;
+  refs.sceneReflections.value = String(state.view.reflections);
 
   syncModeButtons();
   syncDirectivityAvailability();
+  syncSpatialViewVisibility();
 }
 
 function syncDirectivityAvailability() {
@@ -979,6 +1025,22 @@ function syncRoomModeAvailability() {
     refs.roomWidth.removeAttribute("title");
     refs.roomDepth.removeAttribute("title");
     refs.roomHeight.removeAttribute("title");
+  }
+}
+
+function syncSpatialViewVisibility() {
+  const enabled = Boolean(state.view.spatialVisible);
+  if (refs.viewportCard) {
+    refs.viewportCard.classList.toggle("is-disabled", !enabled);
+  }
+  if (refs.sceneEmpty) {
+    refs.sceneEmpty.hidden = enabled;
+  }
+  if (sceneView) {
+    sceneView.scene.visible = enabled;
+    sceneView.roomGroup.visible = enabled;
+    sceneView.pathGroup.visible = enabled;
+    sceneView.controls.enabled = enabled && !dragState;
   }
 }
 
@@ -1508,9 +1570,18 @@ function encodeAudioBufferToWav(audioBuffer) {
 }
 
 function populatePresetSelects() {
-  refs.roomPreset.innerHTML = Object.entries(ROOM_PRESETS)
-    .map(([value, preset]) => `<option value="${value}">${preset.label}</option>`)
-    .join("");
+  const roomOptions = ROOM_PRESET_GROUPS.map(({ label, presets }) => {
+    const options = presets
+      .filter((value) => value in ROOM_PRESETS)
+      .map((value) => `<option value="${value}">${ROOM_PRESETS[value].label}</option>`)
+      .join("");
+    return `<optgroup label="${label}">${options}</optgroup>`;
+  }).join("");
+
+  refs.roomPreset.innerHTML = `
+    <option value="custom">Custom</option>
+    ${roomOptions}
+  `;
   refs.materialPreset.innerHTML = Object.entries(MATERIAL_PRESETS)
     .map(([value, preset]) => `<option value="${value}">${preset.label}</option>`)
     .join("");
@@ -1630,6 +1701,7 @@ function applySerializedState(input) {
     assignSourceState(input.source);
     assignReceiverState(input.receiver);
     assignRenderState(input.render);
+    assignViewState(input.view);
 
     if (typeof input.irView === "string" && input.irView) {
       state.irView = input.irView;
@@ -1729,6 +1801,20 @@ function assignRenderState(render) {
   }
 }
 
+function assignViewState(view) {
+  if (!view || typeof view !== "object") {
+    return;
+  }
+
+  if (typeof view.spatialVisible === "boolean") {
+    state.view.spatialVisible = view.spatialVisible;
+  }
+
+  if (typeof view.reflections === "number" && Number.isFinite(view.reflections)) {
+    state.view.reflections = view.reflections;
+  }
+}
+
 function normalizeSceneState() {
   state.room.width = clamp(state.room.width, 2.5, 16);
   state.room.depth = clamp(state.room.depth, 2.5, 16);
@@ -1788,6 +1874,8 @@ function normalizeSceneState() {
 
   state.roomPreset = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
   state.materialPreset = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
+  state.view.spatialVisible = Boolean(state.view.spatialVisible);
+  state.view.reflections = clampInt(Math.round(state.view.reflections), 0, 6);
 
   if (state.room.kind === "mesh" && !state.room.mesh) {
     state.room.kind = "shoebox";
@@ -1822,6 +1910,7 @@ function encodeStateForUrl() {
     receiver: state.receiver,
     render: state.render,
     irView: state.irView,
+    view: state.view,
   };
   return base64UrlEncode(JSON.stringify(payload));
 }
@@ -1880,6 +1969,7 @@ function buildRequest() {
     source: state.source,
     receiver: state.receiver,
     render: state.render,
+    view: state.view,
   };
 }
 
@@ -2296,6 +2386,7 @@ function updateSceneView() {
   sceneView.receiverMarker = receiverMarker;
   sceneView.interactiveObjects = [sourceMarker, receiverMarker];
   sceneView.directPathLine = directPath;
+  syncSpatialViewVisibility();
 }
 
 function createWallMesh(name, width, height, materialKey, configure) {
@@ -2388,18 +2479,21 @@ function createDirectPathLine(palette) {
 }
 
 function createRayPathOverlay(palette) {
-  if (state.room.kind === "mesh" && sceneView?.roomSurfaces?.length) {
-    const path = traceProbeRayPath(sceneView.roomSurfaces, 4);
-    if (path.length >= 2) {
-      return [makePathLine(path, palette.ray, 0.78)];
-    }
-
+  if (!state.view.spatialVisible) {
     return [];
   }
 
-  return traceShoeboxReflectionPaths().map((points) =>
-    makePathLine(points, palette.ray, 0.72),
-  );
+  const reflections = clampInt(Math.round(state.view.reflections), 0, 6);
+  if (reflections <= 0 || !sceneView?.roomSurfaces?.length) {
+    return [];
+  }
+
+  const path = traceProbeRayPath(sceneView.roomSurfaces, reflections);
+  if (path.length < 2) {
+    return [];
+  }
+
+  return [makePathLine(path, palette.ray, 0.75)];
 }
 
 function makePathLine(points, color, opacity) {
@@ -2416,74 +2510,13 @@ function makePathLine(points, color, opacity) {
   return line;
 }
 
-function traceShoeboxReflectionPaths() {
-  if (state.room.kind !== "shoebox") {
-    return [];
-  }
-
-  const room = state.room;
-  const source = state.source;
-  const receiver = state.receiver;
-  const walls = [
-    { axis: "x", coord: 0, minA: 0, maxA: room.depth, minB: 0, maxB: room.height },
-    { axis: "x", coord: room.width, minA: 0, maxA: room.depth, minB: 0, maxB: room.height },
-    { axis: "y", coord: 0, minA: 0, maxA: room.width, minB: 0, maxB: room.height },
-    { axis: "y", coord: room.depth, minA: 0, maxA: room.width, minB: 0, maxB: room.height },
-    { axis: "z", coord: 0, minA: 0, maxA: room.width, minB: 0, maxB: room.depth },
-    { axis: "z", coord: room.height, minA: 0, maxA: room.width, minB: 0, maxB: room.depth },
-  ];
-
-  const paths = [];
-  for (const wall of walls) {
-    const image = reflectPointAcrossWall(source, wall.axis, wall.coord);
-    const direction = {
-      x: receiver.x - image.x,
-      y: receiver.y - image.y,
-      z: receiver.z - image.z,
-    };
-    const denom = direction[wall.axis];
-    if (Math.abs(denom) < 1e-9) {
-      continue;
-    }
-
-    const t = (wall.coord - image[wall.axis]) / denom;
-    if (t <= 0 || t >= 1) {
-      continue;
-    }
-
-    const hit = {
-      x: image.x + direction.x * t,
-      y: image.y + direction.y * t,
-      z: image.z + direction.z * t,
-    };
-
-    if (wall.axis === "x") {
-      if (!isWithin(hit.y, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
-        continue;
-      }
-    } else if (wall.axis === "y") {
-      if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
-        continue;
-      }
-    } else if (wall.axis === "z") {
-      if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.y, wall.minB, wall.maxB)) {
-        continue;
-      }
-    }
-
-    paths.push([
-      new THREE.Vector3(source.x, source.z, source.y),
-      new THREE.Vector3(hit.x, hit.z, hit.y),
-      new THREE.Vector3(receiver.x, receiver.z, receiver.y),
-    ]);
-  }
-
-  return paths;
-}
-
 function traceProbeRayPath(roomSurfaces, maxBounces) {
   const points = [new THREE.Vector3(state.source.x, state.source.z, state.source.y)];
   if (!roomSurfaces?.length) {
+    return points;
+  }
+
+  if (maxBounces <= 0) {
     return points;
   }
 
@@ -2530,20 +2563,6 @@ function getWorldFaceNormal(hit) {
 function reflectDirection(direction, normal) {
   const n = normal.clone().normalize();
   return direction.clone().sub(n.multiplyScalar(2 * direction.dot(n)));
-}
-
-function reflectPointAcrossWall(point, axis, coord) {
-  if (axis === "x") {
-    return { x: coord + (coord - point.x), y: point.y, z: point.z };
-  }
-  if (axis === "y") {
-    return { x: point.x, y: coord + (coord - point.y), z: point.z };
-  }
-  return { x: point.x, y: point.y, z: coord + (coord - point.z) };
-}
-
-function isWithin(value, minValue, maxValue) {
-  return value >= minValue - 1e-9 && value <= maxValue + 1e-9;
 }
 
 function createDirectivityCone(palette) {
@@ -2793,6 +2812,7 @@ function copyState(source, target) {
   target.source = structuredClone(source.source);
   target.receiver = structuredClone(source.receiver);
   target.render = structuredClone(source.render);
+  target.view = structuredClone(source.view);
 }
 
 function downloadBytes(bytes, filename, mimeType) {
