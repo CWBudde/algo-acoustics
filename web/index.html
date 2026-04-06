@@ -447,7 +447,29 @@
             <canvas id="waveform-canvas" height="140"></canvas>
 
             <div class="audio-card">
-              <audio id="audio-player" controls preload="none"></audio>
+              <div class="audio-player-row">
+                <audio id="audio-player" controls preload="none"></audio>
+                <button
+                  id="export-auralization"
+                  class="icon-button"
+                  type="button"
+                  aria-label="Export IR as WAV"
+                  title="Export IR as WAV"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 3v10"></path>
+                    <path d="m8 9 4 4 4-4"></path>
+                    <path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"></path>
+                  </svg>
+                  <span class="sr-only">Export IR as WAV</span>
+                </button>
+              </div>
             </div>
 
             <section class="auralization-card">
@@ -501,12 +523,6 @@
               <div class="action-row audio-action-row">
                 <button id="play-auralization" class="primary-button" type="button">
                   Play
-                </button>
-              </div>
-
-              <div class="action-row audio-action-row">
-                <button id="export-auralization" class="ghost-button" type="button">
-                  Export WAV
                 </button>
               </div>
             </section>
