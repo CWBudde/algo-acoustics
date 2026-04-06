@@ -1,7 +1,8 @@
 {
   "room": {
     "kind": "mesh",
-    "meshPath": "cube.obj"
+    "meshPath": "cube.obj",
+    "meshMaterial": "plaster"
   },
   "materials": {
     "plaster": {

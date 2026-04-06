@@ -233,21 +233,34 @@ func equivalentShoeboxScene(meshScene *scene.Scene) *scene.Scene {
 
 	dims := bounds.Dimensions()
 
+	// Resolve the mesh material so the shoebox uses identical surface properties.
+	matName := meshScene.Room.MeshMaterial
+	mats := map[string]scene.Material{}
+
+	if matName != "" {
+		if mat, found := meshScene.Materials[matName]; found {
+			mats[matName] = mat
+		}
+	}
+
+	if len(mats) == 0 {
+		matName = "reflective"
+		mats[matName] = scene.MaterialFullyReflective()
+	}
+
+	walls := [6]string{matName, matName, matName, matName, matName, matName}
+
 	return &scene.Scene{
 		Room: scene.Room{
 			Kind: scene.RoomKindShoebox,
 			Shoebox: &scene.Shoebox{
-				Width:  dims.X,
-				Depth:  dims.Y,
-				Height: dims.Z,
-				WallMaterials: [6]string{
-					"reflective", "reflective", "reflective", "reflective", "reflective", "reflective",
-				},
+				Width:         dims.X,
+				Depth:         dims.Y,
+				Height:        dims.Z,
+				WallMaterials: walls,
 			},
 		},
-		Materials: map[string]scene.Material{
-			"reflective": scene.MaterialFullyReflective(),
-		},
+		Materials:  mats,
 		Sources:    append([]scene.Source(nil), meshScene.Sources...),
 		Receivers:  append([]scene.Receiver(nil), meshScene.Receivers...),
 		BandSpec:   meshScene.BandSpec,

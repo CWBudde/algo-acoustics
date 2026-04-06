@@ -27,10 +27,11 @@ func (s Shoebox) Bounds() geometry.Box {
 
 // Room is the top-level geometry container for a scene.
 type Room struct {
-	Kind     RoomKind       `json:"kind"`
-	Shoebox  *Shoebox       `json:"shoebox,omitempty"`
-	MeshPath string         `json:"meshPath,omitempty"`
-	Mesh     *geometry.Mesh `json:"mesh,omitempty"`
+	Kind         RoomKind       `json:"kind"`
+	Shoebox      *Shoebox       `json:"shoebox,omitempty"`
+	MeshPath     string         `json:"meshPath,omitempty"`
+	Mesh         *geometry.Mesh `json:"mesh,omitempty"`
+	MeshMaterial string         `json:"meshMaterial,omitempty"`
 }
 
 // IsMesh reports whether the room uses triangulated geometry.

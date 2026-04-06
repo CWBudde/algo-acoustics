@@ -227,18 +227,30 @@ func initialRayEnergy(source scene.Source, dir geometry.Vec3, launchEnergy float
 }
 
 func (r *RayTracer) sceneMaterialForWall(wallIdx int) scene.Material {
-	if wallIdx < 0 || r.Scene == nil || r.Scene.Room.Shoebox == nil {
+	if wallIdx < 0 || r.Scene == nil {
 		return scene.MaterialFullyReflective()
 	}
 
-	room := r.Scene.Room.Shoebox
-	if wallIdx >= len(room.WallMaterials) {
+	// Shoebox: wall index [0–5] maps to a named material.
+	if r.Scene.Room.Shoebox != nil {
+		room := r.Scene.Room.Shoebox
+		if wallIdx >= len(room.WallMaterials) {
+			return scene.MaterialFullyReflective()
+		}
+
+		name := room.WallMaterials[wallIdx]
+		if material, ok := r.Scene.Materials[name]; ok {
+			return material
+		}
+
 		return scene.MaterialFullyReflective()
 	}
 
-	name := room.WallMaterials[wallIdx]
-	if material, ok := r.Scene.Materials[name]; ok {
-		return material
+	// Mesh: use the single named material that applies to all triangles.
+	if r.Scene.Room.Kind == scene.RoomKindMesh && r.Scene.Room.MeshMaterial != "" {
+		if material, ok := r.Scene.Materials[r.Scene.Room.MeshMaterial]; ok {
+			return material
+		}
 	}
 
 	return scene.MaterialFullyReflective()
