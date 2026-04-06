@@ -99,14 +99,14 @@ Phases 17.1-17.5 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x 
 
 #### 17.5 Ray tracing GPU integration — remaining item
 
-- [ ] End-to-end benchmark: full ray-traced IR with GPU vs CPU-only
+- [x] End-to-end benchmark: full ray-traced IR with GPU vs CPU-only
 
 #### 17.6 Production hardening
 
-- [ ] Error handling: GPU OOM, kernel launch failure, driver crash -> graceful fallback to CPU
-- [ ] CPU fallback path: detect GPU absence at startup, select CPU or GPU code path
-- [ ] CI/CD: build pipeline with CUDA compilation, test on GPU-equipped runners (or skip with build tag)
-- [ ] Document GPU requirements and deployment prerequisites
+- [x] Error handling: GPU OOM, kernel launch failure, driver crash -> graceful fallback to CPU
+- [x] CPU fallback path: detect GPU absence at startup, select CPU or GPU code path
+- [x] CI/CD: build pipeline with CUDA compilation, test on GPU-equipped runners (or skip with build tag)
+- [x] Document GPU requirements and deployment prerequisites
 
 ---
 

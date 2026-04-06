@@ -110,6 +110,18 @@ gomaxprocs-sweep:
     @echo ""
     @echo "Sweep results written to gomaxprocs_sweep.txt"
 
+# Build the GPU server binary (requires CUDA Toolkit with nvcc)
+build-gpu:
+    make -C gpu/server
+
+# Run GPU integration tests (requires build-gpu first + NVIDIA GPU)
+test-gpu: build-gpu
+    ALGO_GPU_SERVER=gpu/server/algo-acoustics-gpu go test -v ./gpu/worker/ -run 'Integration'
+
+# Run GPU benchmarks (requires build-gpu first + NVIDIA GPU)
+bench-gpu: build-gpu
+    ALGO_GPU_SERVER=gpu/server/algo-acoustics-gpu go test -bench='EndToEnd' -benchtime=3x -v ./gpu/worker/
+
 # Clean build artifacts
 clean:
     rm -f coverage.out coverage.html
