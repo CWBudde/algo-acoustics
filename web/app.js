@@ -379,6 +379,11 @@ function handleWorkerMessage(event) {
       wavBytes,
     };
 
+    // Sync the actual mode used back into state (mesh rooms are forced to "late").
+    if (lastRender.mode && lastRender.mode !== state.render.mode) {
+      state.render.mode = lastRender.mode;
+      syncModeButtons();
+    }
     setRenderBadge("Render complete", "ready");
     updateMetrics(lastRender);
     updateAudio(lastRender.wavBytes);
@@ -814,7 +819,7 @@ function updateMetrics(result) {
 
 function updateRenderLog(result) {
   refs.renderLog.textContent = [
-    `Mode: ${state.render.mode}`,
+    `Mode: ${result.mode ?? state.render.mode}`,
     `Room: ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} × ${state.room.height.toFixed(1)} m`,
     `Room preset: ${state.roomPreset}`,
     `Material preset: ${state.materialPreset}`,

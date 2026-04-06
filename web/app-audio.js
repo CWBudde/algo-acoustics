@@ -7,9 +7,17 @@ export function waveformPalette(context, width) {
   return {
     background: cssVar("--wave-fill") || "#0d141b",
     grid: cssVar("--wave-grid") || "#f8fafc",
+    gridStrong: cssVar("--wave-divider") || "#ffffff",
     empty: cssVar("--wave-empty") || "#ffffff",
     divider: cssVar("--wave-divider") || "#ffffff",
     trace: gradient,
+    traceSoft:
+      "rgba(255, 255, 255, 0.08)",
+    fill: `rgba(255, 255, 255, 0.05)`,
+    glow: cssVar("--accent-soft") || "rgba(255, 107, 74, 0.14)",
+    axis: "rgba(255, 255, 255, 0.62)",
+    labelBg: "rgba(10, 17, 23, 0.72)",
+    labelBorder: "rgba(255, 255, 255, 0.08)",
   };
 }
 
@@ -135,8 +143,9 @@ export function drawWaveform(canvas, samples = null, state = {}) {
   const width = canvas.clientWidth || canvas.width || 640;
   const height = canvas.clientHeight || canvas.height || 280;
   const palette = waveformPalette(context, width);
-  canvas.width = width * Math.min(window.devicePixelRatio || 1, 2);
-  canvas.height = height * Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
   context.setTransform(
     canvas.width / width,
     0,
@@ -154,81 +163,52 @@ export function drawWaveform(canvas, samples = null, state = {}) {
 
   if (!samples || samples.length === 0) {
     context.fillStyle = palette.empty;
-    context.font = '600 16px "Manrope"';
-    context.fillText(
-      "Render a scene to inspect the impulse response.",
-      22,
-      height / 2,
-    );
+    context.font = '700 16px "Manrope"';
+    context.textBaseline = "middle";
+    context.fillText("Render a scene to inspect the impulse response.", 22, height / 2 - 6);
+    context.font = '600 12px "Manrope"';
+    context.fillStyle = "rgba(255, 255, 255, 0.62)";
+    context.fillText("The chart will show time on the x-axis and amplitude on the y-axis.", 22, height / 2 + 16);
     return;
   }
 
   const downsampled = downsampleForCanvas(samples, width);
   const maxAmplitude = robustPeakAmplitude(downsampled);
-  const pad = 12;
+  const plot = {
+    left: 20,
+    right: 20,
+    top: 16,
+    bottom: 26,
+  };
+  const view = state.irView === "dB" ? "dB" : "linear";
+  const peakIndex = findPeakIndex(downsampled);
+  const peakValue = downsampled[peakIndex] ?? 0;
+  const peakX = (peakIndex / Math.max(1, downsampled.length - 1)) * width;
 
-  if (state.irView === "dB") {
-    const dynRange = 60;
-
-    context.strokeStyle = palette.trace;
-    context.lineWidth = 1.5;
-    context.beginPath();
-    downsampled.forEach((sample, index) => {
-      const x = (index / Math.max(1, downsampled.length - 1)) * width;
-      const abs = Math.abs(sample);
-      const dB = abs > 0 ? 20 * Math.log10(abs / maxAmplitude) : -dynRange;
-      const clampedDB = Math.max(dB, -dynRange);
-      const normalized = 1 + clampedDB / dynRange;
-      const y = pad + (1 - normalized) * (height - 2 * pad);
-      if (index === 0) {
-        context.moveTo(x, y);
-      } else {
-        context.lineTo(x, y);
-      }
-    });
-    context.stroke();
+  if (view === "dB") {
+    drawDbWaveform(context, width, height, palette, downsampled, maxAmplitude, plot);
   } else {
-    const mid = height / 2;
-
-    context.strokeStyle = palette.grid;
-    context.lineWidth = 1.5;
-    context.beginPath();
-    context.moveTo(0, mid);
-    context.lineTo(width, mid);
-    context.stroke();
-
-    context.strokeStyle = palette.trace;
-    context.lineWidth = 1.5;
-    context.beginPath();
-    downsampled.forEach((sample, index) => {
-      const x = (index / Math.max(1, downsampled.length - 1)) * width;
-      const y = mid - (sample / maxAmplitude) * (mid - pad);
-      if (index === 0) {
-        context.moveTo(x, y);
-      } else {
-        context.lineTo(x, y);
-      }
-    });
-    context.stroke();
+    drawLinearWaveform(context, width, height, palette, downsampled, maxAmplitude, plot);
   }
+
+  drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, height, plot);
 
   if (state.renderMode === "hybrid") {
     const x = (state.crossoverTimeSeconds / state.durationSeconds) * width;
-    context.strokeStyle = palette.divider;
-    context.setLineDash([6, 6]);
-    context.beginPath();
-    context.moveTo(x, 18);
-    context.lineTo(x, height - 18);
-    context.stroke();
-    context.setLineDash([]);
+    drawDivider(context, palette, x, width, height, state.crossoverTimeSeconds);
   }
+
+  drawAxisLabels(context, width, height, palette, state, samples, view, plot);
 }
 
 function drawWaveGrid(context, width, height, palette) {
+  context.save();
   context.strokeStyle = palette.grid;
   context.lineWidth = 1;
+  context.setLineDash([]);
   for (let index = 1; index < 5; index += 1) {
     const x = (index / 5) * width;
+    context.globalAlpha = index === 2 || index === 4 ? 0.26 : 0.14;
     context.beginPath();
     context.moveTo(x, 0);
     context.lineTo(x, height);
@@ -236,11 +216,14 @@ function drawWaveGrid(context, width, height, palette) {
   }
   for (let index = 1; index < 4; index += 1) {
     const y = (index / 4) * height;
+    context.globalAlpha = index === 2 ? 0.24 : 0.12;
     context.beginPath();
     context.moveTo(0, y);
     context.lineTo(width, y);
     context.stroke();
   }
+  context.globalAlpha = 1;
+  context.restore();
 }
 
 function downsampleForCanvas(samples, targetWidth) {
@@ -279,4 +262,275 @@ function robustPeakAmplitude(samples) {
   const absoluteMax = magnitudes[magnitudes.length - 1] || 0;
 
   return Math.max(percentile, absoluteMax * 0.2, 1e-6);
+}
+
+function drawLinearWaveform(context, width, height, palette, samples, maxAmplitude, plot) {
+  const baseline = Math.round(height * 0.58);
+  const upper = Math.max(plot.top + 12, baseline - 1);
+  const lower = Math.min(height - plot.bottom - 2, baseline + 1);
+  const scale = Math.max(1, Math.min(baseline - upper, lower - baseline));
+  const { linePath, fillPath } = buildLinearPaths(
+    samples,
+    width,
+    baseline,
+    scale,
+    maxAmplitude,
+  );
+
+  context.save();
+  context.shadowColor = palette.glow;
+  context.shadowBlur = 22;
+  const fill = context.createLinearGradient(0, baseline - scale, 0, height - plot.bottom);
+  fill.addColorStop(0, "rgba(255, 255, 255, 0.16)");
+  fill.addColorStop(0.6, "rgba(255, 255, 255, 0.05)");
+  fill.addColorStop(1, "rgba(255, 255, 255, 0)");
+  context.fillStyle = fill;
+  context.fill(fillPath);
+
+  context.shadowBlur = 0;
+  context.lineWidth = 2.2;
+  context.strokeStyle = palette.trace;
+  context.stroke(linePath);
+
+  context.lineWidth = 1;
+  context.strokeStyle = "rgba(255, 255, 255, 0.28)";
+  context.beginPath();
+  context.moveTo(plot.left, baseline);
+  context.lineTo(width - plot.right, baseline);
+  context.stroke();
+  context.restore();
+}
+
+function drawDbWaveform(context, width, height, palette, samples, maxAmplitude, plot) {
+  const top = plot.top + 6;
+  const bottom = height - plot.bottom - 4;
+  const dynRange = 60;
+  const { linePath, fillPath } = buildDbPaths(samples, width, top, bottom, maxAmplitude, dynRange);
+  context.save();
+  context.shadowColor = palette.glow;
+  context.shadowBlur = 18;
+  context.lineWidth = 2;
+  context.strokeStyle = palette.trace;
+  const fill = context.createLinearGradient(0, top, 0, bottom);
+  fill.addColorStop(0, "rgba(255, 255, 255, 0.16)");
+  fill.addColorStop(1, "rgba(255, 255, 255, 0)");
+  context.fillStyle = fill;
+  context.fill(fillPath);
+
+  context.shadowBlur = 0;
+  context.stroke(linePath);
+
+  drawDbGuideLines(context, width, height, palette, top, bottom);
+  context.restore();
+}
+
+function drawDbGuideLines(context, width, height, palette, top, bottom) {
+  const levels = [0, -20, -40, -60];
+  context.save();
+  context.strokeStyle = palette.gridStrong;
+  context.fillStyle = "rgba(255, 255, 255, 0.72)";
+  context.font = '600 11px "Manrope"';
+  context.textBaseline = "middle";
+  levels.forEach((level, index) => {
+    const y = top + (index / (levels.length - 1)) * (bottom - top);
+    context.globalAlpha = index === 0 ? 0.28 : 0.14;
+    context.beginPath();
+    context.moveTo(18, y);
+    context.lineTo(width - 18, y);
+    context.stroke();
+    context.globalAlpha = 1;
+    drawChip(context, palette, `${level} dB`, 14, y, "left");
+  });
+  context.restore();
+}
+
+function drawAxisLabels(context, width, height, palette, state, samples, view, plot) {
+  const durationSeconds = state.durationSeconds || 1;
+  const textY = height - 10;
+  const labels = [
+    { x: 18, text: "0 s", align: "left" },
+    { x: width * 0.25, text: formatSeconds(durationSeconds * 0.25), align: "center" },
+    { x: width * 0.5, text: formatSeconds(durationSeconds * 0.5), align: "center" },
+    { x: width * 0.75, text: formatSeconds(durationSeconds * 0.75), align: "center" },
+    { x: width - 18, text: formatSeconds(durationSeconds), align: "right" },
+  ];
+
+  context.save();
+  context.font = '600 11px "Manrope"';
+  context.textBaseline = "alphabetic";
+  labels.forEach((label) => {
+    context.fillStyle = "rgba(255, 255, 255, 0.54)";
+    context.textAlign = label.align;
+    context.fillText(label.text, label.x, textY);
+  });
+
+  drawChip(context, palette, "time", width - 22, 18, "right");
+  context.textAlign = "left";
+  context.fillStyle = "rgba(255, 255, 255, 0.5)";
+  context.fillText("amplitude", 22, 18);
+
+  if (view === "linear") {
+    context.fillStyle = "rgba(255, 255, 255, 0.58)";
+    context.textAlign = "left";
+    context.fillText("+1", 12, plot.top + 20);
+    context.fillText("0", 12, Math.round(height * 0.58) + 4);
+    context.fillText("-1", 12, height - plot.bottom - 2);
+  }
+
+  if (!samples || samples.length === 0) {
+    context.restore();
+    return;
+  }
+
+  context.restore();
+}
+
+function drawDivider(context, palette, x, width, height, timeSeconds) {
+  const clampedX = clamp(x, 18, width - 18);
+  context.save();
+  context.strokeStyle = palette.divider;
+  context.fillStyle = palette.labelBg;
+  context.lineWidth = 1.5;
+  context.setLineDash([6, 6]);
+  context.beginPath();
+  context.moveTo(clampedX, 18);
+  context.lineTo(clampedX, height - 18);
+  context.stroke();
+  context.setLineDash([]);
+  drawChip(context, palette, `crossover ${formatSeconds(timeSeconds)}`, clampedX, 16, "center");
+  context.restore();
+}
+
+function drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, height, plot) {
+  if (!Number.isFinite(peakX) || Math.abs(peakValue) < 1e-6) {
+    return;
+  }
+
+  const baseline = Math.round(height * 0.58);
+  const top = plot.top + 6;
+  const bottom = height - plot.bottom - 4;
+  const dynRange = 60;
+  const y =
+    view === "dB"
+      ? (() => {
+          const abs = Math.abs(peakValue);
+          const dB = abs > 0 ? 20 * Math.log10(abs / maxAmplitude) : -dynRange;
+          const clampedDB = Math.max(dB, -dynRange);
+          const normalized = 1 + clampedDB / dynRange;
+          return bottom - normalized * (bottom - top);
+        })()
+      : baseline - (peakValue / maxAmplitude) * Math.max(1, baseline - top);
+
+  context.save();
+  context.fillStyle = palette.trace;
+  context.shadowColor = palette.glow;
+  context.shadowBlur = 12;
+  context.beginPath();
+  context.arc(peakX, y, 3.6, 0, Math.PI * 2);
+  context.fill();
+  context.shadowBlur = 0;
+  drawChip(context, palette, "peak", peakX, Math.max(16, y - 14), "center");
+  context.restore();
+}
+
+function buildLinearPaths(samples, width, baseline, scale, maxAmplitude) {
+  const linePath = new Path2D();
+  const fillPath = new Path2D();
+  fillPath.moveTo(0, baseline);
+  samples.forEach((sample, index) => {
+    const x = (index / Math.max(1, samples.length - 1)) * width;
+    const y = baseline - (sample / maxAmplitude) * scale;
+    if (index === 0) {
+      linePath.moveTo(x, y);
+      fillPath.lineTo(x, y);
+    } else {
+      linePath.lineTo(x, y);
+      fillPath.lineTo(x, y);
+    }
+  });
+  fillPath.lineTo(width, baseline);
+  fillPath.closePath();
+  return { linePath, fillPath };
+}
+
+function buildDbPaths(samples, width, top, bottom, maxAmplitude, dynRange) {
+  const linePath = new Path2D();
+  const fillPath = new Path2D();
+  fillPath.moveTo(0, bottom);
+  samples.forEach((sample, index) => {
+    const x = (index / Math.max(1, samples.length - 1)) * width;
+    const abs = Math.abs(sample);
+    const dB = abs > 0 ? 20 * Math.log10(abs / maxAmplitude) : -dynRange;
+    const clampedDB = Math.max(dB, -dynRange);
+    const normalized = 1 + clampedDB / dynRange;
+    const y = bottom - normalized * (bottom - top);
+    if (index === 0) {
+      linePath.moveTo(x, y);
+      fillPath.lineTo(x, y);
+    } else {
+      linePath.lineTo(x, y);
+      fillPath.lineTo(x, y);
+    }
+  });
+  fillPath.lineTo(width, bottom);
+  fillPath.closePath();
+  return { linePath, fillPath };
+}
+
+function drawChip(context, palette, text, x, y, align = "center") {
+  context.save();
+  context.font = '700 11px "Manrope"';
+  context.textBaseline = "middle";
+  context.textAlign = align;
+  const paddingX = 8;
+  const metrics = context.measureText(text);
+  const textWidth = metrics.width;
+  const boxWidth = textWidth + paddingX * 2;
+  const boxHeight = 18;
+  const left =
+    align === "center" ? x - boxWidth / 2 : align === "right" ? x - boxWidth : x;
+  const top = y - boxHeight / 2;
+  context.fillStyle = palette.labelBg;
+  context.strokeStyle = palette.labelBorder;
+  context.lineWidth = 1;
+  roundedRect(context, left, top, boxWidth, boxHeight, 999);
+  context.fill();
+  context.stroke();
+  context.fillStyle = "rgba(255, 255, 255, 0.84)";
+  context.fillText(text, align === "center" ? x : align === "right" ? x - paddingX : x + paddingX, y + 0.5);
+  context.restore();
+}
+
+function roundedRect(context, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + width, y, x + width, y + height, r);
+  context.arcTo(x + width, y + height, x, y + height, r);
+  context.arcTo(x, y + height, x, y, r);
+  context.arcTo(x, y, x + width, y, r);
+  context.closePath();
+}
+
+function findPeakIndex(samples) {
+  let peakIndex = 0;
+  let peakMagnitude = -1;
+  samples.forEach((sample, index) => {
+    const magnitude = Math.abs(sample);
+    if (magnitude > peakMagnitude) {
+      peakMagnitude = magnitude;
+      peakIndex = index;
+    }
+  });
+  return peakIndex;
+}
+
+function formatSeconds(seconds) {
+  if (!Number.isFinite(seconds)) {
+    return "0.0 s";
+  }
+  if (seconds < 1) {
+    return `${Math.round(seconds * 1000)} ms`;
+  }
+  return `${seconds.toFixed(seconds >= 10 ? 0 : 1)} s`;
 }

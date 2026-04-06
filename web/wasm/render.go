@@ -152,6 +152,7 @@ type demoRender struct {
 }
 
 type demoResult struct {
+	Mode            string
 	SampleRate      int
 	DurationSeconds float64
 	EarlyEventCount int
@@ -340,6 +341,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	}
 
 	result := demoResult{
+		Mode:            normalized.Render.Mode,
 		SampleRate:      buffer.SampleRate,
 		DurationSeconds: normalized.Render.DurationSeconds,
 		EarlyEventCount: len(earlyEvents),

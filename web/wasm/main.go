@@ -57,6 +57,7 @@ func demoResultToJS(result demoResult) js.Value {
 	wavBytes := js.Global().Get("Uint8Array").New(len(result.WAVBytes))
 	js.CopyBytesToJS(wavBytes, result.WAVBytes)
 
+	output.Set("mode", result.Mode)
 	output.Set("sampleRate", result.SampleRate)
 	output.Set("durationSeconds", result.DurationSeconds)
 	output.Set("earlyEventCount", result.EarlyEventCount)
