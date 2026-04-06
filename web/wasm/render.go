@@ -38,7 +38,6 @@ const (
 	pcmBitDepth              = 16
 	pcmMonoChannels          = 1
 	pcmAudioFormat           = 1
-	outputPeakHeadroom       = 0.98
 )
 
 var materialLibrary = map[string]scene.Material{
@@ -312,12 +311,6 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	if demoCancelled() {
 		return demoResult{}, errors.New("render cancelled")
 	}
-	reportDemoProgress("normalize", 90, "Normalizing output")
-	limitBufferPeak(buffer, outputPeakHeadroom)
-	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
-	}
-
 	currentDemoAPIState.storeResult(demoResult{}, buffer)
 
 	reportDemoProgress("encode", 95, "Encoding WAV")
@@ -674,35 +667,6 @@ func analyzeSamples(samples []float64, sampleRate int) (peak, rms, firstArrivalM
 	}
 
 	return peak, rms, firstArrivalMs
-}
-
-func limitBufferPeak(buf *ir.Buffer, targetPeak float64) float64 {
-	if buf == nil || len(buf.Samples) == 0 || targetPeak <= 0 {
-		return 0
-	}
-
-	currentPeak := 0.0
-	for index, sample := range buf.Samples {
-		if index%4096 == 0 && demoCancelled() {
-			return 0
-		}
-
-		magnitude := math.Abs(sample)
-		if magnitude > currentPeak {
-			currentPeak = magnitude
-		}
-	}
-
-	if currentPeak <= 0 || currentPeak <= targetPeak {
-		return 1
-	}
-
-	scale := targetPeak / currentPeak
-	for index := range buf.Samples {
-		buf.Samples[index] *= scale
-	}
-
-	return scale
 }
 
 func normalizeMaterialName(name, fallback string) string {
