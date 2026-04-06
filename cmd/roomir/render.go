@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/export"
 	"github.com/cwbudde/algo-acoustics/hybrid"
+	"github.com/cwbudde/algo-acoustics/internal/pipeline"
 	"github.com/cwbudde/algo-acoustics/ir"
-	"github.com/cwbudde/algo-acoustics/ism"
 	"github.com/cwbudde/algo-acoustics/pde"
-	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
 	"github.com/spf13/cobra"
 )
@@ -85,9 +83,18 @@ func newRenderCommand() *cobra.Command {
 
 			var buffer *ir.Buffer
 
+			earlyCfg := pipeline.EarlyConfig{MaxOrder: maxOrder}
+			lateCfg := pipeline.LateConfig{
+				NumRays:            numRays,
+				MaxOrder:           maxOrder,
+				DurationSeconds:    durationSeconds,
+				ReceiverRadius:     0.25,
+				BinDurationSeconds: 0.01,
+			}
+
 			switch mode {
 			case "early":
-				events, err := solveEarly(sc, maxOrder)
+				events, err := pipeline.SolveEarly(sc, earlyCfg)
 				if err != nil {
 					return err
 				}
@@ -99,14 +106,14 @@ func newRenderCommand() *cobra.Command {
 
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered early mode with %d events in %.3fs to %s\n", len(events), durationSeconds, outputPath)
 			case "late":
-				buffer, err = renderLateBuffer(sc, durationSeconds, numRays, maxOrder)
+				buffer, err = pipeline.RenderLateBuffer(sc, lateCfg)
 				if err != nil {
 					return err
 				}
 
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered late mode with %d rays in %.3fs to %s\n", numRays, durationSeconds, outputPath)
 			case renderModeHybrid:
-				earlyEvents, err := solveEarly(sc, maxOrder)
+				earlyEvents, err := pipeline.SolveEarly(sc, earlyCfg)
 				if err != nil {
 					return err
 				}
@@ -116,7 +123,7 @@ func newRenderCommand() *cobra.Command {
 					return fmt.Errorf("render early IR: %w", err)
 				}
 
-				lateBuffer, err := renderLateBuffer(sc, durationSeconds, numRays, maxOrder)
+				lateBuffer, err := pipeline.RenderLateBuffer(sc, lateCfg)
 				if err != nil {
 					return err
 				}
@@ -128,11 +135,9 @@ func newRenderCommand() *cobra.Command {
 					CrossoverWindow:      crossoverWindow,
 				}
 
-				lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, hybridCfg)
-
-				buffer = hybrid.CombineBuffers(earlyBuffer, lateBuffer, hybridCfg)
-				if buffer == nil {
-					return errors.New("combine hybrid buffers")
+				buffer, err = pipeline.RenderHybrid(earlyBuffer, lateBuffer, earlyEvents, hybridCfg)
+				if err != nil {
+					return err
 				}
 
 				fmt.Fprintf(cmd.ErrOrStderr(), "rendered hybrid mode with %d early events and %d rays in %.3fs to %s\n", len(earlyEvents), numRays, durationSeconds, outputPath)
@@ -193,42 +198,4 @@ func newRenderCommand() *cobra.Command {
 	cmd.Flags().StringVar(&lowFreqBoundary, "lowfreq-boundary", "neumann", "PDE boundary condition: neumann, dirichlet, or periodic")
 
 	return cmd
-}
-
-func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {
-	solver := ism.ISMSolver{}
-
-	events, err := solver.Solve(sc, ism.ISMConfig{
-		MaxOrder:     maxOrder,
-		SpeedOfSound: acoustics.SpeedOfSound,
-		BandSpec:     sc.BandSpec,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("solve scene: %w", err)
-	}
-
-	return events, nil
-}
-
-func renderLateBuffer(sc *scene.Scene, durationSeconds float64, numRays, maxOrder int) (*ir.Buffer, error) {
-	maxBounces := max(maxOrder*2, 1)
-
-	tracer := raytrace.RayTracer{
-		Config: raytrace.LaunchConfig{
-			NumRays:        numRays,
-			MaxBounces:     maxBounces,
-			MaxTimeSeconds: durationSeconds,
-			SpeedOfSound:   acoustics.SpeedOfSound,
-		},
-		Scene:              sc,
-		ReceiverRadius:     0.25,
-		BinDurationSeconds: 0.01,
-	}
-
-	hist, err := tracer.Trace()
-	if err != nil {
-		return nil, fmt.Errorf("trace scene: %w", err)
-	}
-
-	return hybrid.HistogramToBuffer(hist, sc.SampleRate), nil
 }

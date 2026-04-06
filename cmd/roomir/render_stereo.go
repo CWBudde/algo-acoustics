@@ -6,6 +6,7 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/export"
 	"github.com/cwbudde/algo-acoustics/hybrid"
+	"github.com/cwbudde/algo-acoustics/internal/pipeline"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/scene"
 	"github.com/spf13/cobra"
@@ -50,7 +51,16 @@ func newRenderStereoCommand() *cobra.Command {
 				BandSpec:        sc.BandSpec,
 			}
 
-			earlyEvents, err := solveEarly(sc, maxOrder)
+			earlyCfg := pipeline.EarlyConfig{MaxOrder: maxOrder}
+			lateCfg := pipeline.LateConfig{
+				NumRays:            numRays,
+				MaxOrder:           maxOrder,
+				DurationSeconds:    durationSeconds,
+				ReceiverRadius:     0.25,
+				BinDurationSeconds: 0.01,
+			}
+
+			earlyEvents, err := pipeline.SolveEarly(sc, earlyCfg)
 			if err != nil {
 				return err
 			}
@@ -60,7 +70,7 @@ func newRenderStereoCommand() *cobra.Command {
 				return fmt.Errorf("render binaural early IR: %w", err)
 			}
 
-			lateBuffer, err := renderLateBuffer(sc, durationSeconds, numRays, maxOrder)
+			lateBuffer, err := pipeline.RenderLateBuffer(sc, lateCfg)
 			if err != nil {
 				return err
 			}

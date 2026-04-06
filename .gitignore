@@ -5,6 +5,8 @@
 *.dll
 *.so
 *.dylib
+/roomir
+/wasm
 
 # GPU build artefacts (compiled by nvcc, not part of source)
 gpu/fdtd/fdtd_bench

@@ -3,6 +3,7 @@ package export
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 
@@ -82,6 +83,26 @@ func Float64ToInt16(samples []float64) []int16 {
 	return out
 }
 
+// EncodeMonoWAVBytes encodes a mono 16-bit PCM WAV into an in-memory byte slice.
+func EncodeMonoWAVBytes(buf *ir.Buffer) ([]byte, error) {
+	if buf == nil {
+		return nil, errors.New("buffer must not be nil")
+	}
+
+	if buf.SampleRate <= 0 {
+		return nil, errors.New("buffer sample rate must be positive")
+	}
+
+	var output memBuffer
+
+	err := encodeWAV(&output, buf.SampleRate, 1, monoData(buf.Samples))
+	if err != nil {
+		return nil, err
+	}
+
+	return output.bytes(), nil
+}
+
 func writeWAV(path string, sampleRate int, numChans int, data []float32) (err error) {
 	file, err := os.Create(path)
 	if err != nil {
@@ -95,9 +116,13 @@ func writeWAV(path string, sampleRate int, numChans int, data []float32) (err er
 		}
 	}()
 
-	encoder := wav.NewEncoder(file, sampleRate, 16, numChans, 1)
+	return encodeWAV(file, sampleRate, numChans, data)
+}
 
-	err = encoder.Write(&audio.Float32Buffer{
+func encodeWAV(w io.WriteSeeker, sampleRate int, numChans int, data []float32) error {
+	encoder := wav.NewEncoder(w, sampleRate, 16, numChans, 1)
+
+	err := encoder.Write(&audio.Float32Buffer{
 		Format: &audio.Format{
 			NumChannels: numChans,
 			SampleRate:  sampleRate,
@@ -114,6 +139,53 @@ func writeWAV(path string, sampleRate int, numChans int, data []float32) (err er
 	}
 
 	return nil
+}
+
+// memBuffer is an in-memory io.WriteSeeker for WAV encoding.
+type memBuffer struct {
+	data []byte
+	pos  int64
+}
+
+func (m *memBuffer) Write(p []byte) (int, error) {
+	end := m.pos + int64(len(p))
+	if end > int64(len(m.data)) {
+		grown := make([]byte, end)
+		copy(grown, m.data)
+		m.data = grown
+	}
+
+	copy(m.data[m.pos:end], p)
+	m.pos = end
+
+	return len(p), nil
+}
+
+func (m *memBuffer) Seek(offset int64, whence int) (int64, error) {
+	var next int64
+
+	switch whence {
+	case io.SeekStart:
+		next = offset
+	case io.SeekCurrent:
+		next = m.pos + offset
+	case io.SeekEnd:
+		next = int64(len(m.data)) + offset
+	default:
+		return 0, fmt.Errorf("unsupported seek whence %d", whence)
+	}
+
+	if next < 0 {
+		return 0, fmt.Errorf("negative seek position %d", next)
+	}
+
+	m.pos = next
+
+	return next, nil
+}
+
+func (m *memBuffer) bytes() []byte {
+	return append([]byte(nil), m.data...)
 }
 
 func monoData(samples []float64) []float32 {

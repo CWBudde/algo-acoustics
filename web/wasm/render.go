@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"math"
 	"strings"
@@ -14,14 +13,12 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/directivity"
+	"github.com/cwbudde/algo-acoustics/export"
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/hybrid"
+	"github.com/cwbudde/algo-acoustics/internal/pipeline"
 	"github.com/cwbudde/algo-acoustics/ir"
-	"github.com/cwbudde/algo-acoustics/ism"
-	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
-	"github.com/cwbudde/wav"
-	"github.com/go-audio/audio"
 )
 
 const (
@@ -35,9 +32,6 @@ const (
 	defaultReceiverRadius    = 0.25
 	defaultHistogramBinSecs  = 0.01
 	positionMarginMeters     = 0.15
-	pcmBitDepth              = 16
-	pcmMonoChannels          = 1
-	pcmAudioFormat           = 1
 )
 
 var materialLibrary = map[string]scene.Material{
@@ -236,6 +230,15 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		BandSpec:        sc.BandSpec,
 	}
 
+	earlyCfg := pipeline.EarlyConfig{MaxOrder: normalized.Render.MaxOrder}
+	lateCfg := pipeline.LateConfig{
+		NumRays:            normalized.Render.NumRays,
+		MaxOrder:           normalized.Render.MaxOrder,
+		DurationSeconds:    normalized.Render.DurationSeconds,
+		ReceiverRadius:     defaultReceiverRadius,
+		BinDurationSeconds: defaultHistogramBinSecs,
+	}
+
 	var (
 		buffer      *ir.Buffer
 		earlyEvents []ir.Event
@@ -244,7 +247,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	switch normalized.Render.Mode {
 	case "early":
 		reportDemoProgress("early", 25, "Tracing early reflections")
-		earlyEvents, err = solveEarly(sc, normalized.Render.MaxOrder)
+		earlyEvents, err = pipeline.SolveEarly(sc, earlyCfg)
 		if err != nil {
 			return demoResult{}, err
 		}
@@ -259,13 +262,13 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		}
 	case "late":
 		reportDemoProgress("late", 35, "Tracing late field")
-		buffer, err = renderLateBuffer(sc, normalized.Render.DurationSeconds, normalized.Render.NumRays, normalized.Render.MaxOrder)
+		buffer, err = pipeline.RenderLateBuffer(sc, lateCfg)
 		if err != nil {
 			return demoResult{}, err
 		}
 	case "hybrid":
 		reportDemoProgress("early", 22, "Tracing early reflections")
-		earlyEvents, err = solveEarly(sc, normalized.Render.MaxOrder)
+		earlyEvents, err = pipeline.SolveEarly(sc, earlyCfg)
 		if err != nil {
 			return demoResult{}, err
 		}
@@ -280,7 +283,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		}
 
 		reportDemoProgress("late", 58, "Tracing late field")
-		lateBuffer, renderErr := renderLateBuffer(sc, normalized.Render.DurationSeconds, normalized.Render.NumRays, normalized.Render.MaxOrder)
+		lateBuffer, renderErr := pipeline.RenderLateBuffer(sc, lateCfg)
 		if renderErr != nil {
 			return demoResult{}, renderErr
 		}
@@ -299,10 +302,9 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 			},
 		}
 
-		lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, hybridCfg)
-		buffer = hybrid.CombineBuffers(earlyBuffer, lateBuffer, hybridCfg)
-		if buffer == nil {
-			return demoResult{}, errors.New("combine hybrid buffers")
+		buffer, err = pipeline.RenderHybrid(earlyBuffer, lateBuffer, earlyEvents, hybridCfg)
+		if err != nil {
+			return demoResult{}, err
 		}
 	default:
 		return demoResult{}, fmt.Errorf("unsupported render mode %q", normalized.Render.Mode)
@@ -314,7 +316,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	currentDemoAPIState.storeResult(demoResult{}, buffer)
 
 	reportDemoProgress("encode", 95, "Encoding WAV")
-	wavBytes, err := encodeMonoWAVBytes(buffer)
+	wavBytes, err := export.EncodeMonoWAVBytes(buffer)
 	if err != nil {
 		return demoResult{}, err
 	}
@@ -322,7 +324,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		return demoResult{}, errors.New("render cancelled")
 	}
 
-	peak, rms, firstArrivalMs := analyzeSamples(buffer.Samples, buffer.SampleRate)
+	stats := ir.Stats(buffer)
 	if demoCancelled() {
 		return demoResult{}, errors.New("render cancelled")
 	}
@@ -339,9 +341,9 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		DurationSeconds: normalized.Render.DurationSeconds,
 		EarlyEventCount: len(earlyEvents),
 		NumRays:         normalized.Render.NumRays,
-		PeakAmplitude:   peak,
-		RMSAmplitude:    rms,
-		FirstArrivalMs:  firstArrivalMs,
+		PeakAmplitude:   stats.PeakAmplitude,
+		RMSAmplitude:    stats.RMSAmplitude,
+		FirstArrivalMs:  stats.FirstArrivalMs,
 		RenderMS:        float64(time.Since(started).Milliseconds()),
 		Samples:         floatSamples,
 		WAVBytes:        wavBytes,
@@ -559,116 +561,6 @@ func buildDemoGeometryMesh(mesh *demoMesh) *geometry.Mesh {
 	return out
 }
 
-func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {
-	solver := ism.ISMSolver{}
-
-	events, err := solver.Solve(sc, ism.ISMConfig{
-		MaxOrder:     maxOrder,
-		SpeedOfSound: acoustics.SpeedOfSound,
-		BandSpec:     sc.BandSpec,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("solve early reflections: %w", err)
-	}
-
-	return events, nil
-}
-
-func renderLateBuffer(sc *scene.Scene, durationSeconds float64, numRays, maxOrder int) (*ir.Buffer, error) {
-	// Derive maxBounces from the simulation duration, not the ISM order.
-	// A ray needs enough bounces to reach durationSeconds: at SpeedOfSound m/s over
-	// the typical room diagonal (~8m), that is roughly duration*343/8 bounces.
-	// We clamp to a sensible range so short scenes and long simulations stay reasonable.
-	bounceEstimate := int(math.Ceil(durationSeconds*acoustics.SpeedOfSound/8.0)) + 4
-	maxBounces := max(bounceEstimate, maxOrder*2)
-
-	tracer := raytrace.RayTracer{
-		Config: raytrace.LaunchConfig{
-			NumRays:        numRays,
-			MaxBounces:     maxBounces,
-			MaxTimeSeconds: durationSeconds,
-			SpeedOfSound:   acoustics.SpeedOfSound,
-		},
-		Scene:              sc,
-		ReceiverRadius:     defaultReceiverRadius,
-		BinDurationSeconds: defaultHistogramBinSecs,
-	}
-
-	histogram, err := tracer.Trace()
-	if err != nil {
-		return nil, fmt.Errorf("trace late field: %w", err)
-	}
-
-	return hybrid.HistogramToBuffer(histogram, sc.SampleRate), nil
-}
-
-func encodeMonoWAVBytes(buf *ir.Buffer) ([]byte, error) {
-	if buf == nil {
-		return nil, errors.New("buffer must not be nil")
-	}
-
-	if buf.SampleRate <= 0 {
-		return nil, errors.New("buffer sample rate must be positive")
-	}
-
-	var output memoryWAVWriter
-	encoder := wav.NewEncoder(&output, buf.SampleRate, pcmBitDepth, pcmMonoChannels, pcmAudioFormat)
-
-	samples := make([]float32, len(buf.Samples))
-	for index, sample := range buf.Samples {
-		samples[index] = float32(sample)
-	}
-
-	err := encoder.Write(&audio.Float32Buffer{
-		Format: &audio.Format{NumChannels: pcmMonoChannels, SampleRate: buf.SampleRate},
-		Data:   samples,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("write wav data: %w", err)
-	}
-
-	err = encoder.Close()
-	if err != nil {
-		return nil, fmt.Errorf("close wav encoder: %w", err)
-	}
-
-	return output.Bytes(), nil
-}
-
-func analyzeSamples(samples []float64, sampleRate int) (peak, rms, firstArrivalMs float64) {
-	if len(samples) == 0 || sampleRate <= 0 {
-		return 0, 0, 0
-	}
-
-	firstArrivalIndex := -1
-	var energySum float64
-
-	for index, sample := range samples {
-		if index%4096 == 0 && demoCancelled() {
-			return 0, 0, 0
-		}
-
-		magnitude := math.Abs(sample)
-		if magnitude > peak {
-			peak = magnitude
-		}
-
-		energySum += sample * sample
-
-		if firstArrivalIndex < 0 && magnitude > 1e-9 {
-			firstArrivalIndex = index
-		}
-	}
-
-	rms = math.Sqrt(energySum / float64(len(samples)))
-
-	if firstArrivalIndex >= 0 {
-		firstArrivalMs = float64(firstArrivalIndex) * 1000 / float64(sampleRate)
-	}
-
-	return peak, rms, firstArrivalMs
-}
-
 func normalizeMaterialName(name, fallback string) string {
 	trimmed := strings.TrimSpace(name)
 	if _, ok := materialLibrary[trimmed]; ok {
@@ -701,84 +593,10 @@ func normalizeMode(name, fallback string) (string, error) {
 	}
 }
 
-func clamp(value, minValue, maxValue float64) float64 {
-	if maxValue < minValue {
-		maxValue = minValue
-	}
-
-	if value < minValue {
-		return minValue
-	}
-
-	if value > maxValue {
-		return maxValue
-	}
-
-	return value
+func clamp(value, lo, hi float64) float64 {
+	return max(lo, min(value, max(lo, hi)))
 }
 
-func clampInt(value, minValue, maxValue int) int {
-	if maxValue < minValue {
-		maxValue = minValue
-	}
-
-	if value < minValue {
-		return minValue
-	}
-
-	if value > maxValue {
-		return maxValue
-	}
-
-	return value
-}
-
-type memoryWAVWriter struct {
-	data []byte
-	pos  int64
-}
-
-func (w *memoryWAVWriter) Write(p []byte) (int, error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-
-	end := w.pos + int64(len(p))
-	if end > int64(len(w.data)) {
-		grown := make([]byte, end)
-		copy(grown, w.data)
-		w.data = grown
-	}
-
-	copy(w.data[w.pos:end], p)
-	w.pos = end
-
-	return len(p), nil
-}
-
-func (w *memoryWAVWriter) Seek(offset int64, whence int) (int64, error) {
-	var next int64
-
-	switch whence {
-	case io.SeekStart:
-		next = offset
-	case io.SeekCurrent:
-		next = w.pos + offset
-	case io.SeekEnd:
-		next = int64(len(w.data)) + offset
-	default:
-		return 0, fmt.Errorf("unsupported seek whence %d", whence)
-	}
-
-	if next < 0 {
-		return 0, fmt.Errorf("negative seek position %d", next)
-	}
-
-	w.pos = next
-
-	return next, nil
-}
-
-func (w *memoryWAVWriter) Bytes() []byte {
-	return append([]byte(nil), w.data...)
+func clampInt(value, lo, hi int) int {
+	return max(lo, min(value, max(lo, hi)))
 }
