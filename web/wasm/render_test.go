@@ -126,10 +126,9 @@ func TestRunDemoRenderModesProduceDifferentResults(t *testing.T) {
 	}
 }
 
-// TestRunDemoRenderMeshRoomForcesLateMode verifies that a mesh room always runs
-// in "late" mode regardless of the requested mode, and that result.Mode
-// reflects the actual mode used (not the user's request).
-func TestRunDemoRenderMeshRoomForcesLateMode(t *testing.T) {
+// TestRunDemoRenderMeshRoomSupportsAllModes verifies that mesh rooms support
+// early, late, and hybrid rendering modes (not forced to late).
+func TestRunDemoRenderMeshRoomSupportsAllModes(t *testing.T) {
 	t.Parallel()
 
 	mesh := smallCubeMeshRequest(4, 3, 2.5)
@@ -152,19 +151,21 @@ func TestRunDemoRenderMeshRoomForcesLateMode(t *testing.T) {
 			t.Fatalf("requested=%q runDemoRender() error = %v", requested, err)
 		}
 
-		if result.Mode != "late" {
-			t.Errorf("requested=%q: result.Mode = %q, want %q (mesh rooms must run as late)",
-				requested, result.Mode, "late")
-		}
-
-		// Mesh room in late mode must never return ISM events.
-		if result.EarlyEventCount != 0 {
-			t.Errorf("requested=%q: EarlyEventCount = %d, want 0 for mesh room in late mode",
-				requested, result.EarlyEventCount)
+		if result.Mode != requested {
+			t.Errorf("requested=%q: result.Mode = %q, want %q",
+				requested, result.Mode, requested)
 		}
 
 		if result.PeakAmplitude <= 0 {
 			t.Errorf("requested=%q: PeakAmplitude = %v, want > 0", requested, result.PeakAmplitude)
+		}
+
+		// Early and hybrid modes should produce ISM events for mesh rooms.
+		if requested == "early" || requested == "hybrid" {
+			if result.EarlyEventCount == 0 {
+				t.Errorf("requested=%q: EarlyEventCount = 0, want > 0 for mesh ISM",
+					requested)
+			}
 		}
 	}
 }

@@ -10,7 +10,10 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-const meshCoplanarEpsilon = 1e-6
+const (
+	meshCoplanarEpsilon = 1e-6
+	meshRayOffset       = 1e-6
+)
 
 // meshReflectionPoint records one validated reflection on a mesh triangle.
 type meshReflectionPoint struct {
@@ -44,11 +47,11 @@ func solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 		}
 
 		imgCfg := MeshISMConfig{
-			MaxOrder:   cfg.MaxOrder,
+			MaxOrder:    cfg.MaxOrder,
 			MaxDistance: meshMaxDistance(sc, speedOfSound),
 		}
 
-		imageSources := GenerateMeshImageSources(source.Position, sc.Room.Mesh, bvh, imgCfg)
+		imageSources := GenerateMeshImageSources(source.Position, sc.Room.Mesh, imgCfg)
 
 		for _, imgSrc := range imageSources {
 			if imgSrc.Order == 0 {
@@ -126,8 +129,17 @@ func meshSpecularEvent(
 }
 
 // meshReflectionPath validates the specular path by tracing from receiver
-// toward the image source, checking each reflection against expected triangles.
-// Returns reflection points in source-to-receiver order.
+// backward through each reflection plane, unfolding the image source at each
+// step. Returns reflection points in source-to-receiver order.
+//
+// For an order-N image source with TriangleHits [t0, t1, ..., tN-1]:
+//   - t0 is the first reflection (closest to source)
+//   - tN-1 is the last reflection (closest to receiver)
+//
+// We trace from receiver and unfold backward:
+//  1. target = imgSrc.Position; trace receiver → target, hit tN-1 at pN-1
+//  2. target = reflect(target, plane of tN-1); trace pN-1 → target, hit tN-2
+//  3. ... until all reflections are found
 func meshReflectionPath(
 	imgSrc MeshImageSource,
 	receiver geometry.Vec3,
@@ -141,9 +153,10 @@ func meshReflectionPath(
 
 	points := make([]meshReflectionPoint, 0, order)
 	current := receiver
+	target := imgSrc.Position
 
 	for i := order - 1; i >= 0; i-- {
-		direction := imgSrc.Position.Sub(current)
+		direction := target.Sub(current)
 		dist := direction.Norm()
 
 		if dist <= pathEpsilon {
@@ -155,7 +168,7 @@ func meshReflectionPath(
 			Direction: direction.Scale(1 / dist),
 		}
 
-		t, triIdx, hit := bvh.Intersect(ray)
+		hitT, triIdx, hit := bvh.Intersect(ray)
 		if !hit {
 			return nil, false
 		}
@@ -165,7 +178,7 @@ func meshReflectionPath(
 			return nil, false
 		}
 
-		hitPoint := ray.At(t)
+		hitPoint := ray.At(hitT)
 		normal := mesh.Triangles[triIdx].Normal()
 
 		points = append(points, meshReflectionPoint{
@@ -174,7 +187,15 @@ func meshReflectionPath(
 			TriIndex: triIdx,
 		})
 
-		current = hitPoint
+		// Unfold: reflect the target back through the plane we just hit,
+		// so the next segment traces toward the previous image source.
+		plane := geometry.NewPlaneFromPointNormal(hitPoint, normal)
+		target = plane.ReflectPoint(target)
+
+		// Offset along the inward normal to avoid self-intersection.
+		// The normal points into the room, so this moves us to the
+		// interior side of the surface.
+		current = hitPoint.Add(normal.Scale(meshRayOffset))
 	}
 
 	// Reverse to source-to-receiver order.

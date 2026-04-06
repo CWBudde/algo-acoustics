@@ -488,3 +488,153 @@ func theoreticalAmplitudeSum(sc scene.Scene) float64 {
 
 	return total
 }
+
+func TestISMSolverSolveMeshRoom(t *testing.T) {
+	t.Parallel()
+
+	mesh := geometry.MeshFromBox(geometry.Vec3{}, geometry.Vec3{X: 4, Y: 3, Z: 2.5})
+	sc := &scene.Scene{
+		Room: scene.Room{
+			Kind:         scene.RoomKindMesh,
+			Mesh:         mesh,
+			MeshMaterial: "plaster",
+		},
+		Materials: map[string]scene.Material{
+			"plaster": {
+				Name:             "plaster",
+				AbsorptionByBand: []float64{0.01, 0.02, 0.02, 0.03, 0.04, 0.05},
+			},
+		},
+		Sources:    []scene.Source{{Position: geometry.Vec3{X: 1, Y: 1.5, Z: 1.25}}},
+		Receivers:  []scene.Receiver{{Position: geometry.Vec3{X: 3, Y: 1.5, Z: 1.25}}},
+		BandSpec:   acoustics.Octave6,
+		SampleRate: 48000,
+	}
+
+	solver := ISMSolver{}
+
+	events, err := solver.Solve(sc, ISMConfig{
+		MaxOrder:     3,
+		SpeedOfSound: acoustics.SpeedOfSound,
+		BandSpec:     acoustics.Octave6,
+	})
+	if err != nil {
+		t.Fatalf("Solve() error = %v", err)
+	}
+
+	hasDirect := false
+	hasSpecular := false
+
+	for _, e := range events {
+		if e.Kind == ir.EventDirect {
+			hasDirect = true
+		}
+
+		if e.Kind == ir.EventSpecular {
+			hasSpecular = true
+		}
+	}
+
+	if !hasDirect {
+		t.Error("no direct event from mesh ISM")
+	}
+
+	if !hasSpecular {
+		t.Error("no specular events from mesh ISM")
+	}
+}
+
+func TestMeshISMMatchesShoeboxISMEventCount(t *testing.T) {
+	t.Parallel()
+
+	const (
+		width  = 4.0
+		depth  = 3.0
+		height = 2.5
+	)
+
+	materials := map[string]scene.Material{
+		"m": {
+			Name:             "m",
+			AbsorptionByBand: []float64{0.01, 0.02, 0.02, 0.03, 0.04, 0.05},
+		},
+	}
+
+	srcPos := geometry.Vec3{X: 1, Y: 1.5, Z: 1.25}
+	rcvPos := geometry.Vec3{X: 3, Y: 1.5, Z: 1.25}
+
+	shoeboxScene := &scene.Scene{
+		Room: scene.Room{
+			Kind: scene.RoomKindShoebox,
+			Shoebox: &scene.Shoebox{
+				Width: width, Depth: depth, Height: height,
+				WallMaterials: [6]string{"m", "m", "m", "m", "m", "m"},
+			},
+		},
+		Materials:  materials,
+		Sources:    []scene.Source{{Position: srcPos}},
+		Receivers:  []scene.Receiver{{Position: rcvPos}},
+		BandSpec:   acoustics.Octave6,
+		SampleRate: 48000,
+	}
+
+	mesh := geometry.MeshFromBox(geometry.Vec3{}, geometry.Vec3{X: width, Y: depth, Z: height})
+	meshScene := &scene.Scene{
+		Room: scene.Room{
+			Kind:         scene.RoomKindMesh,
+			Mesh:         mesh,
+			MeshMaterial: "m",
+		},
+		Materials:  materials,
+		Sources:    []scene.Source{{Position: srcPos}},
+		Receivers:  []scene.Receiver{{Position: rcvPos}},
+		BandSpec:   acoustics.Octave6,
+		SampleRate: 48000,
+	}
+
+	cfg := ISMConfig{
+		MaxOrder:     3,
+		SpeedOfSound: acoustics.SpeedOfSound,
+		BandSpec:     acoustics.Octave6,
+	}
+
+	solver := ISMSolver{}
+
+	shoeboxEvents, err := solver.Solve(shoeboxScene, cfg)
+	if err != nil {
+		t.Fatalf("shoebox Solve error = %v", err)
+	}
+
+	meshEvents, err := solver.Solve(meshScene, cfg)
+	if err != nil {
+		t.Fatalf("mesh Solve error = %v", err)
+	}
+
+	shoeboxSpecular := countEventKind(shoeboxEvents, ir.EventSpecular)
+	meshSpecular := countEventKind(meshEvents, ir.EventSpecular)
+
+	t.Logf("shoebox: %d specular, mesh: %d specular", shoeboxSpecular, meshSpecular)
+
+	if meshSpecular == 0 {
+		t.Fatal("mesh ISM produced zero specular events")
+	}
+
+	// Mesh should find at least 50% of what shoebox finds (triangulation may
+	// miss edge cases due to BVH precision and split planes).
+	if meshSpecular < shoeboxSpecular/2 {
+		t.Fatalf("mesh specular (%d) is less than half of shoebox (%d)",
+			meshSpecular, shoeboxSpecular)
+	}
+}
+
+func countEventKind(events []ir.Event, kind ir.EventKind) int {
+	n := 0
+
+	for _, e := range events {
+		if e.Kind == kind {
+			n++
+		}
+	}
+
+	return n
+}

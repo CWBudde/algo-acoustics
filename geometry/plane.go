@@ -26,3 +26,8 @@ func (p Plane) SideOf(point Vec3) float64 {
 func (p Plane) Reflect(v Vec3) Vec3 {
 	return v.Sub(p.Normal.Scale(2 * v.Dot(p.Normal)))
 }
+
+// ReflectPoint mirrors a point across the plane: p' = p − 2·(n·p − d)·n.
+func (p Plane) ReflectPoint(point Vec3) Vec3 {
+	return point.Sub(p.Normal.Scale(2 * p.SideOf(point)))
+}

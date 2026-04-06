@@ -37,10 +37,6 @@ func (ISMSolver) Solve(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 		return nil, fmt.Errorf("validate scene: %w", err)
 	}
 
-	if sc.Room.Kind != scene.RoomKindShoebox || sc.Room.Shoebox == nil {
-		return nil, errors.New("ISM solver requires a shoebox room")
-	}
-
 	if len(sc.Sources) == 0 {
 		return nil, errors.New("ISM solver requires at least one source")
 	}
@@ -51,6 +47,21 @@ func (ISMSolver) Solve(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 
 	if len(sc.Receivers) > 1 {
 		return nil, fmt.Errorf("ISM solver currently supports exactly one receiver, got %d", len(sc.Receivers))
+	}
+
+	switch sc.Room.Kind {
+	case scene.RoomKindMesh:
+		if sc.Room.Mesh == nil {
+			return nil, errors.New("ISM solver requires a mesh for mesh rooms")
+		}
+
+		return solveMesh(sc, cfg)
+	case scene.RoomKindShoebox:
+		if sc.Room.Shoebox == nil {
+			return nil, errors.New("ISM solver requires shoebox dimensions")
+		}
+	default:
+		return nil, fmt.Errorf("ISM solver does not support room kind %q", sc.Room.Kind)
 	}
 
 	bandSpec := cfg.BandSpec

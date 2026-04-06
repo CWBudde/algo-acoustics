@@ -12,7 +12,7 @@ const defaultMaxCandidates = 500_000
 // MeshISMConfig configures mesh image source generation.
 type MeshISMConfig struct {
 	MaxOrder      int
-	MaxDistance    float64
+	MaxDistance   float64
 	MaxCandidates int // 0 = default (500_000)
 }
 
@@ -64,7 +64,7 @@ func meshUniquePlanes(mesh *geometry.Mesh) []meshUniquePlane {
 }
 
 // GenerateMeshImageSources enumerates mesh image sources up to the configured limits.
-func GenerateMeshImageSources(src geometry.Vec3, mesh *geometry.Mesh, bvh *geometry.BVHNode, cfg MeshISMConfig) []MeshImageSource {
+func GenerateMeshImageSources(src geometry.Vec3, mesh *geometry.Mesh, cfg MeshISMConfig) []MeshImageSource {
 	if mesh == nil || cfg.MaxOrder < 0 {
 		return nil
 	}

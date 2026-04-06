@@ -185,6 +185,47 @@ func TestPlaneReflectPreservesLength(t *testing.T) {
 	}
 }
 
+func TestPlaneReflectPoint(t *testing.T) {
+	t.Parallel()
+
+	// Floor plane at z=0, normal pointing up.
+	p := geometry.NewPlaneFromPointNormal(geometry.Vec3Zero, geometry.Vec3{Z: 1})
+
+	got := p.ReflectPoint(geometry.Vec3{X: 1, Y: 2, Z: 3})
+	want := geometry.Vec3{X: 1, Y: 2, Z: -3}
+
+	if !vec3Near(got, want, 1e-12) {
+		t.Errorf("ReflectPoint = %v, want %v", got, want)
+	}
+}
+
+func TestPlaneReflectPointOnPlane(t *testing.T) {
+	t.Parallel()
+
+	p := geometry.NewPlaneFromPointNormal(geometry.Vec3{Z: 5}, geometry.Vec3{Z: 1})
+	got := p.ReflectPoint(geometry.Vec3{X: 3, Y: 4, Z: 5})
+	want := geometry.Vec3{X: 3, Y: 4, Z: 5}
+
+	if !vec3Near(got, want, 1e-12) {
+		t.Errorf("ReflectPoint on plane = %v, want %v", got, want)
+	}
+}
+
+func TestPlaneReflectPointPreservesDistance(t *testing.T) {
+	t.Parallel()
+
+	p := geometry.NewPlaneFromPointNormal(geometry.Vec3{X: 2}, geometry.Vec3{X: 1})
+	point := geometry.Vec3{X: 5, Y: 1, Z: -1}
+	reflected := p.ReflectPoint(point)
+
+	distBefore := math.Abs(p.SideOf(point))
+	distAfter := math.Abs(p.SideOf(reflected))
+
+	if math.Abs(distBefore-distAfter) > 1e-12 {
+		t.Errorf("distance changed: before=%v, after=%v", distBefore, distAfter)
+	}
+}
+
 func TestPlaneSideOf(t *testing.T) {
 	p := geometry.NewPlaneFromPointNormal(geometry.Vec3{0, 1, 0}, geometry.Vec3{0, 1, 0})
 

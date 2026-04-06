@@ -13,10 +13,9 @@ func TestGenerateMeshImageSourcesOrder0(t *testing.T) {
 		geometry.Vec3{X: 0, Y: 0, Z: 0},
 		geometry.Vec3{X: 2, Y: 2, Z: 2},
 	)
-	bvh := geometry.BuildBVH(mesh)
 	src := geometry.Vec3{X: 1, Y: 1, Z: 1}
 
-	sources := GenerateMeshImageSources(src, mesh, bvh, MeshISMConfig{
+	sources := GenerateMeshImageSources(src, mesh, MeshISMConfig{
 		MaxOrder: 0,
 	})
 
@@ -40,10 +39,9 @@ func TestGenerateMeshImageSourcesOrder1(t *testing.T) {
 		geometry.Vec3{X: 0, Y: 0, Z: 0},
 		geometry.Vec3{X: 2, Y: 2, Z: 2},
 	)
-	bvh := geometry.BuildBVH(mesh)
 	src := geometry.Vec3{X: 1, Y: 1, Z: 1}
 
-	sources := GenerateMeshImageSources(src, mesh, bvh, MeshISMConfig{
+	sources := GenerateMeshImageSources(src, mesh, MeshISMConfig{
 		MaxOrder: 1,
 	})
 
@@ -73,17 +71,16 @@ func TestGenerateMeshImageSourcesRespectsMaxDistance(t *testing.T) {
 		geometry.Vec3{X: 0, Y: 0, Z: 0},
 		geometry.Vec3{X: 2, Y: 2, Z: 2},
 	)
-	bvh := geometry.BuildBVH(mesh)
 	src := geometry.Vec3{X: 1, Y: 1, Z: 1}
 
-	far := GenerateMeshImageSources(src, mesh, bvh, MeshISMConfig{
+	far := GenerateMeshImageSources(src, mesh, MeshISMConfig{
 		MaxOrder:    3,
-		MaxDistance:  100,
+		MaxDistance: 100,
 	})
 
-	near := GenerateMeshImageSources(src, mesh, bvh, MeshISMConfig{
+	near := GenerateMeshImageSources(src, mesh, MeshISMConfig{
 		MaxOrder:    3,
-		MaxDistance:  1.5,
+		MaxDistance: 1.5,
 	})
 
 	if len(near) >= len(far) {
@@ -98,17 +95,16 @@ func TestGenerateMeshImageSourcesRespectsMaxCandidates(t *testing.T) {
 		geometry.Vec3{X: 0, Y: 0, Z: 0},
 		geometry.Vec3{X: 2, Y: 2, Z: 2},
 	)
-	bvh := geometry.BuildBVH(mesh)
 	src := geometry.Vec3{X: 1, Y: 1, Z: 1}
 
-	cap := 10
+	maxCandidates := 10
 
-	sources := GenerateMeshImageSources(src, mesh, bvh, MeshISMConfig{
+	sources := GenerateMeshImageSources(src, mesh, MeshISMConfig{
 		MaxOrder:      5,
-		MaxCandidates: cap,
+		MaxCandidates: maxCandidates,
 	})
 
-	if len(sources) > cap {
-		t.Fatalf("got %d sources, want <= %d", len(sources), cap)
+	if len(sources) > maxCandidates {
+		t.Fatalf("got %d sources, want <= %d", len(sources), maxCandidates)
 	}
 }

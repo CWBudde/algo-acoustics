@@ -401,10 +401,7 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	}
 
 	request.Render.Mode = mode
-	if request.Room.Kind == "mesh" {
-		request.Render.Mode = "late"
-		request.Render.CrossoverTimeSeconds = defaults.Render.CrossoverTimeSeconds
-	}
+
 	if request.Render.MaxOrder <= 0 {
 		request.Render.MaxOrder = defaults.Render.MaxOrder
 	}
@@ -491,8 +488,9 @@ func buildDemoScene(request demoRequest) (*scene.Scene, error) {
 			mesh = buildDemoLoftMesh(request.Room.Width, request.Room.Depth, request.Room.Height)
 		}
 		room = scene.Room{
-			Kind: scene.RoomKindMesh,
-			Mesh: mesh,
+			Kind:         scene.RoomKindMesh,
+			Mesh:         mesh,
+			MeshMaterial: request.Materials.West,
 		}
 	}
 
