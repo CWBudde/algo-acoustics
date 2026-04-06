@@ -1319,27 +1319,27 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone O: physically correct late reverberation from fewer rays
 
-> The two most impactful improvements from the RAVEN dissertation: (1) diffuse rain sends secondary energy toward the receiver at every scattered reflection, reducing the particle count needed for convergence by 4-10x, and (2) Poisson noise synthesis generates the temporal fine structure of late reverberation from the energy histogram, producing perceptually superior late-field texture. See `docs/raven.md` Sections 3.2--3.5.
+> The two most impactful improvements from the RAVEN dissertation: (1) diffuse rain sends secondary energy toward the receiver at every scattered reflection, reducing the particle count needed for convergence by 4-10x, and (2) Poisson noise synthesis generates the temporal fine structure of late reverberation from the energy histogram, producing perceptually superior late-field texture. See `docs/raven2.md` Sections 3.2--3.5.
 
 ### 19.1 Diffuse rain — spherical detector (`raytrace/`)
 
-- [ ] At each diffuse reflection, compute the secondary radiation energy toward the receiver sphere:
+- [x] At each diffuse reflection, compute the secondary radiation energy toward the receiver sphere:
   - `E_s = E_P * (1-alpha) * s * (1 - cos(gamma/2)) * 2 * cos(Theta) * exp(-m*r)`
   - `E_P`: particle energy before wall hit; `alpha`, `s`: wall absorption/scattering; `gamma`: detector opening angle; `Theta`: angle between surface normal and direction to receiver; `r`: distance from reflection point to receiver center; `m`: air absorption coefficient
-- [ ] Add BVH visibility check from each diffuse reflection point to the receiver center — skip if occluded
-- [ ] Compute arrival time: `t = t_particle + r/c` and bin into the existing `EnergyHistogram`
-- [ ] Add per-band Lambert-weighted energy contribution (reuse `AlphaAirISO9613_1` for `m` per band)
-- [ ] Make diffuse rain toggleable via `LaunchConfig.DiffuseRain bool` (default: true)
-- [ ] Unit test: free-field with one reflective wall — diffuse rain energy matches analytical diffuse-rain formula within 5%
-- [ ] Unit test: occluded receiver behind a second wall — rain contribution is correctly blocked
+- [x] Add BVH visibility check from each diffuse reflection point to the receiver center — skip if occluded
+- [x] Compute arrival time: `t = t_particle + r/c` and bin into the existing `EnergyHistogram`
+- [x] Add per-band Lambert-weighted energy contribution (reuse `AlphaAirISO9613_1` for `m` per band)
+- [x] Make diffuse rain toggleable via `LaunchConfig.DiffuseRain bool` (default: true)
+- [x] Unit test: free-field with one reflective wall — diffuse rain energy matches analytical diffuse-rain formula within 5%
+- [x] Unit test: occluded receiver behind a second wall — rain contribution is correctly blocked
 
 ### 19.2 Diffuse rain — surface detector (portal preparation) (`raytrace/`)
 
-- [ ] Implement the surface-detector variant for planar receiver areas:
+- [x] Implement the surface-detector variant for planar receiver areas:
   - `E_s = E_P * (1-alpha) * s * A / (2*pi*r^2) * cos(Psi) * cos(Theta) * exp(-m*r)`
   - `Psi`: angle between connection vector and detector normal; `A`: detector area
-- [ ] Define `SurfaceReceiver` type with position, normal, area, and histogram — this will serve as the portal detector in Phase 21
-- [ ] Unit test: planar detector perpendicular to surface normal collects same total energy as spherical detector (within 10%)
+- [x] Define `SurfaceReceiver` type with position, normal, area, and histogram — this will serve as the portal detector in Phase 21
+- [x] Unit test: planar detector perpendicular to surface normal collects same total energy as spherical detector (within 10%)
 
 ### 19.3 Diffuse rain integration with hybrid model (`raytrace/`, `hybrid/`)
 
@@ -1387,7 +1387,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone P: directional late-field energy for binaural rendering
 
-> RAVEN subdivides the spherical detector into angular sectors (directivity groups, DGs). Each DG accumulates a separate energy histogram. During BRIR construction, the most probable HRIR is selected per time slot based on DG hit probabilities. This provides directional information for the diffuse late field, improving spatial perception of reverberation beyond what omni-directional ray detection achieves. See `docs/raven.md` Section 3.5.
+> RAVEN subdivides the spherical detector into angular sectors (directivity groups, DGs). Each DG accumulates a separate energy histogram. During BRIR construction, the most probable HRIR is selected per time slot based on DG hit probabilities. This provides directional information for the diffuse late field, improving spatial perception of reverberation beyond what omni-directional ray detection achieves. See `docs/raven2.md` Section 3.5.
 
 ### 20.1 Directivity group definition (`raytrace/`)
 
@@ -1426,7 +1426,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone Q: multi-room acoustic simulation with portal-based coupling
 
-> Enable basic sound transmission through walls and portals between adjacent rooms. This implements the secondary source model from the RAVEN dissertation (Section 5) without the full Acoustic Scene Graph infrastructure — just enough to handle the most common case of sound bleeding through a partition between two rooms. See `docs/raven.md` Section 5.
+> Enable basic sound transmission through walls and portals between adjacent rooms. This implements the secondary source model from the RAVEN dissertation (Section 5) without the full Acoustic Scene Graph infrastructure — just enough to handle the most common case of sound bleeding through a partition between two rooms. See `docs/raven2.md` Section 5.
 
 ### 21.1 Material transmission coefficients (`scene/`)
 
@@ -1473,7 +1473,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone R: improved shadow-zone accuracy for complex geometries
 
-> Extend diffraction beyond first-order UTD: (1) second-order diffraction via edge-to-edge paths using the BTME formulation, and (2) replace the Keller-cone sampling in the ray tracer with the physically-motivated DAPDF (Deflection Angle Probability Density Function). See `docs/raven.md` Sections 2.5 and 3.3.
+> Extend diffraction beyond first-order UTD: (1) second-order diffraction via edge-to-edge paths using the BTME formulation, and (2) replace the Keller-cone sampling in the ray tracer with the physically-motivated DAPDF (Deflection Angle Probability Density Function). See `docs/raven2.md` Sections 2.5 and 3.3.
 
 ### 22.1 Second-order edge diffraction (`ism/`, `geometry/`)
 
@@ -1535,7 +1535,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone S: faster image source generation for complex mesh rooms
 
-> For rooms with many coplanar polygons (architectural models), mirror across distinct planes instead of individual triangles. This reduces the IS count from $n(n-1)^{i-1}$ to $p(p-1)^{i-1}$ where $p \ll n$. Additionally, add per-particle hybrid detection logic for precise IS/RT energy partitioning. See `docs/raven.md` Sections 2.4 and 4.2.
+> For rooms with many coplanar polygons (architectural models), mirror across distinct planes instead of individual triangles. This reduces the IS count from $n(n-1)^{i-1}$ to $p(p-1)^{i-1}$ where $p \ll n$. Additionally, add per-particle hybrid detection logic for precise IS/RT energy partitioning. See `docs/raven2.md` Sections 2.4 and 4.2.
 
 ### 23.1 Plane-Polygon Map (`ism/`, `geometry/`)
 
@@ -1574,7 +1574,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone T: frequency-dependent directivity and standard HRTF exchange
 
-> Add frequency-dependent source directivity (real instruments radiate differently at different frequencies) and complete SOFA file loading for HRTFs. These are the remaining gaps for professional-grade auralization input data. See `docs/raven.md` Section 12.3 items 8-9.
+> Add frequency-dependent source directivity (real instruments radiate differently at different frequencies) and complete SOFA file loading for HRTFs. These are the remaining gaps for professional-grade auralization input data. See `docs/raven2.md` Section 12.3 items 8-9.
 
 ### 24.1 Frequency-dependent directivity models (`directivity/`)
 
@@ -1609,7 +1609,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### Milestone U: full multi-room simulation with portal networks and filter chains
 
-> The complete ASG/PST/PPG infrastructure enables simulation of complex multi-room environments: portal-based room coupling, source elimination for inaudible frequency bands, depth-first path search, and filter network construction for sound transmission through chains of rooms. This is the full realization of the RAVEN multi-room model. Builds on Phase 21's basic portal support. See `docs/raven.md` Section 5 and Section 10.
+> The complete ASG/PST/PPG infrastructure enables simulation of complex multi-room environments: portal-based room coupling, source elimination for inaudible frequency bands, depth-first path search, and filter network construction for sound transmission through chains of rooms. This is the full realization of the RAVEN multi-room model. Builds on Phase 21's basic portal support. See `docs/raven2.md` Section 5 and Section 10.
 
 ### 25.1 Acoustic Scene Graph (`scene/`)
 
