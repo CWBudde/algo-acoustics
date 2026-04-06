@@ -189,7 +189,7 @@ export function drawWaveform(canvas, samples = null, state = {}) {
   const zoom = clamp(Number(state.waveformZoom || 1), 0.5, 8);
   const peakIndex = findPeakIndex(downsampled);
   const peakValue = downsampled[peakIndex] ?? 0;
-  const peakX = (peakIndex / Math.max(1, downsampled.length - 1)) * width;
+  const peakX = layout.left + (peakIndex / Math.max(1, downsampled.length - 1)) * layout.width;
 
   if (view === "dB") {
     drawDbWaveform(context, layout, palette, downsampled, maxAmplitude, zoom);
@@ -200,7 +200,7 @@ export function drawWaveform(canvas, samples = null, state = {}) {
   drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, layout, zoom);
 
   if (state.renderMode === "hybrid") {
-    const x = (state.crossoverTimeSeconds / state.durationSeconds) * width;
+    const x = layout.left + (state.crossoverTimeSeconds / state.durationSeconds) * layout.width;
     drawDivider(context, palette, x, layout, state.crossoverTimeSeconds);
   }
 
