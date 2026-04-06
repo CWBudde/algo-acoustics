@@ -580,7 +580,12 @@ func solveEarly(sc *scene.Scene, maxOrder int) ([]ir.Event, error) {
 }
 
 func renderLateBuffer(sc *scene.Scene, durationSeconds float64, numRays, maxOrder int) (*ir.Buffer, error) {
-	maxBounces := max(maxOrder*2, 1)
+	// Derive maxBounces from the simulation duration, not the ISM order.
+	// A ray needs enough bounces to reach durationSeconds: at SpeedOfSound m/s over
+	// the typical room diagonal (~8m), that is roughly duration*343/8 bounces.
+	// We clamp to a sensible range so short scenes and long simulations stay reasonable.
+	bounceEstimate := int(math.Ceil(durationSeconds*acoustics.SpeedOfSound/8.0)) + 4
+	maxBounces := max(bounceEstimate, maxOrder*2)
 
 	tracer := raytrace.RayTracer{
 		Config: raytrace.LaunchConfig{
