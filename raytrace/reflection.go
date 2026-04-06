@@ -27,6 +27,7 @@ type RayState struct {
 	Energy     []float64
 	PathLength float64
 	Bounces    int
+	RainCovered bool // true when this ray's energy was already deposited by diffuse rain
 }
 
 func splitReflectionEnergy(in, absorption, scattering []float64) (specular, diffuse, remaining []float64) {

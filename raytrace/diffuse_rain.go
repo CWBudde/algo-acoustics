@@ -84,15 +84,14 @@ func computeDiffuseRain(
 		}
 	}
 
-	// Detector solid angle: opening angle gamma of the sphere as seen
-	// from the reflection point.
+	// Detector solid angle: the full opening angle gamma = 2*asin(R/r).
+	// cos(gamma/2) = cos(asin(R/r)) = sqrt(1 - (R/r)^2).
 	ratio := receiver.Radius / dist
 	if ratio > 1 {
 		ratio = 1
 	}
 
-	gamma := math.Asin(ratio)
-	cosHalfGamma := math.Cos(gamma / 2)
+	cosHalfGamma := math.Sqrt(1 - ratio*ratio)
 	solidAngleFactor := (1 - cosHalfGamma) * 2
 
 	// Compute per-band rain energy.

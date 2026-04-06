@@ -64,10 +64,12 @@ func TestDiffuseRainEnergyFreefield(t *testing.T) {
 
 	// The RAVEN formula for diffuse rain on a spherical detector:
 	//   E_s = E_P * s * (1 - cos(gamma/2)) * 2 * cos(Theta) * exp(-m*r)
+	// where gamma is the full opening angle = 2*asin(R/r), so
+	//   cos(gamma/2) = cos(asin(R/r)) = sqrt(1 - (R/r)^2)
 	// With cos(Theta) = 1.0 (normal points at receiver), r = 5.0 m.
 	r := 5.0
-	gamma := math.Asin(math.Min(1, receiver.Radius/r))
-	cosHalfGamma := math.Cos(gamma / 2)
+	ratio := receiver.Radius / r
+	cosHalfGamma := math.Sqrt(1 - ratio*ratio)
 	expectedScale := (1 - cosHalfGamma) * 2.0 * 1.0 // cos(Theta)=1, s=1
 
 	// Band 0 (125 Hz): air absorption is negligible at this distance.
@@ -281,9 +283,14 @@ func TestDiffuseRainReceiverInsideReflectionPlane(t *testing.T) {
 	}
 }
 
-func TestDiffuseRainIntegrationProducesMoreEnergy(t *testing.T) {
+func TestDiffuseRainProducesMoreEnergy(t *testing.T) {
 	t.Parallel()
 
+	// Diffuse rain captures the analytical expected value of scattered
+	// energy toward the receiver at every bounce. Without rain, the
+	// scattered component only contributes when a diffuse ray stochastically
+	// hits the small detector sphere. Rain recovers "lost" diffuse energy
+	// at bounces where the ray went specular, so rain total > no-rain total.
 	sc := &scene.Scene{
 		Room: scene.Room{
 			Kind: scene.RoomKindShoebox,
@@ -311,13 +318,12 @@ func TestDiffuseRainIntegrationProducesMoreEnergy(t *testing.T) {
 	}
 
 	baseCfg := LaunchConfig{
-		NumRays:        500,
-		MaxBounces:     8,
+		NumRays:        2000,
+		MaxBounces:     10,
 		MaxTimeSeconds: 0.5,
 		SpeedOfSound:   acoustics.SpeedOfSound,
 	}
 
-	// Without diffuse rain.
 	noRainCfg := baseCfg
 	noRainCfg.DiffuseRain = false
 
@@ -326,7 +332,6 @@ func TestDiffuseRainIntegrationProducesMoreEnergy(t *testing.T) {
 		t.Fatalf("Trace(no rain) error = %v", err)
 	}
 
-	// With diffuse rain.
 	rainCfg := baseCfg
 	rainCfg.DiffuseRain = true
 
@@ -342,11 +347,17 @@ func TestDiffuseRainIntegrationProducesMoreEnergy(t *testing.T) {
 		t.Fatal("no-rain histogram has zero energy")
 	}
 
-	// Diffuse rain should add significant energy because each scattered
-	// reflection contributes directly, not just when a particle happens
-	// to hit the detector.
+	// Rain should produce more total energy (it analytically captures
+	// scattered contributions that stochastic detection misses).
 	if totalRain <= totalNoRain {
 		t.Fatalf("rain energy %v should exceed no-rain energy %v", totalRain, totalNoRain)
+	}
+
+	// The increase should be bounded — not wildly above the baseline.
+	// For s=0.5, expect ~50-100% more energy from rain.
+	relIncrease := (totalRain - totalNoRain) / totalNoRain
+	if relIncrease > 2.0 {
+		t.Fatalf("rain energy increase %.1f%% is too large (want ≤ 200%%)", relIncrease*100)
 	}
 }
 
@@ -379,18 +390,17 @@ func TestDiffuseRainReducesVariance(t *testing.T) {
 		SampleRate: 48000,
 	}
 
-	// Use a low ray count to emphasize variance differences.
 	baseCfg := LaunchConfig{
-		NumRays:        200,
-		MaxBounces:     8,
-		MaxTimeSeconds: 0.3,
+		NumRays:        5000,
+		MaxBounces:     10,
+		MaxTimeSeconds: 0.5,
 		SpeedOfSound:   acoustics.SpeedOfSound,
 	}
 
 	// Count how many non-empty bins each mode fills in the late field
-	// (past 50 ms). Diffuse rain should fill more bins since it deposits
+	// (past 30 ms). Diffuse rain should fill more bins since it deposits
 	// energy at every diffuse reflection, not just on detector sphere hits.
-	threshold := 0.05 // 50 ms
+	threshold := 0.03 // 30 ms
 
 	noRainCfg := baseCfg
 	noRainCfg.DiffuseRain = false
@@ -411,9 +421,22 @@ func TestDiffuseRainReducesVariance(t *testing.T) {
 	filledNoRain := countFilledBins(histNoRain, threshold)
 	filledRain := countFilledBins(histRain, threshold)
 
-	// With rain, at least as many bins should be filled.
+	// With rain, significantly more late-field bins should be filled.
+	// This is the primary variance-reduction benefit: rain deposits energy
+	// analytically at every bounce, producing a dense histogram, while
+	// the stochastic process leaves most late-field bins empty.
 	if filledRain < filledNoRain {
 		t.Fatalf("rain filled %d late bins, no-rain filled %d — rain should fill at least as many", filledRain, filledNoRain)
+	}
+
+	// Rain should fill at least 2x more bins than no-rain for the same
+	// ray count. With 5000 rays in a small shoebox, rain fills most
+	// late-field bins while stochastic hits are sparse.
+	if filledNoRain > 0 {
+		binRatio := float64(filledRain) / float64(filledNoRain)
+		if binRatio < 2.0 {
+			t.Fatalf("rain/noRain filled bin ratio = %.2f (want ≥ 2.0): rain=%d, noRain=%d", binRatio, filledRain, filledNoRain)
+		}
 	}
 }
 
@@ -457,4 +480,55 @@ func countFilledBins(hist *EnergyHistogram, minTime float64) int {
 	}
 
 	return count
+}
+
+func BenchmarkDiffuseRain(b *testing.B) {
+	sc := &scene.Scene{
+		Room: scene.Room{
+			Kind: scene.RoomKindShoebox,
+			Shoebox: &scene.Shoebox{
+				Width:  6,
+				Depth:  4.5,
+				Height: 2.8,
+				WallMaterials: [6]string{
+					"absorptive", "absorptive", "absorptive",
+					"absorptive", "absorptive", "absorptive",
+				},
+			},
+		},
+		Materials: map[string]scene.Material{
+			"absorptive": {
+				Name:            "absorptive",
+				AbsorptionByBand: []float64{0.3, 0.3, 0.3, 0.3, 0.3, 0.3},
+				ScatteringByBand: []float64{0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
+			},
+		},
+		Sources:    []scene.Source{{Position: geometry.Vec3{X: 1.2, Y: 1.0, Z: 1.2}, GainDB: 0}},
+		Receivers:  []scene.Receiver{{Position: geometry.Vec3{X: 3.5, Y: 2.2, Z: 1.2}}},
+		BandSpec:   acoustics.Octave6,
+		SampleRate: 48000,
+	}
+
+	baseCfg := LaunchConfig{
+		NumRays:        1000,
+		MaxBounces:     10,
+		MaxTimeSeconds: 0.5,
+		SpeedOfSound:   acoustics.SpeedOfSound,
+	}
+
+	b.Run("NoRain", func(b *testing.B) {
+		cfg := baseCfg
+		cfg.DiffuseRain = false
+		for range b.N {
+			_, _ = (&RayTracer{Config: cfg, Scene: sc}).Trace()
+		}
+	})
+
+	b.Run("WithRain", func(b *testing.B) {
+		cfg := baseCfg
+		cfg.DiffuseRain = true
+		for range b.N {
+			_, _ = (&RayTracer{Config: cfg, Scene: sc}).Trace()
+		}
+	})
 }

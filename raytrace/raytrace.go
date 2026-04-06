@@ -111,6 +111,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 
 		currentRay := state.Ray
 		pathLength := state.PathLength
+		rainCovered := state.RainCovered
 
 		for bounce := state.Bounces; bounce <= r.Config.MaxBounces; bounce++ {
 			if pathLength >= maxPathLength {
@@ -127,17 +128,19 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				break
 			}
 
-			if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit {
-				arrivalTime := (pathLength + tHit) / r.Config.SpeedOfSound
-				if arrivalTime <= r.Config.MaxTimeSeconds {
-					hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit, defaultAirTemperatureC, defaultRelativeHumidity)
+			if !rainCovered {
+				if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit {
+					arrivalTime := (pathLength + tHit) / r.Config.SpeedOfSound
+					if arrivalTime <= r.Config.MaxTimeSeconds {
+						hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit, defaultAirTemperatureC, defaultRelativeHumidity)
 
-					capture := receiver.AngularWeight(currentRay.Direction)
-					for bandIndex := range hitEnergy {
-						hitEnergy[bandIndex] *= capture
+						capture := receiver.AngularWeight(currentRay.Direction)
+						for bandIndex := range hitEnergy {
+							hitEnergy[bandIndex] *= capture
+						}
+
+						hist.Add(arrivalTime, hitEnergy)
 					}
-
-					hist.Add(arrivalTime, hitEnergy)
 				}
 			}
 
@@ -186,6 +189,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				nextDir := chooseBlendDirection(specularDir, diffuseDir, scatterCoeff)
 				currentRay = geometry.NewRay(hitPoint.Add(nextDir.Scale(wallEpsilon)), nextDir)
 				state.Energy = remainingEnergy
+				rainCovered = r.Config.DiffuseRain
 			case ReflectionStrategyRussianRoulette:
 				specBranch, ok := russianRouletteEnergy(specEnergy, energyThreshold, rng)
 				if ok {
@@ -196,20 +200,20 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				diffBranch, ok := russianRouletteEnergy(diffuseEnergy, energyThreshold, rng)
 				if ok {
 					diffRay := geometry.NewRay(hitPoint.Add(diffuseDir.Scale(wallEpsilon)), diffuseDir)
-					states = append(states, RayState{Ray: diffRay, Energy: diffBranch, PathLength: pathLength, Bounces: bounce + 1})
+					states = append(states, RayState{Ray: diffRay, Energy: diffBranch, PathLength: pathLength, Bounces: bounce + 1, RainCovered: r.Config.DiffuseRain})
 				}
 
 				currentRay = geometry.Ray{}
 				state.Energy = nil
-
-				break
 			default:
 				if scatterCoeff >= 1 || (scatterCoeff > 0 && rng.Float64() < scatterCoeff) {
 					state.Energy = diffuseEnergy
 					currentRay = geometry.NewRay(hitPoint.Add(diffuseDir.Scale(wallEpsilon)), diffuseDir)
+					rainCovered = r.Config.DiffuseRain
 				} else {
 					state.Energy = specEnergy
 					currentRay = geometry.NewRay(hitPoint.Add(specularDir.Scale(wallEpsilon)), specularDir)
+					rainCovered = false
 				}
 			}
 
