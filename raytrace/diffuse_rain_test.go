@@ -518,6 +518,7 @@ func BenchmarkDiffuseRain(b *testing.B) {
 
 	b.Run("NoRain", func(b *testing.B) {
 		cfg := baseCfg
+
 		cfg.DiffuseRain = false
 		for range b.N {
 			_, _ = (&RayTracer{Config: cfg, Scene: sc}).Trace()
@@ -526,6 +527,7 @@ func BenchmarkDiffuseRain(b *testing.B) {
 
 	b.Run("WithRain", func(b *testing.B) {
 		cfg := baseCfg
+
 		cfg.DiffuseRain = true
 		for range b.N {
 			_, _ = (&RayTracer{Config: cfg, Scene: sc}).Trace()

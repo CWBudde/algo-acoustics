@@ -197,6 +197,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 					}
 				}
 			}
+
 			scatterCoeff := averageCoeff(scattering)
 			specularDir := SpecularReflect(currentRay.Direction, hitNormal)
 			diffuseDir := LambertDirection(hitNormal, rng)

@@ -37,6 +37,7 @@ func TestHistogramToPoissonBuffer(t *testing.T) {
 		for b := range energy {
 			energy[b] = 0.01
 		}
+
 		hist.Add(float64(i)*0.01+0.005, energy)
 	}
 

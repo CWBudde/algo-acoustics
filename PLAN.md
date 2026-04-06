@@ -286,7 +286,7 @@ Phases 17.1-17.5 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x 
 
 #### 22.4 Deflection cylinders (`raytrace/`, `geometry/`)
 
-- [ ] `DeflectionCylinder` struct: edge, frequency-dependent radius (r = 7*lambda)
+- [ ] `DeflectionCylinder` struct: edge, frequency-dependent radius (r = 7\*lambda)
 - [ ] Ray-cylinder collision test
 - [ ] DAPDF energy integration for outgoing energy distribution
 - [ ] Forward diffracted energy to visible detectors ("diffracted rain"), recursive up to configurable depth (default: 2)
