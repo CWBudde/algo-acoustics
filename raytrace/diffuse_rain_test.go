@@ -306,7 +306,7 @@ func TestDiffuseRainProducesMoreEnergy(t *testing.T) {
 		},
 		Materials: map[string]scene.Material{
 			"absorptive": {
-				Name:            "absorptive",
+				Name:             "absorptive",
 				AbsorptionByBand: []float64{0.3, 0.3, 0.3, 0.3, 0.3, 0.3},
 				ScatteringByBand: []float64{0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
 			},
@@ -379,7 +379,7 @@ func TestDiffuseRainReducesVariance(t *testing.T) {
 		},
 		Materials: map[string]scene.Material{
 			"absorptive": {
-				Name:            "absorptive",
+				Name:             "absorptive",
 				AbsorptionByBand: []float64{0.2, 0.2, 0.2, 0.2, 0.2, 0.2},
 				ScatteringByBand: []float64{0.6, 0.6, 0.6, 0.6, 0.6, 0.6},
 			},
@@ -498,7 +498,7 @@ func BenchmarkDiffuseRain(b *testing.B) {
 		},
 		Materials: map[string]scene.Material{
 			"absorptive": {
-				Name:            "absorptive",
+				Name:             "absorptive",
 				AbsorptionByBand: []float64{0.3, 0.3, 0.3, 0.3, 0.3, 0.3},
 				ScatteringByBand: []float64{0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
 			},

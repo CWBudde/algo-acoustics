@@ -1343,9 +1343,9 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 19.3 Diffuse rain integration with hybrid model (`raytrace/`, `hybrid/`)
 
-- [x] Update the ray tracer's detection logic: when diffuse rain is active, do *not* count direct detector sphere hits for scattered particles (they are already accounted for by rain) — only specular reflections and direct hits on the sphere are counted as before
+- [x] Update the ray tracer's detection logic: when diffuse rain is active, do _not_ count direct detector sphere hits for scattered particles (they are already accounted for by rain) — only specular reflections and direct hits on the sphere are counted as before
 - [x] Fix solid angle formula bug: `gamma` is the full opening angle `2*asin(R/r)`, so `cos(gamma/2) = sqrt(1-(R/r)^2)` — the original `cos(asin(R/r)/2)` underestimated rain by ~4x
-- [x] Verify energy behavior: rain produces more total energy than no-rain (by design — rain analytically captures scattered contributions that the stochastic detector misses). Note: exact calibration within 2% is not achievable with the split-energy model; rain is a *better* estimator, not an equivalent one
+- [x] Verify energy behavior: rain produces more total energy than no-rain (by design — rain analytically captures scattered contributions that the stochastic detector misses). Note: exact calibration within 2% is not achievable with the split-energy model; rain is a _better_ estimator, not an equivalent one
 - [x] Regression test: rain fills ≥2x more late-field histogram bins than no-rain for the same ray count, confirming variance reduction
 - [x] Benchmark: diffuse rain adds ~72% overhead per particle (visibility checks), but rain fills dramatically more bins per ray — net efficiency gain with 4-10x fewer particles
 
@@ -1392,32 +1392,32 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 20.1 Directivity group definition (`raytrace/`)
 
-- [ ] Define `DirectivityGroup` struct: azimuth/elevation center, angular extent, and per-band `EnergyHistogram`
-- [ ] Implement `NewDirectivityGroups(azSteps, elSteps int) []DirectivityGroup` — subdivide the sphere into `azSteps * elSteps` sectors with head-related coordinate system (frontal azimuth = 0)
-- [ ] Default resolution: 12 azimuth x 6 elevation = 72 DGs (5° x 30° sectors) — sufficient for late-field HRIR selection
-- [ ] Assign each DG a representative direction (sector centroid) for HRIR lookup
+- [x] Define `DirectivityGroup` struct: azimuth/elevation center, angular extent, and per-band `EnergyHistogram`
+- [x] Implement `NewDirectivityGroups(azSteps, elSteps int) []DirectivityGroup` — subdivide the sphere into `azSteps * elSteps` sectors with head-related coordinate system (frontal azimuth = 0)
+- [x] Default resolution: 12 azimuth x 6 elevation = 72 DGs (30° x 30° sectors) — sufficient for late-field HRIR selection
+- [x] Assign each DG a representative direction (sector centroid) for HRIR lookup
 
 ### 20.2 Ray-tracer DG binning (`raytrace/`)
 
-- [ ] When a particle hits the spherical detector, classify its arrival direction into the appropriate DG
-- [ ] Accumulate the particle's energy into the DG's histogram (in addition to the main histogram)
-- [ ] For diffuse rain contributions: classify the direction from reflection point to receiver center and bin accordingly
-- [ ] Unit test: isotropic energy distribution (diffuse field) produces approximately equal energy in all DGs
-- [ ] Unit test: single specular reflection from a known direction accumulates in the correct DG
+- [x] When a particle hits the spherical detector, classify its arrival direction into the appropriate DG
+- [x] Accumulate the particle's energy into the DG's histogram (in addition to the main histogram)
+- [x] For diffuse rain contributions: classify the direction from reflection point to receiver center and bin accordingly
+- [x] Unit test: isotropic energy distribution (diffuse field) produces approximately equal energy in all DGs
+- [x] Unit test: single specular reflection from a known direction accumulates in the correct DG
 
 ### 20.3 DG hit probability computation (`raytrace/`)
 
-- [ ] For each time slot `k` and each DG `d`, compute the hit probability:
-  `P(d, k) = E_d(k) / sum_d(E_d(k))`
-  where `E_d(k)` is the energy accumulated in DG `d` during time slot `k`
-- [ ] Handle empty slots: if no energy was detected in any DG for a time slot, distribute uniformly (fully diffuse assumption)
+- [x] For each time slot `k` and each DG `d`, compute the hit probability:
+      `P(d, k) = E_d(k) / sum_d(E_d(k))`
+      where `E_d(k)` is the energy accumulated in DG `d` during time slot `k`
+- [x] Handle empty slots: if no energy was detected in any DG for a time slot, distribute uniformly (fully diffuse assumption)
 
 ### 20.4 Binaural RIR construction with DG-weighted HRIRs (`ir/`, `hrtf/`)
 
-- [ ] For each time slot, select the HRIR pair corresponding to the DG with the highest hit probability — this is the "most likely arrival direction" for that time window
-- [ ] Alternatively (better quality): blend the top-N DG directions' HRIRs weighted by their probabilities
-- [ ] Convolve the Poisson noise fragment for each time slot with the selected/blended HRIR pair
-- [ ] Overlap-add the HRIR-convolved fragments (50% Hanning window) to produce left/right channels
+- [x] For each time slot, select the HRIR pair corresponding to the DG with the highest hit probability — this is the "most likely arrival direction" for that time window
+- [x] Alternatively (better quality): blend the top-N DG directions' HRIRs weighted by their probabilities (`DGBlendCount` config)
+- [x] Convolve the Poisson noise fragment for each time slot with the selected/blended HRIR pair
+- [x] Overlap-add the HRIR-convolved fragments (50% Hanning window) to produce left/right channels
 - [ ] A/B regression test: compare DG-based BRIR against per-event BRIR — IACC should differ (DG version captures late-field directionality); T30 should agree within 3%
 - [ ] Listening test fixture: export both variants for subjective spatial quality comparison
 
@@ -1517,7 +1517,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 - [ ] Implement ray-cylinder collision test (already defined in raven.md Section 7.2):
   - `n = e × b`, `d = |n · s_E|`, hit if `d <= r`
 - [ ] When a ray passes through a DC: compute outgoing energy via DAPDF integration over the angular range subtended by visible detectors:
-  `E_out = E_in * exp(-m*h) * integral(D(epsilon, b), epsilon_min, epsilon_max)`
+      `E_out = E_in * exp(-m*h) * integral(D(epsilon, b), epsilon_min, epsilon_max)`
 - [ ] Forward diffracted energy selectively to other visible detectors (detection spheres, portals, other DCs) — this is the "diffracted rain" mechanism
 - [ ] Support recursive diffracted rain up to configurable depth (default: 2)
 - [ ] Unit test: particle passing at distance `a = 3λ` from edge — outgoing energy distribution matches DAPDF shape
@@ -1634,7 +1634,7 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 ### 25.3 Filter network rendering (`hybrid/`, `ir/`)
 
 - [ ] For each propagation path in the PPG, compute the total transfer function:
-  `H_PP = H_PS * prod(H_Portal(p)) * prod(H_RoomGroup(r)) * H_R`
+      `H_PP = H_PS * prod(H_Portal(p)) * prod(H_RoomGroup(r)) * H_R`
 - [ ] Each room group's `H_RoomGroup` comes from the standard IS+RT simulation within that group
 - [ ] Each portal's `H_Portal` is derived from its transmission coefficients
 - [ ] Sum all path contributions in the time domain or frequency domain to produce the final BRIR
@@ -1653,29 +1653,29 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ## Milestone Summary
 
-| Milestone                          | Phases  | Deliverable                              |
-| ---------------------------------- | ------- | ---------------------------------------- |
-| **A — First audible result**       | 0, 1, 2 | Mono WAV IR from shoebox scene           |
-| **B — Useful room simulator**      | 3, 4, 5 | Hybrid mono IR + metrics + regression    |
-| **C — Loudspeaker-aware**          | 6       | GLL directivity source model             |
-| **D — Binaural simulator**         | 7       | Stereo BRIR WAV export                   |
-| **E — Physics-enhanced low end**   | 8       | `algo-pde` crossover hybrid IR           |
-| **F — Geometry expansion**         | 9, 10   | Mesh scenes + validation corpus          |
-| **G — Accurate scattering**        | 11      | Per-band scattering + air absorption     |
-| **H — Diffraction**                | 12      | UTD edge diffraction in ISM + ray tracer |
-| **I — Convex room wave solver**    | 13      | IBM-FDTD for non-rectangular rooms       |
-| **J — GPU acceleration**           | 14      | GPU-offloaded FDTD + ray tracing         |
-| **K — Interactive preview**        | 15      | Sub-second parameter feedback            |
-| **L — Browser demo**               | 16      | WASM + Three.js + Web Audio demo         |
-| **M — Interop and asset exchange** | 17      | External authoring tool compatibility    |
-| **N — Release engineering**        | 18      | Reproducible artifacts + maintenance     |
+| Milestone                          | Phases  | Deliverable                                |
+| ---------------------------------- | ------- | ------------------------------------------ |
+| **A — First audible result**       | 0, 1, 2 | Mono WAV IR from shoebox scene             |
+| **B — Useful room simulator**      | 3, 4, 5 | Hybrid mono IR + metrics + regression      |
+| **C — Loudspeaker-aware**          | 6       | GLL directivity source model               |
+| **D — Binaural simulator**         | 7       | Stereo BRIR WAV export                     |
+| **E — Physics-enhanced low end**   | 8       | `algo-pde` crossover hybrid IR             |
+| **F — Geometry expansion**         | 9, 10   | Mesh scenes + validation corpus            |
+| **G — Accurate scattering**        | 11      | Per-band scattering + air absorption       |
+| **H — Diffraction**                | 12      | UTD edge diffraction in ISM + ray tracer   |
+| **I — Convex room wave solver**    | 13      | IBM-FDTD for non-rectangular rooms         |
+| **J — GPU acceleration**           | 14      | GPU-offloaded FDTD + ray tracing           |
+| **K — Interactive preview**        | 15      | Sub-second parameter feedback              |
+| **L — Browser demo**               | 16      | WASM + Three.js + Web Audio demo           |
+| **M — Interop and asset exchange** | 17      | External authoring tool compatibility      |
+| **N — Release engineering**        | 18      | Reproducible artifacts + maintenance       |
 | **O — Diffuse rain + Poisson RIR** | 19      | Physically correct late reverb, fewer rays |
-| **P — Directional late field**     | 20      | DG-based binaural RT rendering           |
-| **Q — Multi-room basics**          | 21      | Portal transmission between two rooms    |
-| **R — Advanced diffraction**       | 22      | 2nd-order diffraction + DAPDF in RT      |
-| **S — ISM optimizations**          | 23      | Plane-polygon map + hybrid detection     |
-| **T — Extended input data**        | 24      | Freq-dependent directivity + SOFA loading |
-| **U — Full multi-room**            | 25      | ASG/PST/PPG filter network pipeline      |
+| **P — Directional late field**     | 20      | DG-based binaural RT rendering             |
+| **Q — Multi-room basics**          | 21      | Portal transmission between two rooms      |
+| **R — Advanced diffraction**       | 22      | 2nd-order diffraction + DAPDF in RT        |
+| **S — ISM optimizations**          | 23      | Plane-polygon map + hybrid detection       |
+| **T — Extended input data**        | 24      | Freq-dependent directivity + SOFA loading  |
+| **U — Full multi-room**            | 25      | ASG/PST/PPG filter network pipeline        |
 
 ---
 

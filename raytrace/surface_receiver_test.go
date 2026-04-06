@@ -20,7 +20,7 @@ func TestSurfaceReceiverRainNormalIncidence(t *testing.T) {
 	detector := SurfaceReceiver{
 		Center: geometry.Vec3{X: 5, Y: 0, Z: 0},
 		Normal: geometry.Vec3{X: -1, Y: 0, Z: 0}, // Facing the reflection
-		Area:   4.0,                                // 2m x 2m
+		Area:   4.0,                              // 2m x 2m
 	}
 
 	energy := []float64{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}

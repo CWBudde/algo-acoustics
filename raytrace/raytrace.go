@@ -17,6 +17,7 @@ type RayTracer struct {
 	Scene              *scene.Scene
 	ReceiverRadius     float64
 	BinDurationSeconds float64
+	DirectivityGroups  []DirectivityGroup
 }
 
 // Trace runs the Monte Carlo ray tracer and returns a banded energy histogram.
@@ -64,6 +65,10 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	}
 
 	hist := NewEnergyHistogram(r.Config.MaxTimeSeconds, binDuration, bandCount)
+
+	for i := range r.DirectivityGroups {
+		r.DirectivityGroups[i].Histogram = NewEnergyHistogram(r.Config.MaxTimeSeconds, binDuration, bandCount)
+	}
 
 	tracer, err := r.sceneTracer()
 	if err != nil {
@@ -140,6 +145,12 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 						}
 
 						hist.Add(arrivalTime, hitEnergy)
+
+						if len(r.DirectivityGroups) > 0 {
+							arrivalDir := currentRay.Direction.Scale(-1)
+							dgIdx := ClassifyDirection(r.DirectivityGroups, arrivalDir)
+							r.DirectivityGroups[dgIdx].Histogram.Add(arrivalTime, hitEnergy)
+						}
 					}
 				}
 			}
@@ -178,6 +189,12 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				rain := computeDiffuseRain(hitPoint, inwardNormal, remainingEnergy, scattering, receiver, tracer, r.Scene.BandSpec.CenterFreqs, pathLength, r.Config.SpeedOfSound)
 				if rain != nil && rain.ArrivalTime <= r.Config.MaxTimeSeconds {
 					hist.Add(rain.ArrivalTime, rain.BandEnergy)
+
+					if len(r.DirectivityGroups) > 0 {
+						arrivalDir := hitPoint.Sub(receiver.Center)
+						dgIdx := ClassifyDirection(r.DirectivityGroups, arrivalDir)
+						r.DirectivityGroups[dgIdx].Histogram.Add(rain.ArrivalTime, rain.BandEnergy)
+					}
 				}
 			}
 			scatterCoeff := averageCoeff(scattering)

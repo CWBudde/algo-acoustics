@@ -1,6 +1,6 @@
 # RAVEN -- Condensed Reference
 
-Condensed from: Dirk Schroeder, *Physically Based Real-Time Auralization of Interactive Virtual Environments*, RWTH Aachen, 2011.
+Condensed from: Dirk Schroeder, _Physically Based Real-Time Auralization of Interactive Virtual Environments_, RWTH Aachen, 2011.
 
 This document distills the key formulas, models, and design decisions from the RAVEN dissertation. It focuses on what goes beyond textbook acoustics -- the specific simulation models, their combination into a hybrid system, the energy calibration between methods, and the real-time implementation strategies. Basic wave acoustics is included only where the specific formulation matters for implementation.
 
@@ -123,11 +123,11 @@ The key takeaway: diffraction has significant influence only in the shadow zone,
 
 The room impulse response (RIR) is the "acoustical fingerprint" of a room. Human hearing processes it in three perceptually distinct parts:
 
-| Part                | Delay        | Character                    | Perception                                                            |
-| ------------------- | ------------ | ---------------------------- | --------------------------------------------------------------------- |
-| Direct sound        | $d/c$        | Single impulse               | Source localization (precedence effect)                                |
-| Early reflections   | ~0--80 ms    | Discrete specular arrivals   | Source width, distance, loudness (Haas effect: up to +10 dB fused)    |
-| Late reverberation  | >50--80 ms   | Diffuse, exponential decay   | Room character, spaciousness                                          |
+| Part               | Delay      | Character                  | Perception                                                         |
+| ------------------ | ---------- | -------------------------- | ------------------------------------------------------------------ |
+| Direct sound       | $d/c$      | Single impulse             | Source localization (precedence effect)                            |
+| Early reflections  | ~0--80 ms  | Discrete specular arrivals | Source width, distance, loudness (Haas effect: up to +10 dB fused) |
+| Late reverberation | >50--80 ms | Diffuse, exponential decay | Room character, spaciousness                                       |
 
 This division has profound implications for simulation: the direct sound and early reflections must be computed with high precision in timing and spectral content (they affect source localization), while the late reverberation requires only energetically correct behavior over time slots and angular fields (the human hearing integrates it coarsely). This motivates the hybrid approach of combining deterministic IS with stochastic RT.
 
@@ -201,7 +201,7 @@ The factors are:
 
 ### 2.4 Plane-Polygon Map Optimization
 
-A critical optimization for real-time IS generation: instead of mirroring the source across every polygon, mirror only across the distinct *planes* defined by those polygons. Many polygons share the same plane (e.g., coplanar wall segments). A Plane-Polygon Map (PPM) tracks which polygons belong to which plane.
+A critical optimization for real-time IS generation: instead of mirroring the source across every polygon, mirror only across the distinct _planes_ defined by those polygons. Many polygons share the same plane (e.g., coplanar wall segments). A Plane-Polygon Map (PPM) tracks which polygons belong to which plane.
 
 The IS count reduction is substantial:
 
@@ -399,7 +399,7 @@ Key rules:
 
 ### 5.1 Acoustic Scene Graph and Room Groups
 
-The multi-room scene is organized as an Acoustic Scene Graph (ASG): a graph where nodes represent rooms and edges represent portals (doors, windows, walls). Each portal has a state (open/closed). Rooms connected by open portals form a *room group* -- a single acoustic space simulated as one unit.
+The multi-room scene is organized as an Acoustic Scene Graph (ASG): a graph where nodes represent rooms and edges represent portals (doors, windows, walls). Each portal has a state (open/closed). Rooms connected by open portals form a _room group_ -- a single acoustic space simulated as one unit.
 
 Sound propagation paths across rooms are found by depth-first search through the ASG. The search prunes branches where the accumulated sound reduction $R_w$ exceeds the source's sound level, since the transmitted signal would be inaudible.
 
@@ -464,7 +464,7 @@ where $p_1, p_2, p_3$ are large primes, $\oplus$ is XOR, and $n$ is the hash tab
 
 Three parameters must be optimized: (1) hash table size $n$ for minimal collisions without excessive memory, (2) voxel edge length $a$ relative to scene dimensions, and (3) the hash function itself for uniform distribution.
 
-**Key advantage over BSP:** Insertion and deletion of $m$ polygons takes only $\mathcal{O}(m)$, independent of scene complexity. RAVEN uses spatial hashing for the *dynamic mode* -- handling geometry modifications in real-time -- while using BSP for the faster *static mode*.
+**Key advantage over BSP:** Insertion and deletion of $m$ polygons takes only $\mathcal{O}(m)$, independent of scene complexity. RAVEN uses spatial hashing for the _dynamic mode_ -- handling geometry modifications in real-time -- while using BSP for the faster _static mode_.
 
 ---
 
@@ -496,13 +496,13 @@ The total system latency budget for a VR auralization system is about 50 ms. Har
 
 Perceptual research shows that different interaction events have vastly different update requirements:
 
-| Event                  | Update interval  | What to update                     |
-| ---------------------- | ---------------- | ---------------------------------- |
-| Head/source rotation   | 35 ms            | Specular BRIR (directivity/HRTFs)  |
-| Translation >0.25 m    | 550 ms           | Specular BRIR (full IS retest)     |
-| Translation >1.0 m     | 2 s              | Diffuse BRIR (full ray tracing)    |
-| Geometry change        | 550 ms / 2 s     | Both specular and diffuse parts    |
-| Portal interaction     | crossfade        | Both cached BRIRs                  |
+| Event                | Update interval | What to update                    |
+| -------------------- | --------------- | --------------------------------- |
+| Head/source rotation | 35 ms           | Specular BRIR (directivity/HRTFs) |
+| Translation >0.25 m  | 550 ms          | Specular BRIR (full IS retest)    |
+| Translation >1.0 m   | 2 s             | Diffuse BRIR (full ray tracing)   |
+| Geometry change      | 550 ms / 2 s    | Both specular and diffuse parts   |
+| Portal interaction   | crossfade       | Both cached BRIRs                 |
 
 Key perceptual thresholds from user studies:
 
@@ -542,7 +542,7 @@ For diffraction, each IST node additionally stores edge visibility information a
 
 A graph where nodes represent individual rooms and edges represent portals (physical separators like doors, walls, windows). Each portal stores two room IDs, a state (open/closed), and a pointer to its counter-portal in the adjacent room.
 
-Rooms connected by open portals are merged into *room groups* -- single acoustic spaces where IS and RT simulations are performed. The ASG enables depth-first search across rooms to find all sound propagation paths, producing a Path Search Tree (PST).
+Rooms connected by open portals are merged into _room groups_ -- single acoustic spaces where IS and RT simulations are performed. The ASG enables depth-first search across rooms to find all sound propagation paths, producing a Path Search Tree (PST).
 
 ### Path Search Tree (PST) and Propagation Path Graph (PPG)
 
@@ -623,11 +623,11 @@ Validated against Svensson's Edge Diffraction Toolbox (an exact analytical solut
 
 3-AFC (three-alternative forced-choice) experiments determined the minimum simulation parameters for perceptually indistinguishable auralization:
 
-| Parameter            | Lab (audio only) | CAVE (audio+visual) |
-| -------------------- | ---------------- | ------------------- |
-| Particles per band   | ~7,900           | ~6,300              |
-| IS order             | 3 sufficient     | 3 sufficient        |
-| Histogram bin width  | 5 ms adequate    | 5 ms adequate       |
+| Parameter           | Lab (audio only) | CAVE (audio+visual) |
+| ------------------- | ---------------- | ------------------- |
+| Particles per band  | ~7,900           | ~6,300              |
+| IS order            | 3 sufficient     | 3 sufficient        |
+| Histogram bin width | 5 ms adequate    | 5 ms adequate       |
 
 Key finding: **visual stimuli reduce auditory sensitivity** -- fewer particles are needed when visual immersion is present (multimodal masking effect). This is relevant for our web demo where visual context is always present.
 
@@ -686,7 +686,7 @@ The following RAVEN techniques have direct counterparts in our codebase:
 
 - Shoebox modal analysis (`ShoeboxModes()`) for analytical mode frequencies
 - Full 3D IBM (Immersed Boundary Method) PDE solver with compressed sparse grid
-- Frequency-dependent impedance boundaries via Auxiliary Differential Equations (ADE walls) -- this goes *beyond* RAVEN, which uses only Geometrical Acoustics above the Schroeder frequency
+- Frequency-dependent impedance boundaries via Auxiliary Differential Equations (ADE walls) -- this goes _beyond_ RAVEN, which uses only Geometrical Acoustics above the Schroeder frequency
 - FFT-based frequency-domain blending of GA and PDE results (`BlendLowFreq()`) with smooth crossover weighting
 
 **First-Order Edge Diffraction** (`ism/`, `geometry/` packages)
@@ -835,4 +835,4 @@ Our codebase includes several features not present in the RAVEN dissertation:
 
 ---
 
-*Source: Schroeder, D. (2011). Physically Based Real-Time Auralization of Interactive Virtual Environments. RWTH Aachen University. ISBN 978-3-8325-3031-0.*
+_Source: Schroeder, D. (2011). Physically Based Real-Time Auralization of Interactive Virtual Environments. RWTH Aachen University. ISBN 978-3-8325-3031-0._

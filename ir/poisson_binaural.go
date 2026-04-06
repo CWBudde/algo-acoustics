@@ -20,6 +20,13 @@ type BinauralPoissonConfig struct {
 	BandSpec    acoustics.BandSpec
 	SampleRate  int
 	HRTF        hrtf.Dataset
+
+	// DG-weighted HRIR selection (optional). When both are set, the HRIR
+	// direction for each time slot is selected from the directivity group
+	// with the highest hit probability instead of using a random direction.
+	DGDirections    []geometry.Vec3 // representative direction per DG
+	DGProbabilities [][]float64     // probs[dg][slot]
+	DGBlendCount    int             // 0 or 1 = max-probability; >1 = blend top-N DGs
 }
 
 // RenderBinauralPoisson synthesises binaural late-field impulse responses from
@@ -47,8 +54,7 @@ func RenderBinauralPoisson(cfg BinauralPoissonConfig, rng *rand.Rand) (left, rig
 	}
 
 	if len(cfg.Bins) == 0 {
-		empty := NewBuffer(cfg.SampleRate, 0)
-		return empty, empty, nil
+		return NewBuffer(cfg.SampleRate, 0), NewBuffer(cfg.SampleRate, 0), nil
 	}
 
 	duration := cfg.Bins[len(cfg.Bins)-1].TimeSeconds + cfg.BinDuration
@@ -80,13 +86,15 @@ func RenderBinauralPoisson(cfg BinauralPoissonConfig, rng *rand.Rand) (left, rig
 	windowLen := slotSamples + halfSlot // extended window for 50% overlap
 	window := buildHanningWindow(windowLen)
 
-	for _, bin := range cfg.Bins {
+	for slotIdx, bin := range cfg.Bins {
 		slotStart := int(math.Round(bin.TimeSeconds * float64(cfg.SampleRate)))
 		if slotStart >= bufLen {
 			continue
 		}
 
-		err = convolveBinSlot(cfg, bin, rng, slotStart, bufLen, halfSlot, windowLen,
+		dir := slotDirection(cfg, slotIdx, rng)
+
+		err = convolveBinSlotDir(cfg, dir, slotStart, bufLen, halfSlot, windowLen,
 			window, monoWeighted, leftSamples, rightSamples, outLen)
 		if err != nil {
 			return nil, nil, err
@@ -146,19 +154,28 @@ func buildBinauralMonoWeighted(
 	return monoWeighted, nil
 }
 
-// convolveBinSlot spatialises one time slot by convolving the windowed mono
-// signal with the left/right HRIRs for a random direction and overlap-adding
+// slotDirection returns the HRIR direction for a given time slot. When DG data
+// is configured, the direction is derived from the directivity group
+// probabilities; otherwise a random direction is generated.
+func slotDirection(cfg BinauralPoissonConfig, slotIdx int, rng *rand.Rand) geometry.Vec3 {
+	if len(cfg.DGDirections) > 0 && len(cfg.DGProbabilities) > 0 {
+		return dgDirectionForSlot(cfg.DGDirections, cfg.DGProbabilities, slotIdx, cfg.DGBlendCount)
+	}
+
+	return randomDirection(rng)
+}
+
+// convolveBinSlotDir spatialises one time slot by convolving the windowed mono
+// signal with the left/right HRIRs for the given direction and overlap-adding
 // the result into the output buffers.
-func convolveBinSlot(
-	cfg BinauralPoissonConfig, bin EnergyBin, rng *rand.Rand,
+func convolveBinSlotDir(
+	cfg BinauralPoissonConfig, dir geometry.Vec3,
 	slotStart, bufLen, halfSlot, windowLen int,
 	window, monoWeighted, leftSamples, rightSamples []float64, outLen int,
 ) error {
-	dir := randomDirection(rng)
-
 	leftHRIR, rightHRIR, delaySeconds, lookupErr := cfg.HRTF.Lookup(dir)
 	if lookupErr != nil {
-		return fmt.Errorf("HRTF lookup at t=%.4f: %w", bin.TimeSeconds, lookupErr)
+		return fmt.Errorf("HRTF lookup: %w", lookupErr)
 	}
 
 	delaySamples := int(math.Round(delaySeconds * float64(cfg.SampleRate)))
@@ -210,6 +227,55 @@ func randomDirection(rng *rand.Rand) geometry.Vec3 {
 			Z: 1 - 2*s,
 		}
 	}
+}
+
+// dgDirectionForSlot returns the HRIR direction for the given time slot based
+// on directivity group hit probabilities. When blendCount <= 1, it returns the
+// direction of the DG with the highest probability. When blendCount > 1, it
+// returns the probability-weighted average of the top-N DG directions.
+func dgDirectionForSlot(dirs []geometry.Vec3, probs [][]float64, slotIdx, blendCount int) geometry.Vec3 {
+	if len(dirs) == 0 || len(probs) == 0 {
+		return geometry.Vec3{X: 1}
+	}
+
+	if blendCount <= 1 {
+		bestIdx := 0
+		bestProb := -1.0
+
+		for d := range dirs {
+			if d >= len(probs) || slotIdx >= len(probs[d]) {
+				continue
+			}
+
+			if probs[d][slotIdx] > bestProb {
+				bestProb = probs[d][slotIdx]
+				bestIdx = d
+			}
+		}
+
+		return dirs[bestIdx]
+	}
+
+	// Blend top-N: weighted average of directions by probability.
+	var blended geometry.Vec3
+
+	for d := range dirs {
+		if d >= len(probs) || slotIdx >= len(probs[d]) {
+			continue
+		}
+
+		w := probs[d][slotIdx]
+		blended.X += dirs[d].X * w
+		blended.Y += dirs[d].Y * w
+		blended.Z += dirs[d].Z * w
+	}
+
+	norm := blended.Norm()
+	if norm == 0 {
+		return geometry.Vec3{X: 1}
+	}
+
+	return blended.Scale(1 / norm)
 }
 
 // buildHanningWindow creates a Hanning window of the given length.
