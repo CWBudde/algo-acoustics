@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand"
 
+	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/raytrace"
 )
@@ -40,11 +41,36 @@ func HistogramToEvents(h *raytrace.EnergyHistogram, rng *rand.Rand) []ir.Event {
 	return events
 }
 
-// HistogramToBuffer converts a late-energy histogram into a mono IR buffer.
+// HistogramToBuffer converts a late-energy histogram into a mono IR buffer
+// using the legacy random-noise method.
 func HistogramToBuffer(h *raytrace.EnergyHistogram, sampleRate int) *ir.Buffer {
 	if h == nil {
 		return ir.NewBuffer(sampleRate, 0)
 	}
 
 	return h.ToLateMono(sampleRate)
+}
+
+// HistogramToPoissonBuffer converts a late-energy histogram into a mono IR
+// buffer using the Poisson noise process with per-band filtering.
+func HistogramToPoissonBuffer(h *raytrace.EnergyHistogram, volume float64, spec acoustics.BandSpec, sampleRate int, rng *rand.Rand) (*ir.Buffer, error) {
+	if h == nil || len(h.Bins) == 0 {
+		return ir.NewBuffer(sampleRate, 0), nil
+	}
+
+	bins := make([]ir.EnergyBin, len(h.Bins))
+	for i, hb := range h.Bins {
+		bins[i] = ir.EnergyBin{
+			TimeSeconds: hb.TimeSeconds,
+			BandEnergy:  append([]float64(nil), hb.BandEnergy...),
+		}
+	}
+
+	return ir.RenderMonoPoisson(ir.PoissonConfig{
+		Bins:        bins,
+		BinDuration: h.BinDuration,
+		Volume:      volume,
+		BandSpec:    spec,
+		SampleRate:  sampleRate,
+	}, rng)
 }

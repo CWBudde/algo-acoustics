@@ -1351,36 +1351,36 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 
 ### 19.4 Poisson noise process (`ir/`)
 
-- [ ] Implement `PoissonSequence(volume float64, sampleRate int, duration float64) []float64`:
+- [x] Implement `PoissonSequence(volume float64, sampleRate int, duration float64) []float64`:
   - Mean event rate: `mu(t) = 4 * pi * c^3 * t^2 / V`
   - Minimum time: `t0 = (2 * V * ln2 / (4 * pi * c^3))^(1/3)`
   - Generate inter-event intervals: `dt = (1/mu) * ln(1/z)` with `z ~ Uniform(0,1]`
   - Cap `mu` at 10,000 s^-1 to prevent rattling artifacts
   - Assign random signs (+/-) to Dirac deltas
   - Restrict to at most one delta per sample; sign chosen by temporal position within sample (first half positive, second half negative)
-- [ ] Unit test: event density at time `t` matches theoretical `mu(t)` within 5% (averaged over 100 realizations)
-- [ ] Unit test: for a 1344 m^3 room, `t0 ≈ 15.4 ms` — verify no events are generated before this time
-- [ ] Unit test: at `mu = 10,000`, events are capped correctly
+- [x] Unit test: event density at time `t` matches theoretical `mu(t)` within 5% (averaged over 100 realizations)
+- [x] Unit test: for a 1344 m^3 room, `t0 ≈ 15.4 ms` — verify no events are generated before this time
+- [x] Unit test: at `mu = 10,000`, events are capped correctly
 
 ### 19.5 Band-filtered Poisson RIR construction (`ir/`)
 
-- [ ] Implement `RenderMonoPoisson(events []Event, hist *EnergyHistogram, volume float64, spec BandSpec, sampleRate int) Buffer`:
+- [x] Implement `RenderMonoPoisson(events []Event, hist *EnergyHistogram, volume float64, spec BandSpec, sampleRate int) Buffer`:
   - Generate Poisson Dirac delta sequence
   - Transform to frequency domain; apply per-band half-cosine crossover filters (reuse `buildBandpassWeights`)
   - Transform back to time domain: one filtered sequence per band
   - Weight each band's sequence sample-wise by the energy histogram envelope:
     `s_i = v_i * sqrt(E_n(k) / sum(v_i^2 in slot k)) * sqrt(BW / (fs/2))`
   - Sum all weighted band sequences to produce the monaural RIR
-- [ ] Make Poisson synthesis the default for late-field construction; keep the legacy random-phase path behind a config flag
-- [ ] A/B regression test: compare Poisson RIR against legacy RIR — T30 and EDT should agree within 3%; spectral envelope should agree within 1 dB per band
-- [ ] Listening test fixture: export both variants as WAV for subjective comparison
+- [x] Make Poisson synthesis the default for late-field construction; keep the legacy random-phase path behind a config flag
+- [x] A/B regression test: compare Poisson RIR against legacy RIR — T30 and EDT should agree within 3%; spectral envelope should agree within 1 dB per band
+- [x] Listening test fixture: export both variants as WAV for subjective comparison
 
 ### 19.6 Binaural Poisson RIR construction (`ir/`, `hrtf/`)
 
-- [ ] Extend Poisson synthesis for binaural output: generate the Dirac delta sequence once, then convolve with direction-dependent HRIRs selected per time slot
-- [ ] Direction selection: use the DG hit probabilities from Phase 20 (if available), or fall back to random direction weighted by the histogram's directional energy distribution
-- [ ] Overlap-add with 50% Hanning window to merge time-slot fragments into continuous left/right channels
-- [ ] Unit test: binaural Poisson BRIR has correct ITD for a lateralized source (direct sound arrival time difference matches expected ITD within 1 sample)
+- [x] Extend Poisson synthesis for binaural output: generate the Dirac delta sequence once, then convolve with direction-dependent HRIRs selected per time slot
+- [x] Direction selection: use the DG hit probabilities from Phase 20 (if available), or fall back to random direction weighted by the histogram's directional energy distribution
+- [x] Overlap-add with 50% Hanning window to merge time-slot fragments into continuous left/right channels
+- [x] Unit test: binaural Poisson BRIR has correct ITD for a lateralized source (direct sound arrival time difference matches expected ITD within 1 sample)
 
 ---
 
