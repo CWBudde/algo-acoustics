@@ -106,6 +106,7 @@ let currentAuralizationNodes = null;
 let currentAuralizationPlaying = false;
 let currentAuralizationStopTimer = 0;
 let lastAuralizedWav = null;
+let waveformZoom = 1;
 let dragState = null;
 let sceneRaycaster = null;
 let scenePointer = null;
@@ -257,12 +258,7 @@ async function init() {
   syncFormFromState();
   syncAuralizationControls();
   updateMaterialSummary();
-  drawWaveform(refs.waveformCanvas, null, {
-    irView: state.irView,
-    renderMode: state.render.mode,
-    durationSeconds: state.render.durationSeconds,
-    crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-  });
+  redrawWaveform(null);
   sceneView = createSceneView(refs.sceneCanvas);
   bindSceneInteractions(refs.sceneCanvas);
   applySceneTheme();
@@ -388,12 +384,7 @@ function handleWorkerMessage(event) {
     updateMetrics(lastRender);
     updateAudio(lastRender.wavBytes);
     updateRenderLog(lastRender);
-    drawWaveform(refs.waveformCanvas, samples, {
-      irView: state.irView,
-      renderMode: state.render.mode,
-      durationSeconds: state.render.durationSeconds,
-      crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-    });
+    redrawWaveform(samples);
     refs.downloadWav.disabled = false;
     finalizeRenderSession("Render room", "ready");
     setRenderBadge("Render complete", "ready");
@@ -412,12 +403,7 @@ function bindEvents() {
     syncFormFromState();
     updateMaterialSummary();
     updateSceneView();
-    drawWaveform(refs.waveformCanvas, lastRender?.samples ?? null, {
-      irView: state.irView,
-      renderMode: state.render.mode,
-      durationSeconds: state.render.durationSeconds,
-      crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-    });
+    redrawWaveform();
     setRenderBadge("Waiting for render", "ready");
     scheduleUrlSync();
   });
@@ -606,12 +592,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.render.mode = button.dataset.mode;
       syncModeButtons();
-      drawWaveform(refs.waveformCanvas, lastRender?.samples ?? null, {
-        irView: state.irView,
-        renderMode: state.render.mode,
-        durationSeconds: state.render.durationSeconds,
-        crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-      });
+      redrawWaveform();
       scheduleUrlSync();
     });
   });
@@ -620,12 +601,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.irView = button.dataset.view;
       syncIrViewButtons();
-      drawWaveform(refs.waveformCanvas, lastRender?.samples ?? null, {
-        irView: state.irView,
-        renderMode: state.render.mode,
-        durationSeconds: state.render.durationSeconds,
-        crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-      });
+      redrawWaveform();
       scheduleUrlSync();
     });
   });
@@ -662,14 +638,24 @@ function bindEvents() {
     void exportAuralizedWav();
   });
 
+  refs.waveformCanvas.addEventListener(
+    "wheel",
+    (event) => {
+      if (!event.shiftKey || !lastRender?.samples?.length) {
+        return;
+      }
+
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+      waveformZoom = clamp(waveformZoom * factor, 0.5, 8);
+      redrawWaveform();
+    },
+    { passive: false },
+  );
+
   window.addEventListener("resize", () => {
     sceneView?.resize();
-    drawWaveform(refs.waveformCanvas, lastRender?.samples ?? null, {
-      irView: state.irView,
-      renderMode: state.render.mode,
-      durationSeconds: state.render.durationSeconds,
-      crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-    });
+    redrawWaveform();
   });
 }
 
@@ -1085,6 +1071,16 @@ function updateSceneView() {
 
 function drawWaveform(canvas, samples = null, state = {}) {
   audioModule.drawWaveform(canvas, samples, state);
+}
+
+function redrawWaveform(samples = lastRender?.samples ?? null) {
+  drawWaveform(refs.waveformCanvas, samples, {
+    irView: state.irView,
+    renderMode: state.render.mode,
+    durationSeconds: state.render.durationSeconds,
+    crossoverTimeSeconds: state.render.crossoverTimeSeconds,
+    waveformZoom,
+  });
 }
 
 function bindRange(input, output, formatter) {

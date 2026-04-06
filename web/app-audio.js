@@ -186,24 +186,25 @@ export function drawWaveform(canvas, samples = null, state = {}) {
   const maxAmplitude = robustPeakAmplitude(downsampled);
   drawWaveGrid(context, layout, palette);
   const view = state.irView === "dB" ? "dB" : "linear";
+  const zoom = clamp(Number(state.waveformZoom || 1), 0.5, 8);
   const peakIndex = findPeakIndex(downsampled);
   const peakValue = downsampled[peakIndex] ?? 0;
   const peakX = (peakIndex / Math.max(1, downsampled.length - 1)) * width;
 
   if (view === "dB") {
-    drawDbWaveform(context, layout, palette, downsampled, maxAmplitude);
+    drawDbWaveform(context, layout, palette, downsampled, maxAmplitude, zoom);
   } else {
-    drawLinearWaveform(context, layout, palette, downsampled, maxAmplitude);
+    drawLinearWaveform(context, layout, palette, downsampled, maxAmplitude, zoom);
   }
 
-  drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, layout);
+  drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, layout, zoom);
 
   if (state.renderMode === "hybrid") {
     const x = (state.crossoverTimeSeconds / state.durationSeconds) * width;
     drawDivider(context, palette, x, layout, state.crossoverTimeSeconds);
   }
 
-  drawAxisLabels(context, width, height, palette, state, samples, view, layout);
+  drawAxisLabels(context, width, height, palette, state, samples, view, layout, zoom);
 }
 
 function getWaveformLayout(width, height) {
@@ -293,11 +294,10 @@ function robustPeakAmplitude(samples) {
   return Math.max(percentile, absoluteMax * 0.2, 1e-6);
 }
 
-function drawLinearWaveform(context, layout, palette, samples, maxAmplitude) {
-  const baseline = Math.round(layout.top + layout.height * 0.62);
-  const upper = Math.max(layout.top + 12, baseline - 1);
-  const lower = Math.min(layout.top + layout.height - 2, baseline + 1);
-  const scale = Math.max(1, Math.min(baseline - upper, lower - baseline));
+function drawLinearWaveform(context, layout, palette, samples, maxAmplitude, zoom) {
+  const baseline = Math.round(layout.top + layout.height / 2);
+  const maxScale = Math.max(1, Math.min(baseline - layout.top - 8, layout.top + layout.height - baseline - 8));
+  const scale = clamp(maxScale * zoom, maxScale * 0.35, maxScale * 8);
   const { linePath, fillPath } = buildLinearPaths(
     samples,
     layout.left,
@@ -321,13 +321,20 @@ function drawLinearWaveform(context, layout, palette, samples, maxAmplitude) {
   context.lineWidth = 2.2;
   context.strokeStyle = palette.trace;
   context.stroke(linePath);
+
+  context.lineWidth = 1;
+  context.strokeStyle = "rgba(255, 255, 255, 0.34)";
+  context.beginPath();
+  context.moveTo(layout.left, baseline);
+  context.lineTo(layout.left + layout.width, baseline);
+  context.stroke();
   context.restore();
 }
 
-function drawDbWaveform(context, layout, palette, samples, maxAmplitude) {
+function drawDbWaveform(context, layout, palette, samples, maxAmplitude, zoom) {
   const top = layout.top + 6;
   const bottom = layout.top + layout.height - 4;
-  const dynRange = 60;
+  const dynRange = clamp(60 / zoom, 12, 96);
   const { linePath, fillPath } = buildDbPaths(
     samples,
     layout.left,
@@ -396,7 +403,7 @@ function drawAxisLabels(context, width, height, palette, state, samples, view, l
   });
 
   if (view === "linear") {
-    const baseline = Math.round(layout.top + layout.height * 0.62);
+    const baseline = Math.round(layout.top + layout.height / 2);
     context.fillStyle = "rgba(255, 255, 255, 0.58)";
     context.textAlign = "right";
     context.fillText("+1", layout.left - 8, layout.top + 20);
@@ -440,12 +447,12 @@ function drawDivider(context, palette, x, layout, timeSeconds) {
   context.restore();
 }
 
-function drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, layout) {
+function drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, layout, zoom) {
   if (!Number.isFinite(peakX) || Math.abs(peakValue) < 1e-6) {
     return;
   }
 
-  const baseline = Math.round(layout.top + layout.height * 0.62);
+  const baseline = Math.round(layout.top + layout.height / 2);
   const top = layout.top + 6;
   const bottom = layout.top + layout.height - 4;
   const dynRange = 60;
@@ -458,7 +465,7 @@ function drawPeakMarker(context, palette, peakX, peakValue, view, maxAmplitude, 
           const normalized = 1 + clampedDB / dynRange;
           return bottom - normalized * (bottom - top);
         })()
-      : baseline - (peakValue / maxAmplitude) * Math.max(1, baseline - top);
+      : baseline - (peakValue / maxAmplitude) * Math.max(1, (baseline - top) * zoom);
 
   context.save();
   context.fillStyle = palette.trace;
