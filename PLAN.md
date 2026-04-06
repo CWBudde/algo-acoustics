@@ -1313,6 +1313,343 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 - [ ] Add a benchmark baseline update procedure so performance improvements do not accidentally become regressions
 - [ ] Track any new format or solver feature with a small fixture before expanding it into a full phase
 
+---
+
+## Phase 19 — Diffuse Rain and Poisson Late-Field Synthesis
+
+### Milestone O: physically correct late reverberation from fewer rays
+
+> The two most impactful improvements from the RAVEN dissertation: (1) diffuse rain sends secondary energy toward the receiver at every scattered reflection, reducing the particle count needed for convergence by 4-10x, and (2) Poisson noise synthesis generates the temporal fine structure of late reverberation from the energy histogram, producing perceptually superior late-field texture. See `docs/raven.md` Sections 3.2--3.5.
+
+### 19.1 Diffuse rain — spherical detector (`raytrace/`)
+
+- [ ] At each diffuse reflection, compute the secondary radiation energy toward the receiver sphere:
+  - `E_s = E_P * (1-alpha) * s * (1 - cos(gamma/2)) * 2 * cos(Theta) * exp(-m*r)`
+  - `E_P`: particle energy before wall hit; `alpha`, `s`: wall absorption/scattering; `gamma`: detector opening angle; `Theta`: angle between surface normal and direction to receiver; `r`: distance from reflection point to receiver center; `m`: air absorption coefficient
+- [ ] Add BVH visibility check from each diffuse reflection point to the receiver center — skip if occluded
+- [ ] Compute arrival time: `t = t_particle + r/c` and bin into the existing `EnergyHistogram`
+- [ ] Add per-band Lambert-weighted energy contribution (reuse `AlphaAirISO9613_1` for `m` per band)
+- [ ] Make diffuse rain toggleable via `LaunchConfig.DiffuseRain bool` (default: true)
+- [ ] Unit test: free-field with one reflective wall — diffuse rain energy matches analytical diffuse-rain formula within 5%
+- [ ] Unit test: occluded receiver behind a second wall — rain contribution is correctly blocked
+
+### 19.2 Diffuse rain — surface detector (portal preparation) (`raytrace/`)
+
+- [ ] Implement the surface-detector variant for planar receiver areas:
+  - `E_s = E_P * (1-alpha) * s * A / (2*pi*r^2) * cos(Psi) * cos(Theta) * exp(-m*r)`
+  - `Psi`: angle between connection vector and detector normal; `A`: detector area
+- [ ] Define `SurfaceReceiver` type with position, normal, area, and histogram — this will serve as the portal detector in Phase 21
+- [ ] Unit test: planar detector perpendicular to surface normal collects same total energy as spherical detector (within 10%)
+
+### 19.3 Diffuse rain integration with hybrid model (`raytrace/`, `hybrid/`)
+
+- [ ] Update the ray tracer's detection logic: when diffuse rain is active, do *not* count direct detector sphere hits for scattered particles (they are already accounted for by rain) — only specular reflections and direct hits on the sphere are counted as before
+- [ ] Verify energy calibration: with diffuse rain enabled, the total energy in the histogram must match the non-rain case within 2% (same total energy, just lower variance)
+- [ ] Regression test: compare energy histograms with and without diffuse rain for the standard shoebox — mean energy per bin should agree within 3%, but variance should be 4-10x lower with rain
+- [ ] Benchmark: rays/sec impact of diffuse rain (expect 20-40% slowdown per particle due to visibility checks, but 4-10x fewer particles needed overall)
+
+### 19.4 Poisson noise process (`ir/`)
+
+- [ ] Implement `PoissonSequence(volume float64, sampleRate int, duration float64) []float64`:
+  - Mean event rate: `mu(t) = 4 * pi * c^3 * t^2 / V`
+  - Minimum time: `t0 = (2 * V * ln2 / (4 * pi * c^3))^(1/3)`
+  - Generate inter-event intervals: `dt = (1/mu) * ln(1/z)` with `z ~ Uniform(0,1]`
+  - Cap `mu` at 10,000 s^-1 to prevent rattling artifacts
+  - Assign random signs (+/-) to Dirac deltas
+  - Restrict to at most one delta per sample; sign chosen by temporal position within sample (first half positive, second half negative)
+- [ ] Unit test: event density at time `t` matches theoretical `mu(t)` within 5% (averaged over 100 realizations)
+- [ ] Unit test: for a 1344 m^3 room, `t0 ≈ 15.4 ms` — verify no events are generated before this time
+- [ ] Unit test: at `mu = 10,000`, events are capped correctly
+
+### 19.5 Band-filtered Poisson RIR construction (`ir/`)
+
+- [ ] Implement `RenderMonoPoisson(events []Event, hist *EnergyHistogram, volume float64, spec BandSpec, sampleRate int) Buffer`:
+  - Generate Poisson Dirac delta sequence
+  - Transform to frequency domain; apply per-band half-cosine crossover filters (reuse `buildBandpassWeights`)
+  - Transform back to time domain: one filtered sequence per band
+  - Weight each band's sequence sample-wise by the energy histogram envelope:
+    `s_i = v_i * sqrt(E_n(k) / sum(v_i^2 in slot k)) * sqrt(BW / (fs/2))`
+  - Sum all weighted band sequences to produce the monaural RIR
+- [ ] Make Poisson synthesis the default for late-field construction; keep the legacy random-phase path behind a config flag
+- [ ] A/B regression test: compare Poisson RIR against legacy RIR — T30 and EDT should agree within 3%; spectral envelope should agree within 1 dB per band
+- [ ] Listening test fixture: export both variants as WAV for subjective comparison
+
+### 19.6 Binaural Poisson RIR construction (`ir/`, `hrtf/`)
+
+- [ ] Extend Poisson synthesis for binaural output: generate the Dirac delta sequence once, then convolve with direction-dependent HRIRs selected per time slot
+- [ ] Direction selection: use the DG hit probabilities from Phase 20 (if available), or fall back to random direction weighted by the histogram's directional energy distribution
+- [ ] Overlap-add with 50% Hanning window to merge time-slot fragments into continuous left/right channels
+- [ ] Unit test: binaural Poisson BRIR has correct ITD for a lateralized source (direct sound arrival time difference matches expected ITD within 1 sample)
+
+---
+
+## Phase 20 — Directivity Groups for Binaural Ray Tracing
+
+### Milestone P: directional late-field energy for binaural rendering
+
+> RAVEN subdivides the spherical detector into angular sectors (directivity groups, DGs). Each DG accumulates a separate energy histogram. During BRIR construction, the most probable HRIR is selected per time slot based on DG hit probabilities. This provides directional information for the diffuse late field, improving spatial perception of reverberation beyond what omni-directional ray detection achieves. See `docs/raven.md` Section 3.5.
+
+### 20.1 Directivity group definition (`raytrace/`)
+
+- [ ] Define `DirectivityGroup` struct: azimuth/elevation center, angular extent, and per-band `EnergyHistogram`
+- [ ] Implement `NewDirectivityGroups(azSteps, elSteps int) []DirectivityGroup` — subdivide the sphere into `azSteps * elSteps` sectors with head-related coordinate system (frontal azimuth = 0)
+- [ ] Default resolution: 12 azimuth x 6 elevation = 72 DGs (5° x 30° sectors) — sufficient for late-field HRIR selection
+- [ ] Assign each DG a representative direction (sector centroid) for HRIR lookup
+
+### 20.2 Ray-tracer DG binning (`raytrace/`)
+
+- [ ] When a particle hits the spherical detector, classify its arrival direction into the appropriate DG
+- [ ] Accumulate the particle's energy into the DG's histogram (in addition to the main histogram)
+- [ ] For diffuse rain contributions: classify the direction from reflection point to receiver center and bin accordingly
+- [ ] Unit test: isotropic energy distribution (diffuse field) produces approximately equal energy in all DGs
+- [ ] Unit test: single specular reflection from a known direction accumulates in the correct DG
+
+### 20.3 DG hit probability computation (`raytrace/`)
+
+- [ ] For each time slot `k` and each DG `d`, compute the hit probability:
+  `P(d, k) = E_d(k) / sum_d(E_d(k))`
+  where `E_d(k)` is the energy accumulated in DG `d` during time slot `k`
+- [ ] Handle empty slots: if no energy was detected in any DG for a time slot, distribute uniformly (fully diffuse assumption)
+
+### 20.4 Binaural RIR construction with DG-weighted HRIRs (`ir/`, `hrtf/`)
+
+- [ ] For each time slot, select the HRIR pair corresponding to the DG with the highest hit probability — this is the "most likely arrival direction" for that time window
+- [ ] Alternatively (better quality): blend the top-N DG directions' HRIRs weighted by their probabilities
+- [ ] Convolve the Poisson noise fragment for each time slot with the selected/blended HRIR pair
+- [ ] Overlap-add the HRIR-convolved fragments (50% Hanning window) to produce left/right channels
+- [ ] A/B regression test: compare DG-based BRIR against per-event BRIR — IACC should differ (DG version captures late-field directionality); T30 should agree within 3%
+- [ ] Listening test fixture: export both variants for subjective spatial quality comparison
+
+---
+
+## Phase 21 — Sound Transmission Between Rooms
+
+### Milestone Q: multi-room acoustic simulation with portal-based coupling
+
+> Enable basic sound transmission through walls and portals between adjacent rooms. This implements the secondary source model from the RAVEN dissertation (Section 5) without the full Acoustic Scene Graph infrastructure — just enough to handle the most common case of sound bleeding through a partition between two rooms. See `docs/raven.md` Section 5.
+
+### 21.1 Material transmission coefficients (`scene/`)
+
+- [ ] Add `TransmissionByBand []float64` to `Material` struct — per-band transmission coefficients $\tau$
+- [ ] Add `SoundReductionIndex []float64` as an alternative input format — convert to $\tau$ via $\tau = 10^{-R/10}$
+- [ ] Validation: $0 \le \tau \le 1$, and $\alpha + \tau \le 1$ (energy conservation: absorbed + transmitted + reflected = 1)
+- [ ] Add transmission data to the materials library for common construction types: concrete wall (~50 dB), plasterboard partition (~35 dB), wooden door (~25 dB), glass window (~30 dB), open doorway (0 dB)
+- [ ] Unit test: round-trip between `SoundReductionIndex` and `TransmissionByBand`
+
+### 21.2 Multi-room scene definition (`scene/`)
+
+- [ ] Extend `Scene` to support multiple rooms: `Rooms []Room` instead of a single `Room`
+- [ ] Define `Portal` struct: two room indices, shared surface polygon (or rectangle for shoeboxes), material reference for transmission properties, state (`Open` / `Closed`)
+- [ ] Add `Portals []Portal` to `Scene`
+- [ ] Validation: portals reference valid room indices; portal polygons are coplanar with a wall in each room; open portals have transmission = 1.0
+- [ ] JSON serialization for multi-room scenes
+- [ ] Unit test: two adjacent shoeboxes sharing a wall, one portal defined on the shared surface
+
+### 21.3 Secondary source model (`raytrace/`, `ism/`)
+
+- [ ] When the ray tracer detects energy at a portal's surface receiver (Phase 19.2), spawn a secondary point source at the portal's center on the receiving-room side
+- [ ] The secondary source's frequency spectrum is filtered by the portal's transmission transfer function: `SS = S * sum(H_S,x * H_x,y)` for direct transmission paths
+- [ ] For ISM: mirror the secondary source in the receiving room as a regular source, but with the transmitted spectrum as its initial energy
+- [ ] For RT: launch particles from the secondary source into the receiving room with energy proportional to the transmitted energy histogram
+- [ ] Unit test: two identical rooms with a portal — received energy in the far room matches theoretical level difference $D_n = L_S - L_R + 10\log(S/A_R)$ within 3 dB
+
+### 21.4 Apparent sound reduction index computation (`metrics/`)
+
+- [ ] Implement `ApparentSoundReductionIndex(sourceRoomLevel, receiverRoomLevel, partitionArea, receiverAbsorptionArea float64) float64`
+- [ ] Implement flanking-aware variant: $R' = -10\log(\sum \tau_{ij})$ for $N \times M$ transmission paths
+- [ ] Validate against the RAVEN test case: two 90 m^3 rooms, 16 m^2 partition — simulated R should match input portal R within 2.5 dB (300 Hz--16 kHz)
+
+### 21.5 Portal interaction for real-time/web demo (`hybrid/`)
+
+- [ ] Implement smooth portal crossfade: cache BRIRs for both open and closed portal states
+- [ ] Crossfade function: $y(x) = \sqrt[n]{x}$, $x \in [0,1]$ mapping aperture angle to interpolation weight
+- [ ] When portal state changes, blend between cached BRIRs over the aperture curve
+- [ ] Hard switch to the merged room group BRIR once the portal is fully open (all-pass reached)
+- [ ] Unit test: crossfade produces monotonically increasing energy as door opens; no energy discontinuities
+
+---
+
+## Phase 22 — Higher-Order Diffraction and DAPDF
+
+### Milestone R: improved shadow-zone accuracy for complex geometries
+
+> Extend diffraction beyond first-order UTD: (1) second-order diffraction via edge-to-edge paths using the BTME formulation, and (2) replace the Keller-cone sampling in the ray tracer with the physically-motivated DAPDF (Deflection Angle Probability Density Function). See `docs/raven.md` Sections 2.5 and 3.3.
+
+### 22.1 Second-order edge diffraction (`ism/`, `geometry/`)
+
+- [ ] Enumerate edge-to-edge diffraction paths: for each pair of diffracting edges, check mutual visibility (line-of-sight between edges, tested at start/center/end points)
+- [ ] Implement `SecondOrderDiffractionPaths(source, receiver Vec3, edges []DiffractionEdge) []DiffractionPath`:
+  - For each visible edge pair (E1, E2): find the Fermat-principle diffraction points on both edges
+  - Compute intermediate receiver at midpoint $M$ between the two edge diffraction points
+  - Evaluate first diffraction: $H_{1,diff}$ from source $S$ to $M$ via edge E1
+  - Evaluate second diffraction: $H_{2,diff}$ from $M$ to receiver $R$ via edge E2
+  - Total: $H_n = H_{1,diff} \cdot H_{2,diff}$ (approximation — exact would require element-by-element integration)
+- [ ] Add order limit: `MaxDiffractionOrder int` in config (default: 1; set to 2 to enable)
+- [ ] Contribution culling: skip edge pairs whose estimated combined attenuation exceeds -60 dB
+- [ ] Unit test: L-shaped corridor — second-order diffraction around two corners produces measurable energy at receiver (first-order alone would have zero contribution)
+- [ ] Unit test: double-doorway — second-order diffraction path through two door edges
+- [ ] Validation: compare against RAVEN's BTME reference for a double-edge wedge scenario
+
+### 22.2 Combined reflection-diffraction paths (`ism/`)
+
+- [ ] Enumerate paths of type source → reflect → diffract → receiver and source → diffract → reflect → receiver up to second order total (sum of reflection + diffraction orders)
+- [ ] Reuse existing IS tree for the reflection segments; diffraction segments use `FindDiffractionPoint`
+- [ ] Construct transfer function: multiply IS reflection chain with diffraction coefficient
+- [ ] Path construction plan using subpath descriptors: S2D, D2D, D2R as in RAVEN's scheme
+
+### 22.3 DAPDF implementation (`raytrace/`)
+
+- [ ] Implement `DAPDF(v, v0, D0 float64) float64` — the Deflection Angle Probability Density Function:
+  - `D(v) = D0 * (1 - v^2)` for `|v| <= v0`
+  - `D(v) = D0 * 0.5 / sqrt(2 - 1 + v^2)` for `|v| > v0`
+  - `v0 = sqrt(1 - 1/sqrt(2)) ≈ 0.5412`
+  - `v = 2 * b * epsilon` where `b = 6a` (apparent slit width), `a` = fly-by distance, `epsilon` = deflection angle
+  - `D0` = normalization factor such that integral over all angles = 1
+- [ ] Implement the six piecewise closed-form integrals of D(v) for the energy computation (Eqs. 5.29-5.34 in raven.md)
+- [ ] Unit test: integral of DAPDF over [-pi, pi] equals 1.0 for any `b > 0`
+- [ ] Unit test: peak value and shape match published DAPDF plots for `a = 1λ` through `7λ`
+
+### 22.4 Deflection cylinders (`raytrace/`, `geometry/`)
+
+- [ ] Define `DeflectionCylinder` struct: edge reference, frequency-dependent radius (`r = 7 * lambda`), start/end points matching the edge
+- [ ] Build deflection cylinders for all diffracting edges at each simulation frequency
+- [ ] Implement ray-cylinder collision test (already defined in raven.md Section 7.2):
+  - `n = e × b`, `d = |n · s_E|`, hit if `d <= r`
+- [ ] When a ray passes through a DC: compute outgoing energy via DAPDF integration over the angular range subtended by visible detectors:
+  `E_out = E_in * exp(-m*h) * integral(D(epsilon, b), epsilon_min, epsilon_max)`
+- [ ] Forward diffracted energy selectively to other visible detectors (detection spheres, portals, other DCs) — this is the "diffracted rain" mechanism
+- [ ] Support recursive diffracted rain up to configurable depth (default: 2)
+- [ ] Unit test: particle passing at distance `a = 3λ` from edge — outgoing energy distribution matches DAPDF shape
+- [ ] Benchmark: deflection cylinder overhead vs. current Keller-cone approach
+
+### 22.5 Validation
+
+- [ ] Single finite wedge (10° inner angle, 100 m edge): compare transmission levels against Svensson Edge Diffraction Toolbox at 50 Hz, 500 Hz, 5 kHz, and 10 kHz
+- [ ] View zone / shadow zone transition: verify smooth level curve across the boundary for both IS-based (BTME) and RT-based (DAPDF) methods
+- [ ] Second-order diffraction: L-shaped room, verify that adding second-order improves shadow-zone levels by 1-3 dB compared to first-order only
+- [ ] Regression: existing first-order diffraction tests must still pass (no behavioral change when `MaxDiffractionOrder = 1`)
+
+---
+
+## Phase 23 — Plane-Polygon Map and ISM Optimizations
+
+### Milestone S: faster image source generation for complex mesh rooms
+
+> For rooms with many coplanar polygons (architectural models), mirror across distinct planes instead of individual triangles. This reduces the IS count from $n(n-1)^{i-1}$ to $p(p-1)^{i-1}$ where $p \ll n$. Additionally, add per-particle hybrid detection logic for precise IS/RT energy partitioning. See `docs/raven.md` Sections 2.4 and 4.2.
+
+### 23.1 Plane-Polygon Map (`ism/`, `geometry/`)
+
+- [ ] Implement `PlanePolygonMap` struct: maps each distinct plane (normal + distance) to the set of coplanar polygon/triangle indices
+- [ ] Implement `BuildPlanePolygonMap(mesh *Mesh, tolerance float64) PlanePolygonMap`:
+  - Group triangles by plane equivalence (normal dot product > 1-epsilon AND distance difference < tolerance)
+  - Merge: two planes are equivalent if their normals are parallel (or anti-parallel) and their signed distances from origin agree within tolerance
+  - Default tolerance: 1e-6 for normal dot product, 1e-4 m for distance
+- [ ] Modify `GenerateMeshImageSources()` to accept an optional PPM: mirror across planes rather than individual triangles
+- [ ] During audibility test: when a ray-plane intersection is found, use the PPM to identify which specific polygon was hit (point-in-polygon test on the coplanar set)
+- [ ] Unit test: simple room with 12 polygons on 8 planes — PPM correctly identifies 8 distinct planes with correct polygon memberships
+- [ ] Performance test: 4th-order IS generation with PPM produces ~4x fewer image sources than without
+
+### 23.2 Per-particle hybrid detection logic (`raytrace/`)
+
+- [ ] Add tracking fields to `RayState`:
+  - `HasDiffuseHistory bool` — set to true on first diffuse scatter
+  - `PreEDReflOrder int` — reflection count before first edge diffraction
+  - `EDReflOrder int` — reflection count after first edge diffraction
+  - `EDOrder int` — number of edge diffractions encountered
+- [ ] Update tracking in reflection/scatter/diffraction handlers:
+  - `REFLECTED()`: set AllowDetection = true, increment appropriate counter
+  - `SCATTERED()`: set HasDiffuseHistory = true, AllowDetection = false, increment counter
+  - `DIFFRACTED()`: increment EDOrder, AllowDetection = false
+- [ ] Implement `DetectionAllowedHybrid(state RayState, config HybridConfig) bool`:
+  - If `EDOrder != 0`: allow if `HasDiffuseHistory` OR any reflection counter exceeds the corresponding max IS order
+  - If `EDOrder == 0`: allow if `ReflectionOrder > MaxISOrder`
+- [ ] Replace the current time/order-based crossover in the ray tracer detection path with this per-particle logic (configurable: use legacy crossover or per-particle logic)
+- [ ] Unit test: a purely specular particle at order 3 with MaxISOrder=3 is not detected; at order 4 it is
+- [ ] Unit test: a scattered particle at order 2 with MaxISOrder=3 is detected (has diffuse history)
+- [ ] Energy conservation test: total energy (IS + RT) in the hybrid IR equals the total source energy minus absorption losses, within 2%
+
+---
+
+## Phase 24 — Extended Source Directivity and SOFA Loading
+
+### Milestone T: frequency-dependent directivity and standard HRTF exchange
+
+> Add frequency-dependent source directivity (real instruments radiate differently at different frequencies) and complete SOFA file loading for HRTFs. These are the remaining gaps for professional-grade auralization input data. See `docs/raven.md` Section 12.3 items 8-9.
+
+### 24.1 Frequency-dependent directivity models (`directivity/`)
+
+- [ ] Add `FrequencyDependentCardioid` model: cardioid order varies with frequency (wider at low freq, narrower at high freq)
+  - Config: per-band cardioid orders (e.g., order 0.5 at 125 Hz → order 4 at 8 kHz)
+  - Interpolate order between band centers for intermediate frequencies
+- [ ] Add `BalloonDirectivity` model: tabulated gain values on a spherical grid, per frequency band
+  - Internal storage: azimuth x elevation x frequency band matrix
+  - Lookup: nearest-neighbor or bilinear interpolation on the spherical grid
+  - Input format: JSON array of `{azimuth, elevation, band_gains[]}`
+- [ ] Integrate with existing GLL loader (`gll-tools`): extract per-band directivity balloons from GLL data and construct a `BalloonDirectivity`
+- [ ] Unit test: `FrequencyDependentCardioid` at 125 Hz is nearly omni; at 8 kHz is narrow
+- [ ] Unit test: `BalloonDirectivity` lookup matches input data at grid points exactly
+- [ ] Regression test: GLL-loaded source produces the same ISM events as before (existing cardioid behavior preserved when GLL data approximates a cardioid)
+
+### 24.2 SOFA file loading (`hrtf/`)
+
+- [ ] Implement SOFA file reader: parse the NetCDF-based SOFA format (SimpleFreeFieldHRIR convention)
+  - Read measurement positions (source positions in spherical coordinates)
+  - Read HRIR data (left/right channels per measurement position)
+  - Read sample rate and delay values
+  - Build `MeasurementGrid` from the loaded data
+- [ ] Dependency: add `go-sofa` (or minimal NetCDF reader) behind the existing `Dataset` interface
+- [ ] Implement `LoadSOFA(path string) (*NearestNeighborDataset, error)` convenience function
+- [ ] Support the CIPIC, LISTEN, and ARI SOFA datasets (most common publicly available HRTFs)
+- [ ] Unit test: load a small SOFA file, verify measurement count, sample rate, and one known HRIR
+- [ ] Integration test: render a binaural IR with SOFA-loaded HRTFs and verify ITD matches expected values for a lateral source
+
+---
+
+## Phase 25 — Multi-Room Acoustic Scene Graph
+
+### Milestone U: full multi-room simulation with portal networks and filter chains
+
+> The complete ASG/PST/PPG infrastructure enables simulation of complex multi-room environments: portal-based room coupling, source elimination for inaudible frequency bands, depth-first path search, and filter network construction for sound transmission through chains of rooms. This is the full realization of the RAVEN multi-room model. Builds on Phase 21's basic portal support. See `docs/raven.md` Section 5 and Section 10.
+
+### 25.1 Acoustic Scene Graph (`scene/`)
+
+- [ ] Define `AcousticSceneGraph` struct: nodes = `Room`, edges = `Portal`
+- [ ] Each portal stores: two room IDs, surface polygon, material, state (open/closed), pointer to counter-portal
+- [ ] Room groups: compute connected components of rooms joined by open portals
+- [ ] `UpdateRoomGroups()`: recompute groups when portal states change
+- [ ] Each room group gets its own spatial data structure (BVH) and simulation context
+- [ ] Unit test: 8-room office floor with 10 portals — room group computation matches expected grouping for various open/closed configurations
+
+### 25.2 Path search and source elimination (`scene/`, `hybrid/`)
+
+- [ ] Implement depth-first path search: find all propagation paths from source room to receiver room through the ASG
+  - Cycle detection: track visited nodes in current path via LIFO stack
+  - Pruning: terminate branches where accumulated sound reduction $R_w$ exceeds the source level
+  - Return a Path Search Tree (PST) with all valid paths
+- [ ] Source elimination: for each propagation path through portals, determine which frequency bands survive transmission — skip bands that are completely attenuated
+- [ ] Convert PST to Propagation Path Graph (PPG): replace portal nodes with filter functions, room nodes with RIR/BRIR edges, merge leaf nodes into single receiver node
+- [ ] Unit test: 3-room chain (S in R1, R in R3, two portals) — finds both direct path (R1→R2→R3) and confirms flanking paths if present
+
+### 25.3 Filter network rendering (`hybrid/`, `ir/`)
+
+- [ ] For each propagation path in the PPG, compute the total transfer function:
+  `H_PP = H_PS * prod(H_Portal(p)) * prod(H_RoomGroup(r)) * H_R`
+- [ ] Each room group's `H_RoomGroup` comes from the standard IS+RT simulation within that group
+- [ ] Each portal's `H_Portal` is derived from its transmission coefficients
+- [ ] Sum all path contributions in the time domain or frequency domain to produce the final BRIR
+- [ ] Four path types: PS2R (source to receiver, same group), PS2P (source to portal), SS2R (secondary source to receiver), SS2P (secondary source to portal)
+- [ ] Binaural rendering: PS2R and SS2R paths use binaural simulation; PS2P and SS2P use monaural (source behind closed portal cannot be spatially localized)
+- [ ] Integration test: office floor scenario — rendered IR has correct level drop per room, matching expected sound reduction indices
+
+### 25.4 Dynamic portal interaction
+
+- [ ] When a portal state changes: recompute room groups, update ASG connectivity, regenerate PST/PPG
+- [ ] Cache BRIRs per room group so only affected groups are resimulated
+- [ ] Portal crossfade: reuse Phase 21.5 mechanism for smooth open/close transitions
+- [ ] Performance target: portal state change to updated BRIR < 2 s for a 4-room scenario
+
+> **Known limitations:** This implementation follows RAVEN's first-order junction model (direct + flanking paths via one junction). Higher-order junctions (sound traveling through multiple junctions) are unlikely to be audible in most scenarios and are excluded for simplicity.
+
 ## Milestone Summary
 
 | Milestone                          | Phases  | Deliverable                              |
@@ -1331,6 +1668,13 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 | **L — Browser demo**               | 16      | WASM + Three.js + Web Audio demo         |
 | **M — Interop and asset exchange** | 17      | External authoring tool compatibility    |
 | **N — Release engineering**        | 18      | Reproducible artifacts + maintenance     |
+| **O — Diffuse rain + Poisson RIR** | 19      | Physically correct late reverb, fewer rays |
+| **P — Directional late field**     | 20      | DG-based binaural RT rendering           |
+| **Q — Multi-room basics**          | 21      | Portal transmission between two rooms    |
+| **R — Advanced diffraction**       | 22      | 2nd-order diffraction + DAPDF in RT      |
+| **S — ISM optimizations**          | 23      | Plane-polygon map + hybrid detection     |
+| **T — Extended input data**        | 24      | Freq-dependent directivity + SOFA loading |
+| **U — Full multi-room**            | 25      | ASG/PST/PPG filter network pipeline      |
 
 ---
 
