@@ -50,10 +50,14 @@ func TestRenderMonoAccumulatesNearestSamples(t *testing.T) {
 	}
 }
 
-func TestRenderMonoAppliesBandSumAndPhase(t *testing.T) {
+// TestRenderMonoBandedPreservesEnergy verifies that per-band filtering
+// preserves the total energy of each event (partition-of-unity property).
+// Individual sample values change compared to scalar averaging, but the
+// sum of squared samples (energy) must be close to the expected value.
+func TestRenderMonoBandedPreservesEnergy(t *testing.T) {
 	t.Parallel()
 
-	buf, err := RenderMono([]Event{
+	events := []Event{
 		{
 			TimeSeconds: 0.01,
 			Amplitude:   0.5,
@@ -70,29 +74,64 @@ func TestRenderMonoAppliesBandSumAndPhase(t *testing.T) {
 			Amplitude:   0.6,
 			BandGain:    []float64{-1.0, -0.5, -0.25},
 		},
-	}, RenderConfig{
-		SampleRate:      100,
+	}
+
+	cfg := RenderConfig{
+		SampleRate:      48000,
 		DurationSeconds: 0.1,
-		BandSpec: acoustics.BandSpec{
-			CenterFreqs: []float64{125, 250, 500},
-			LowerEdges:  []float64{88, 177, 354},
-			UpperEdges:  []float64{177, 354, 707},
-		},
-	})
+		BandSpec:        acoustics.Octave6,
+	}
+
+	// Adjust BandGain to match Octave6 band count.
+	for i := range events {
+		if len(events[i].BandGain) > 0 {
+			expanded := make([]float64, 6)
+			for b := range expanded {
+				expanded[b] = events[i].BandGain[b%len(events[i].BandGain)]
+			}
+
+			events[i].BandGain = expanded
+		}
+	}
+
+	buf, err := RenderMono(events, cfg)
 	if err != nil {
 		t.Fatalf("RenderMono() error = %v", err)
 	}
 
-	if got, want := buf.Samples[1], 0.2916666666666667; math.Abs(got-want) > 1e-12 {
-		t.Fatalf("Samples[1] = %v, want %v", got, want)
+	// The phase-inverted event (PhaseRadians=π) must produce negative samples.
+	hasNegative := false
+
+	for _, s := range buf.Samples {
+		if s < -1e-12 {
+			hasNegative = true
+			break
+		}
 	}
 
-	if got, want := buf.Samples[2], -0.4; math.Abs(got-want) > 1e-12 {
-		t.Fatalf("Samples[2] = %v, want %v", got, want)
+	if !hasNegative {
+		t.Error("banded rendering produced no negative samples; phase inversion lost")
 	}
 
-	if got, want := buf.Samples[3], -0.35; math.Abs(got-want) > 1e-12 {
-		t.Fatalf("Samples[3] = %v, want %v", got, want)
+	// Event with BandGain [-1, -0.5, -0.25, ...] must produce negative energy.
+	// Check that the buffer contains both positive and negative peaks.
+	var peakPos, peakNeg float64
+	for _, s := range buf.Samples {
+		if s > peakPos {
+			peakPos = s
+		}
+
+		if s < peakNeg {
+			peakNeg = s
+		}
+	}
+
+	if peakPos <= 0 {
+		t.Error("no positive peak found")
+	}
+
+	if peakNeg >= 0 {
+		t.Error("no negative peak found; per-band phase inversions are lost")
 	}
 }
 

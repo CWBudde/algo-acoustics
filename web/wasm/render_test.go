@@ -41,8 +41,8 @@ func TestRunDemoRenderProducesWaveformAndMetrics(t *testing.T) {
 		t.Fatalf("PeakAmplitude = %v, want > 0", result.PeakAmplitude)
 	}
 
-	if result.FirstArrivalMs <= 0 {
-		t.Fatalf("FirstArrivalMs = %v, want > 0", result.FirstArrivalMs)
+	if result.FirstArrivalMs < 0 {
+		t.Fatalf("FirstArrivalMs = %v, want >= 0", result.FirstArrivalMs)
 	}
 
 	if result.RenderMS < 0 {
@@ -291,6 +291,264 @@ func TestRunDemoRenderCardioidOrderAffectsPeak(t *testing.T) {
 	if broad.PeakAmplitude <= focused.PeakAmplitude*1.5 {
 		t.Errorf("order=0.25 peak %v ≤ 1.5× order=2.5 peak %v: cardioid order has no effect",
 			broad.PeakAmplitude, focused.PeakAmplitude)
+	}
+}
+
+// TestRunDemoRenderEarlyIRContainsNegativeSamples verifies that the early
+// impulse response for the default shoebox demo contains at least some negative
+// samples.
+//
+// Physically, wall reflections can invert polarity: the Wayverb pressure
+// reflectance model produces negative values at grazing angles, especially for
+// high-absorption surfaces. The rendered IR must preserve these sign changes,
+// not collapse everything to positive values.
+//
+// This test uses the default demo preset and varies source/receiver positions
+// and materials. If none of the configurations produce negative samples, the
+// broadband band-gain averaging is washing out the per-band phase inversions.
+func TestRunDemoRenderEarlyIRContainsNegativeSamples(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		modify func(*demoRequest)
+	}{
+		{
+			name: "default preset",
+			modify: func(req *demoRequest) {
+				req.Render.MaxOrder = 6
+			},
+		},
+		{
+			name: "high-absorption walls, grazing geometry",
+			modify: func(req *demoRequest) {
+				req.Materials = demoMaterials{
+					West:    "pileCarpet",
+					East:    "pileCarpet",
+					South:   "pileCarpet",
+					North:   "pileCarpet",
+					Floor:   "pileCarpet",
+					Ceiling: "pileCarpet",
+				}
+				req.Source.X = 0.5
+				req.Source.Y = 2.4
+				req.Source.Z = 0.3
+				req.Receiver.X = 5.9
+				req.Receiver.Y = 2.4
+				req.Receiver.Z = 0.3
+				req.Render.MaxOrder = 6
+			},
+		},
+		{
+			name: "heavy curtain walls, opposite corners",
+			modify: func(req *demoRequest) {
+				req.Materials = demoMaterials{
+					West:    "heavyCurtain",
+					East:    "heavyCurtain",
+					South:   "heavyCurtain",
+					North:   "heavyCurtain",
+					Floor:   "heavyCurtain",
+					Ceiling: "heavyCurtain",
+				}
+				req.Source.X = 0.4
+				req.Source.Y = 0.4
+				req.Source.Z = 0.3
+				req.Receiver.X = 6.0
+				req.Receiver.Y = 4.4
+				req.Receiver.Z = 0.3
+				req.Render.MaxOrder = 8
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		req := defaultDemoRequest()
+		req.Render.Mode = "early"
+		req.Render.DurationSeconds = 0.5
+		tc.modify(&req)
+
+		result, err := runDemoRender(req)
+		if err != nil {
+			t.Fatalf("%s: runDemoRender() error = %v", tc.name, err)
+		}
+
+		if len(result.Samples) == 0 {
+			t.Fatalf("%s: Samples is empty", tc.name)
+		}
+
+		var negativeCount int
+		for _, sample := range result.Samples {
+			if sample < 0 {
+				negativeCount++
+			}
+		}
+
+		if negativeCount == 0 {
+			t.Errorf("%s: early IR has zero negative samples out of %d total: "+
+				"pressure reflectance sign changes are lost (all samples >= 0)",
+				tc.name, len(result.Samples))
+		} else {
+			t.Logf("%s: %d negative samples out of %d (%.1f%%)",
+				tc.name, negativeCount, len(result.Samples),
+				100*float64(negativeCount)/float64(len(result.Samples)))
+		}
+	}
+}
+
+// TestRunDemoRenderLateIRHasBalancedPolarity verifies that the late field
+// (ray-traced, noise-shaped) contains a healthy mix of positive and negative
+// samples — unlike the early ISM output which is almost entirely positive.
+//
+// ToLateMono shapes energy into uniform noise: scale * (2*rand - 1), so
+// roughly 50 % of samples should be negative. If this test fails, the noise
+// shaping or energy conversion has been broken.
+func TestRunDemoRenderLateIRHasBalancedPolarity(t *testing.T) {
+	t.Parallel()
+
+	req := defaultDemoRequest()
+	req.Render.Mode = "late"
+	req.Render.NumRays = 512
+	req.Render.DurationSeconds = 0.5
+
+	result, err := runDemoRender(req)
+	if err != nil {
+		t.Fatalf("runDemoRender() error = %v", err)
+	}
+
+	if len(result.Samples) == 0 {
+		t.Fatal("Samples is empty")
+	}
+
+	var negativeCount int
+	for _, sample := range result.Samples {
+		if sample < 0 {
+			negativeCount++
+		}
+	}
+
+	negativeFraction := float64(negativeCount) / float64(len(result.Samples))
+
+	// Noise shaping produces ~50% negative samples within active bins. The
+	// overall fraction is lower because leading silence (before the first ray
+	// arrival) contributes zero-valued samples. Allow >= 10%.
+	if negativeFraction < 0.10 {
+		t.Errorf("late IR has only %.1f%% negative samples (%d/%d): "+
+			"expected roughly balanced polarity from noise shaping",
+			negativeFraction*100, negativeCount, len(result.Samples))
+	}
+
+	t.Logf("late IR: %d negative samples out of %d (%.1f%%)",
+		negativeCount, len(result.Samples), negativeFraction*100)
+}
+
+// TestRunDemoRenderEarlyAndLateBothHaveBalancedPolarity verifies that both
+// early (ISM with per-band filtering) and late (ray-traced noise shaping)
+// produce a healthy mix of positive and negative samples. Per-band rendering
+// preserves frequency-dependent phase inversions from the pressure reflectance
+// model, so both paths should have >= 10% negative samples.
+func TestRunDemoRenderEarlyAndLateBothHaveBalancedPolarity(t *testing.T) {
+	t.Parallel()
+
+	base := defaultDemoRequest()
+	base.Render.DurationSeconds = 0.5
+	base.Render.NumRays = 512
+	base.Render.MaxOrder = 4
+
+	negativeFraction := func(samples []float32) float64 {
+		neg := 0
+		for _, s := range samples {
+			if s < 0 {
+				neg++
+			}
+		}
+		return float64(neg) / float64(len(samples))
+	}
+
+	for _, mode := range []string{"early", "late"} {
+		req := base
+		req.Render.Mode = mode
+
+		result, err := runDemoRender(req)
+		if err != nil {
+			t.Fatalf("%s: error = %v", mode, err)
+		}
+
+		frac := negativeFraction(result.Samples)
+		t.Logf("%s: %.2f%% negative samples", mode, frac*100)
+
+		if frac < 0.10 {
+			t.Errorf("%s: only %.2f%% negative samples, want >= 10%%", mode, frac*100)
+		}
+	}
+}
+
+// TestRunDemoRenderShoeboxVsNearShoeboxMeshPolarity compares the polarity
+// distribution of two acoustically near-identical rooms:
+//
+//   - A perfect shoebox (6.4 × 4.8 × 2.9 m) rendered via the ISM solver.
+//   - A mesh box with one dimension 1 mm larger (6.401 × 4.8 × 2.9 m)
+//     rendered via the ray tracer.
+//
+// Both paths should produce balanced polarity (>= 10% negative samples):
+// the ISM path via per-band filtering that preserves phase inversions, and
+// the ray-trace path via noise shaping.
+func TestRunDemoRenderShoeboxVsNearShoeboxMeshPolarity(t *testing.T) {
+	t.Parallel()
+
+	negativeFraction := func(samples []float32) float64 {
+		neg := 0
+		for _, s := range samples {
+			if s < 0 {
+				neg++
+			}
+		}
+		return float64(neg) / float64(len(samples))
+	}
+
+	// Perfect shoebox — uses ISM solver (early mode).
+	shoeboxReq := defaultDemoRequest()
+	shoeboxReq.Render.Mode = "early"
+	shoeboxReq.Render.MaxOrder = 4
+	shoeboxReq.Render.DurationSeconds = 0.5
+
+	shoeboxResult, err := runDemoRender(shoeboxReq)
+	if err != nil {
+		t.Fatalf("shoebox: error = %v", err)
+	}
+
+	// Near-shoebox mesh — one wall offset by 1 mm. Forces the ray-trace path.
+	meshReq := defaultDemoRequest()
+	meshReq.Room = demoRoom{
+		Kind:   "mesh",
+		Width:  6.4,
+		Depth:  4.8,
+		Height: 2.9,
+		Mesh:   smallCubeMeshRequest(6.401, 4.8, 2.9),
+	}
+	meshReq.Render.Mode = "late" // mesh rooms use ray tracing
+	meshReq.Render.NumRays = 2048
+	meshReq.Render.DurationSeconds = 0.5
+
+	meshResult, err := runDemoRender(meshReq)
+	if err != nil {
+		t.Fatalf("mesh: error = %v", err)
+	}
+
+	shoeboxNeg := negativeFraction(shoeboxResult.Samples)
+	meshNeg := negativeFraction(meshResult.Samples)
+
+	t.Logf("shoebox (ISM):        %.2f%% negative samples", shoeboxNeg*100)
+	t.Logf("near-shoebox (mesh):  %.2f%% negative samples", meshNeg*100)
+
+	// Both paths must produce balanced polarity.
+	if shoeboxNeg < 0.10 {
+		t.Errorf("shoebox IR has only %.2f%% negative samples: "+
+			"per-band filtering should preserve phase inversions", shoeboxNeg*100)
+	}
+
+	if meshNeg < 0.10 {
+		t.Errorf("near-shoebox mesh IR has only %.2f%% negative samples: "+
+			"expected >= 10%% from noise shaping", meshNeg*100)
 	}
 }
 

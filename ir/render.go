@@ -16,12 +16,30 @@ type RenderConfig struct {
 }
 
 // RenderMono renders sparse events into a dense mono impulse response buffer.
+//
+// When events carry per-band gains (BandGain) and the config specifies a
+// BandSpec, each band is rendered through a bandpass filter and summed. This
+// preserves frequency-dependent phase inversions from the pressure reflectance
+// model. Events without BandGain are rendered as wideband impulses.
+//
+// When no events have BandGain or no BandSpec is configured, the legacy scalar
+// path is used (each event produces a single-sample impulse).
 func RenderMono(events []Event, cfg RenderConfig) (*Buffer, error) {
 	err := validateRenderConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
+	if cfg.BandSpec.BandCount() > 0 && hasBandedEvents(events) {
+		return renderMonoBanded(events, cfg)
+	}
+
+	return renderMonoScalar(events, cfg)
+}
+
+// renderMonoScalar is the original delta-based rendering for events without
+// frequency-dependent band gains.
+func renderMonoScalar(events []Event, cfg RenderConfig) (*Buffer, error) {
 	buf := NewBuffer(cfg.SampleRate, cfg.DurationSeconds)
 	bandCount := cfg.BandSpec.BandCount()
 
