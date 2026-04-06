@@ -19,6 +19,9 @@ out/
 /web/algo_ac*.wasm
 /web/wasm_exec.js
 
+# Generated listening test fixtures
+testdata/regression/brir_*.wav
+
 # Test binary and coverage
 *.test
 *.out

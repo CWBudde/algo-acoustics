@@ -1418,8 +1418,8 @@ For implementation ideas, check <https://github.com/reuk/wayverb/>.
 - [x] Alternatively (better quality): blend the top-N DG directions' HRIRs weighted by their probabilities (`DGBlendCount` config)
 - [x] Convolve the Poisson noise fragment for each time slot with the selected/blended HRIR pair
 - [x] Overlap-add the HRIR-convolved fragments (50% Hanning window) to produce left/right channels
-- [ ] A/B regression test: compare DG-based BRIR against per-event BRIR — IACC should differ (DG version captures late-field directionality); T30 should agree within 3%
-- [ ] Listening test fixture: export both variants for subjective spatial quality comparison
+- [x] A/B regression test: compare DG-based BRIR against per-event BRIR — IACC should differ (DG version captures late-field directionality); T30 should agree within 3%
+- [x] Listening test fixture: export both variants for subjective spatial quality comparison
 
 ---
 
