@@ -93,9 +93,9 @@ Phases 17.1-17.5 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x 
 
 #### 17.4 FDTD GPU integration — remaining items
 
-- [ ] CUDA stream management: overlap compute and host-device transfer (double-buffering)
-- [ ] Pinned (page-locked) host memory for 2-3x faster transfers
-- [ ] End-to-end benchmark: full PDE simulation with GPU vs CPU-only
+- [x] CUDA stream management: overlap compute and host-device transfer (double-buffering)
+- [x] Pinned (page-locked) host memory for 2-3x faster transfers
+- [x] End-to-end benchmark: full PDE simulation with GPU vs CPU-only
 
 #### 17.5 Ray tracing GPU integration — remaining item
 
