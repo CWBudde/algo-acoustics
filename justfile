@@ -35,6 +35,12 @@ test:
 test-race:
     go test -race ./...
 
+# Run WebAssembly tests (requires Node.js)
+# Two-step: compile first so the runner is not overwhelmed by env vars passed by go test -exec.
+test-wasm:
+    GOOS=js GOARCH=wasm go test -c -o /tmp/algo-acoustics-wasm.test ./web/wasm/
+    env -i HOME="$HOME" PATH="$PATH" "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" /tmp/algo-acoustics-wasm.test -test.v -test.timeout 120s
+
 # Run tests with coverage
 test-coverage:
     go test -v -coverprofile=coverage.out ./...
