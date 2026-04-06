@@ -169,6 +169,131 @@ func TestRunDemoRenderMeshRoomForcesLateMode(t *testing.T) {
 	}
 }
 
+// TestRunDemoRenderGainDbScalesPeakAmplitude verifies that the GainDB source
+// parameter is no longer absorbed by peak normalization. A 12 dB drop must
+// reduce the peak amplitude by approximately 4× (10^(−12/20) ≈ 0.25 in
+// pressure).
+func TestRunDemoRenderGainDbScalesPeakAmplitude(t *testing.T) {
+	t.Parallel()
+
+	base := defaultDemoRequest()
+	base.Render.Mode = "late"
+	base.Render.NumRays = 512
+	base.Render.DurationSeconds = 0.5
+
+	base.Source.GainDB = 0
+	result0, err := runDemoRender(base)
+	if err != nil {
+		t.Fatalf("gainDb=0: error = %v", err)
+	}
+
+	base.Source.GainDB = -12
+	result12, err := runDemoRender(base)
+	if err != nil {
+		t.Fatalf("gainDb=-12: error = %v", err)
+	}
+
+	if result0.PeakAmplitude <= 0 {
+		t.Fatalf("gainDb=0: PeakAmplitude = %v, want > 0", result0.PeakAmplitude)
+	}
+
+	if result12.PeakAmplitude <= 0 {
+		t.Fatalf("gainDb=-12: PeakAmplitude = %v, want > 0", result12.PeakAmplitude)
+	}
+
+	// Energy ∝ 10^(GainDB/10), pressure ∝ 10^(GainDB/20).
+	// Expected ratio ≈ 0.25; allow generous tolerance of 0.10–0.50.
+	ratio := result12.PeakAmplitude / result0.PeakAmplitude
+	if ratio >= 0.50 {
+		t.Errorf("peak ratio (gainDb=-12)/(gainDb=0) = %.3f, want < 0.50 (expected ≈0.25): gain has no effect",
+			ratio)
+	}
+
+	if ratio < 0.10 {
+		t.Errorf("peak ratio (gainDb=-12)/(gainDb=0) = %.3f, want ≥ 0.10: drop is too extreme",
+			ratio)
+	}
+}
+
+// TestRunDemoRenderCardioidDirectionAffectsPeak verifies that pointing a
+// cardioid source toward the receiver produces a substantially higher peak than
+// pointing it away. The default source→receiver azimuth is ≈16°; −164° is the
+// opposite direction. Uses early-reflections mode for deterministic results.
+func TestRunDemoRenderCardioidDirectionAffectsPeak(t *testing.T) {
+	t.Parallel()
+
+	base := defaultDemoRequest()
+	base.Render.Mode = "early"
+	base.Render.MaxOrder = 3
+	base.Render.DurationSeconds = 0.4
+	base.Source.Directivity = "cardioid"
+	base.Source.CardioidOrder = 1.5
+
+	// ≈16°: on-axis toward receiver.
+	base.Source.AzimuthDegrees = 16
+	toward, err := runDemoRender(base)
+	if err != nil {
+		t.Fatalf("toward: error = %v", err)
+	}
+
+	// −164°: 180° off-axis, away from receiver.
+	base.Source.AzimuthDegrees = -164
+	away, err := runDemoRender(base)
+	if err != nil {
+		t.Fatalf("away: error = %v", err)
+	}
+
+	if toward.PeakAmplitude <= 0 {
+		t.Fatalf("toward: PeakAmplitude = %v, want > 0", toward.PeakAmplitude)
+	}
+
+	// Direct path gain ≈ 1 toward, ≈ 0 away. Wall reflections from perpendicular
+	// surfaces blur the difference, so 1.5× is the reliable threshold.
+	if toward.PeakAmplitude <= away.PeakAmplitude*1.5 {
+		t.Errorf("toward peak %v ≤ 1.5× away peak %v: cardioid azimuth has no effect",
+			toward.PeakAmplitude, away.PeakAmplitude)
+	}
+}
+
+// TestRunDemoRenderCardioidOrderAffectsPeak verifies that a higher cardioid
+// order (sharper focus) attenuates off-axis energy more strongly. The source is
+// aimed 90° away from the receiver (broadside), so a high-order cardioid
+// suppresses the receiver far more than a low-order one.
+func TestRunDemoRenderCardioidOrderAffectsPeak(t *testing.T) {
+	t.Parallel()
+
+	base := defaultDemoRequest()
+	base.Render.Mode = "early"
+	base.Render.MaxOrder = 3
+	base.Render.DurationSeconds = 0.4
+	base.Source.Directivity = "cardioid"
+	// 106° = 16° (toward receiver) + 90°: receiver sits 90° off the cardioid axis.
+	base.Source.AzimuthDegrees = 106
+
+	base.Source.CardioidOrder = 0.25 // nearly omni
+	broad, err := runDemoRender(base)
+	if err != nil {
+		t.Fatalf("order=0.25: error = %v", err)
+	}
+
+	base.Source.CardioidOrder = 2.5 // sharply focused
+	focused, err := runDemoRender(base)
+	if err != nil {
+		t.Fatalf("order=2.5: error = %v", err)
+	}
+
+	if broad.PeakAmplitude <= 0 {
+		t.Fatalf("order=0.25: PeakAmplitude = %v, want > 0", broad.PeakAmplitude)
+	}
+
+	// At 90° off-axis: gain(0.25) = 0.5^0.25 ≈ 0.84; gain(2.5) = 0.5^2.5 ≈ 0.18.
+	// Wall reflections blur the theoretical ratio; 1.5× is the reliable threshold.
+	if broad.PeakAmplitude <= focused.PeakAmplitude*1.5 {
+		t.Errorf("order=0.25 peak %v ≤ 1.5× order=2.5 peak %v: cardioid order has no effect",
+			broad.PeakAmplitude, focused.PeakAmplitude)
+	}
+}
+
 // smallCubeMeshRequest builds the 12-triangle closed-box mesh for a demoRequest.
 func smallCubeMeshRequest(w, d, h float64) *demoMesh {
 	p := func(x, y, z float64) demoPoint { return demoPoint{X: x, Y: y, Z: z} }

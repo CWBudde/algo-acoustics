@@ -6,7 +6,7 @@
     <title>algo-acoustics Room Demo</title>
     <meta
       name="description"
-      content="A modern browser demo for algo-acoustics: tweak a shoebox room, swap materials, render a hybrid impulse response, and audition the result in-browser."
+      content="A browser demo for algo-acoustics: tweak a room, swap materials, render a hybrid impulse response, and audition the result in-browser."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -52,11 +52,11 @@
         <p class="lede">
           algo-acoustics is an open-source room acoustics engine written in Go
           and compiled to WebAssembly. It combines image-source modelling for
-          precise early reflections with stochastic ray tracing for natural
-          late reverberation, producing a hybrid impulse response you can
-          audition instantly. Define a shoebox room, assign frequency-dependent
-          wall materials, place a source and receiver, and hit render &mdash;
-          no install, no server, everything runs client-side.
+          precise early reflections with stochastic ray tracing for natural late
+          reverberation, producing a hybrid impulse response you can audition
+          instantly. Define a shoebox room, assign frequency-dependent wall
+          materials, place a source and receiver, and hit render &mdash; no
+          install, no server, everything runs client-side.
         </p>
         <div class="hero-meta">
           <span id="engine-status" class="status-pill is-loading"
@@ -369,7 +369,7 @@
         <header class="studio-header panel">
           <div>
             <p class="eyebrow">Preview</p>
-            <h2>Fresh browser control room</h2>
+            <h2>Visual + aural feedback, side by side</h2>
             <p>
               The right pane stays visual: spatial layout, direct path, wall
               response, and the rendered impulse response all update from the
@@ -440,8 +440,16 @@
             </div>
 
             <div class="mode-switch ir-view-switch" id="ir-view-switch">
-              <button class="mode-button is-active" type="button" data-view="linear">Linear</button>
-              <button class="mode-button" type="button" data-view="dB">dB</button>
+              <button
+                class="mode-button is-active"
+                type="button"
+                data-view="linear"
+              >
+                Linear
+              </button>
+              <button class="mode-button" type="button" data-view="dB">
+                dB
+              </button>
             </div>
 
             <canvas id="waveform-canvas" height="140"></canvas>
@@ -521,7 +529,11 @@
               </div>
 
               <div class="action-row audio-action-row">
-                <button id="play-auralization" class="primary-button" type="button">
+                <button
+                  id="play-auralization"
+                  class="primary-button"
+                  type="button"
+                >
                   Play
                 </button>
               </div>
