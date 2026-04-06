@@ -10,6 +10,36 @@ import (
 	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
+func TestMeshFromBox(t *testing.T) {
+	t.Parallel()
+
+	bmin := geometry.Vec3{X: -1, Y: -1, Z: -1}
+	bmax := geometry.Vec3{X: 1, Y: 1, Z: 1}
+	mesh := geometry.MeshFromBox(bmin, bmax)
+
+	if len(mesh.Triangles) != 12 {
+		t.Fatalf("MeshFromBox() produced %d triangles, want 12", len(mesh.Triangles))
+	}
+
+	center := geometry.Vec3{X: 0, Y: 0, Z: 0}
+
+	for i, tri := range mesh.Triangles {
+		normal := tri.Normal()
+		centroid := tri.Centroid()
+
+		// Normal should point toward the center from the face.
+		toCenter := center.Sub(centroid)
+		if normal.Dot(toCenter) <= 0 {
+			t.Errorf("triangle[%d]: normal %v does not point inward (centroid=%v)", i, normal, centroid)
+		}
+	}
+
+	err := mesh.Validate()
+	if err != nil {
+		t.Fatalf("MeshFromBox() mesh validation failed: %v", err)
+	}
+}
+
 func TestMeshBoundingBox(t *testing.T) {
 	mesh := geometry.Mesh{Triangles: []geometry.Triangle{{
 		V0: geometry.Vec3{X: -1, Y: 2, Z: 0},

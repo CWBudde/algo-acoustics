@@ -58,6 +58,47 @@ func (issues *MeshValidationIssues) HasProblems() bool {
 	return issues != nil && len(issues.Problems) > 0
 }
 
+// MeshFromBox creates a 12-triangle mesh for an axis-aligned box.
+// Winding is CCW when viewed from inside the box (normals point inward).
+func MeshFromBox(bmin, bmax Vec3) *Mesh {
+	// 8 vertices of the box.
+	v := [8]Vec3{
+		{bmin.X, bmin.Y, bmin.Z}, // 0: ---
+		{bmax.X, bmin.Y, bmin.Z}, // 1: +--
+		{bmax.X, bmax.Y, bmin.Z}, // 2: ++-
+		{bmin.X, bmax.Y, bmin.Z}, // 3: -+-
+		{bmin.X, bmin.Y, bmax.Z}, // 4: --+
+		{bmax.X, bmin.Y, bmax.Z}, // 5: +-+
+		{bmax.X, bmax.Y, bmax.Z}, // 6: +++
+		{bmin.X, bmax.Y, bmax.Z}, // 7: -++
+	}
+
+	// Each face is two triangles. Winding is CCW when viewed from inside,
+	// so the computed normal (V1-V0)×(V2-V0) points inward.
+	triangles := []Triangle{
+		// -X face (x = bmin.X): inward normal = +X
+		{V0: v[0], V1: v[3], V2: v[4]},
+		{V0: v[3], V1: v[7], V2: v[4]},
+		// +X face (x = bmax.X): inward normal = -X
+		{V0: v[1], V1: v[5], V2: v[2]},
+		{V0: v[2], V1: v[5], V2: v[6]},
+		// -Y face (y = bmin.Y): inward normal = +Y
+		{V0: v[0], V1: v[4], V2: v[1]},
+		{V0: v[1], V1: v[4], V2: v[5]},
+		// +Y face (y = bmax.Y): inward normal = -Y
+		{V0: v[3], V1: v[2], V2: v[7]},
+		{V0: v[2], V1: v[6], V2: v[7]},
+		// -Z face (z = bmin.Z): inward normal = +Z
+		{V0: v[0], V1: v[1], V2: v[3]},
+		{V0: v[1], V1: v[2], V2: v[3]},
+		// +Z face (z = bmax.Z): inward normal = -Z
+		{V0: v[4], V1: v[7], V2: v[5]},
+		{V0: v[5], V1: v[7], V2: v[6]},
+	}
+
+	return &Mesh{Triangles: triangles}
+}
+
 // BoundingBox returns the axis-aligned bounding box of all vertices in the mesh.
 // Returns a zero Box for an empty mesh.
 func (m *Mesh) BoundingBox() Box {
