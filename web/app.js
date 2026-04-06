@@ -165,7 +165,6 @@ const refs = {
   audioGain: document.getElementById("audio-gain"),
   audioGainValue: document.getElementById("audio-gain-value"),
   playAuralization: document.getElementById("play-auralization"),
-  stopAuralization: document.getElementById("stop-auralization"),
   exportAuralization: document.getElementById("export-auralization"),
   metricFirstArrival: document.getElementById("metric-first-arrival"),
   metricPeak: document.getElementById("metric-peak"),
@@ -654,8 +653,6 @@ function bindEvents() {
     }
   });
 
-  refs.stopAuralization.addEventListener("click", stopAuralizationPlayback);
-
   refs.exportAuralization.addEventListener("click", () => {
     void exportAuralizedWav();
   });
@@ -854,8 +851,13 @@ function syncAuralizationControls() {
   refs.wetMixValue.textContent = `${Math.round(wetMix * 100)}%`;
   refs.audioGain.value = String(gainDb);
   refs.audioGainValue.textContent = `${gainDb.toFixed(1)} dB`;
-  refs.playAuralization.disabled = !lastAuralizedWav || currentAuralizationPlaying;
-  refs.stopAuralization.disabled = !currentAuralizationPlaying;
+  refs.playAuralization.textContent = currentAuralizationPlaying ? "Stop" : "Play";
+  refs.playAuralization.classList.toggle("is-playing", currentAuralizationPlaying);
+  refs.playAuralization.setAttribute(
+    "aria-pressed",
+    String(currentAuralizationPlaying),
+  );
+  refs.playAuralization.disabled = !lastAuralizedWav && !currentAuralizationPlaying;
   refs.exportAuralization.disabled = !lastAuralizedWav;
   if (!lastAuralizedWav) {
     updateAuralizationStatus("Waiting for IR", "loading");

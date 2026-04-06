@@ -399,6 +399,11 @@ audio {
   box-shadow: 0 12px 30px rgba(255, 107, 74, 0.24);
 }
 
+.primary-button.is-playing {
+  background: linear-gradient(135deg, #d9464e, #b42318);
+  box-shadow: 0 12px 30px rgba(180, 35, 24, 0.28);
+}
+
 .progress-button {
   min-height: 58px;
   text-align: left;
