@@ -16,6 +16,7 @@ type LaunchConfig struct {
 	EnergyTerminationThreshold  float64
 	DiffractionAngularThreshold float64
 	DiffractionConeSamples      int
+	DiffuseRain                 bool
 }
 
 // FibonacciSphere returns near-uniform unit vectors on the sphere.

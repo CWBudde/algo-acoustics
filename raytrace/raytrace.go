@@ -162,6 +162,21 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 
 			scattering := material.ScatteringCoefficients(bandCount)
 			specEnergy, diffuseEnergy, remainingEnergy := splitReflectionEnergy(state.Energy, absorption, scattering)
+
+			if r.Config.DiffuseRain {
+				// The wall normal from the tracer may point outward. For diffuse
+				// rain we need the inward-facing normal — the one on the side
+				// the ray arrived from.
+				inwardNormal := hitNormal
+				if currentRay.Direction.Dot(hitNormal) > 0 {
+					inwardNormal = hitNormal.Scale(-1)
+				}
+
+				rain := computeDiffuseRain(hitPoint, inwardNormal, remainingEnergy, scattering, receiver, tracer, r.Scene.BandSpec.CenterFreqs, pathLength, r.Config.SpeedOfSound)
+				if rain != nil && rain.ArrivalTime <= r.Config.MaxTimeSeconds {
+					hist.Add(rain.ArrivalTime, rain.BandEnergy)
+				}
+			}
 			scatterCoeff := averageCoeff(scattering)
 			specularDir := SpecularReflect(currentRay.Direction, hitNormal)
 			diffuseDir := LambertDirection(hitNormal, rng)
