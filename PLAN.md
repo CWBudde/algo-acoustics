@@ -116,11 +116,11 @@ Phases 17.1-17.5 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x 
 
 #### 18.1 Trace/evaluate separation (`raytrace/`, `ism/`)
 
-- [ ] Refactor ray tracer to store ray paths as geometry-only data: sequence of surface IDs + hit points + path lengths (no energy)
-- [ ] Implement "replay" function: given cached paths + material coefficients -> energy histogram / IR
-- [ ] Cache invalidation tags: geometry hash + source/receiver position hash + material hash
-- [ ] Material-only change: reuse cached paths, recompute energy only (target < 100 ms for 10k paths)
-- [ ] Geometry change: invalidate all cached paths, full re-trace required
+- [x] Refactor ray tracer to store ray paths as geometry-only data: sequence of surface IDs + hit points + path lengths (no energy)
+- [x] Implement "replay" function: given cached paths + material coefficients -> energy histogram / IR
+- [x] Cache invalidation tags: geometry hash + source/receiver position hash + material hash
+- [x] Material-only change: reuse cached paths, recompute energy only (target < 100 ms for 10k paths)
+- [x] Geometry change: invalidate all cached paths, full re-trace required
 
 #### 18.2 Statistical pre-computation (`metrics/`)
 
