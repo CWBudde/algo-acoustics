@@ -68,6 +68,7 @@ func TestEvaluatePaths_ProducesNonEmptyHistogram(t *testing.T) {
 	}
 
 	var totalEnergy float64
+
 	for _, bin := range hist.Bins {
 		for _, e := range bin.BandEnergy {
 			totalEnergy += e
@@ -104,6 +105,7 @@ func TestEvaluatePaths_DifferentMaterialsDifferentEnergy(t *testing.T) {
 	}
 
 	var energyLow, energyHigh float64
+
 	for _, bin := range histLow.Bins {
 		for _, e := range bin.BandEnergy {
 			energyLow += e
