@@ -89,7 +89,7 @@ Directivity group definition (72 DGs: 12 azimuth x 6 elevation). Ray-tracer DG b
 
 ### Phase 17 — GPU Acceleration
 
-Phases 17.1-17.5 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x speedup, ray-BVH 511x vs single-core), subprocess integration architecture (Go + CUDA server via Unix socket + `/dev/shm`), FDTD GPU integration, ray tracing GPU integration. See `docs/profiling-baseline.md` and `docs/profiling-gpu-kernels.md` for benchmarks.
+Phases 17.1-17.6 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x speedup, ray-BVH 511x vs single-core), subprocess integration architecture (Go + CUDA server via Unix socket + `/dev/shm`), FDTD GPU integration (CUDA streams + pinned memory), ray tracing GPU integration, production hardening (error handling, CPU fallback, CI/CD, documentation). See `docs/profiling-baseline.md`, `docs/profiling-gpu-kernels.md`, and `docs/gpu-deployment.md`.
 
 #### 17.4 FDTD GPU integration — remaining items
 
@@ -124,36 +124,36 @@ Phases 17.1-17.5 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x 
 
 #### 18.2 Statistical pre-computation (`metrics/`)
 
-- [ ] Instant estimates on any parameter change (< 5 ms): Sabine RT60, Eyring RT60, critical distance, estimated C80 and D50
-- [ ] Display predicted parameters before simulation completes
-- [ ] Unit test: statistical estimates match full simulation within 15% for a standard shoebox
+- [x] Instant estimates on any parameter change (< 5 ms): Sabine RT60, Eyring RT60, critical distance, estimated C80 and D50
+- [x] Display predicted parameters before simulation completes
+- [x] Unit test: statistical estimates match full simulation within 15% for a standard shoebox
 
 #### 18.3 Progressive rendering pipeline
 
-- [ ] **Tier 1 — Instant (< 50 ms):** statistical estimates (Sabine/Eyring RT60, C80, D50)
-- [ ] **Tier 2 — Fast preview (50-500 ms):** ISM order 2-3 + low ray count (1k-5k) + 3-band frequency resolution
-- [ ] **Tier 3 — Refined (0.5-5 s):** full ISM order + progressive ray batches (1k rays per batch, update display after each)
-- [ ] **Tier 4 — Final (background):** full ray count, all frequency bands, scattering, air absorption
-- [ ] `context.WithCancel` cancellation: new user input cancels Tier 3/4, restarts from Tier 1
-- [ ] Debounce rapid parameter changes (slider dragging): coalesce within 50 ms window
+- [x] **Tier 1 — Instant (< 50 ms):** statistical estimates (Sabine/Eyring RT60, C80, D50)
+- [x] **Tier 2 — Fast preview (50-500 ms):** ISM order 2-3 + low ray count (1k-5k) + 3-band frequency resolution
+- [x] **Tier 3 — Refined (0.5-5 s):** full ISM order + progressive ray batches (1k rays per batch, update display after each)
+- [x] **Tier 4 — Final (background):** full ray count, all frequency bands, scattering, air absorption
+- [x] `context.WithCancel` cancellation: new user input cancels Tier 3/4, restarts from Tier 1
+- [x] Debounce rapid parameter changes (slider dragging): coalesce within 50 ms window
 
 #### 18.4 Incremental ISM with caching (`ism/`)
 
-- [ ] Cache image source tree (geometry-dependent only, no material data)
-- [ ] On material change: re-evaluate energy along cached IS paths without rebuilding tree
-- [ ] On geometry change: invalidate and rebuild affected branches
-- [ ] On source/receiver move: rebuild paths from new position using existing IS tree structure
+- [x] Cache image source tree (geometry-dependent only, no material data)
+- [x] On material change: re-evaluate energy along cached IS paths without rebuilding tree
+- [x] On geometry change: invalidate and rebuild affected branches
+- [x] On source/receiver move: rebuild paths from new position using existing IS tree structure
 
 #### 18.5 Quality presets and LOD controls
 
-- [ ] Expose quality level setting: Draft / Preview / Final with concrete parameter mappings (ISM order, ray count, bands, IR length, scattering)
-- [ ] Allow manual override of each parameter for advanced users
+- [x] Expose quality level setting: Draft / Preview / Final with concrete parameter mappings (ISM order, ray count, bands, IR length, scattering)
+- [x] Allow manual override of each parameter for advanced users
 
 #### 18.6 Hybrid statistical tail
 
-- [ ] For preview tiers: compute early reflections exactly (first 50-100 ms), append exponential decay tail from Eyring formula
-- [ ] Full computation (Tier 4) replaces statistical tail with ray-traced result
-- [ ] Smooth crossfade between statistical tail and ray-traced tail to avoid artifacts
+- [x] For preview tiers: compute early reflections exactly (first 50-100 ms), append exponential decay tail from Eyring formula
+- [x] Full computation (Tier 4) replaces statistical tail with ray-traced result
+- [x] Smooth crossfade between statistical tail and ray-traced tail to avoid artifacts
 
 ---
 

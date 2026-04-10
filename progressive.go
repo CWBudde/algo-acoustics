@@ -1,0 +1,369 @@
+package algoacoustics
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math"
+
+	"github.com/cwbudde/algo-acoustics/acoustics"
+	"github.com/cwbudde/algo-acoustics/hybrid"
+	"github.com/cwbudde/algo-acoustics/ir"
+	"github.com/cwbudde/algo-acoustics/ism"
+	"github.com/cwbudde/algo-acoustics/metrics"
+	"github.com/cwbudde/algo-acoustics/raytrace"
+	"github.com/cwbudde/algo-acoustics/scene"
+)
+
+// Tier identifies a progressive rendering quality level.
+type Tier int
+
+const (
+	// TierStatistical produces instant statistical estimates (< 50 ms).
+	TierStatistical Tier = iota
+	// TierPreview runs low-order ISM + few rays (50–500 ms).
+	TierPreview
+	// TierRefined runs full ISM + progressive ray batches (0.5–5 s).
+	TierRefined
+	// TierFinal runs the full-quality simulation in background.
+	TierFinal
+)
+
+// String returns a human-readable tier name.
+func (t Tier) String() string {
+	switch t {
+	case TierStatistical:
+		return "statistical"
+	case TierPreview:
+		return "preview"
+	case TierRefined:
+		return "refined"
+	case TierFinal:
+		return "final"
+	default:
+		return fmt.Sprintf("tier(%d)", int(t))
+	}
+}
+
+// StatisticalMetrics holds instant estimates derived from room geometry
+// and material absorption, with no simulation required.
+type StatisticalMetrics struct {
+	SabineRT60ByBand []float64
+	EyringRT60ByBand []float64
+	C80ByBand        []float64
+	D50ByBand        []float64
+}
+
+// TierResult carries the output of a single tier or batch computation.
+type TierResult struct {
+	Tier       Tier
+	Metrics    *StatisticalMetrics
+	Buffer     *ir.Buffer // nil for TierStatistical
+	RayBatches int        // progressive batch count (TierRefined only)
+}
+
+// UpdateFunc is called after each tier or progressive batch completes.
+type UpdateFunc func(TierResult)
+
+// ProgressiveConfig controls the 4-tier progressive rendering pipeline.
+type ProgressiveConfig struct {
+	Render       ir.RenderConfig
+	Hybrid       hybrid.HybridConfig
+	SpeedOfSound float64
+
+	// ISM order for Tier 3/4. Tier 2 uses PreviewISMOrder.
+	MaxOrder        int
+	PreviewISMOrder int // default 2
+
+	// Ray tracer settings for the final tier.
+	NumRays        int
+	MaxBounces     int
+	MaxTimeSeconds float64
+	ReceiverRadius float64
+	DiffuseRain    bool
+
+	// Tier 2 preview ray count (default 2000).
+	PreviewRayCount int
+
+	// Tier 3 progressive batch size (default 1000).
+	RaysPerBatch int
+}
+
+const (
+	defaultPreviewISMOrder = 2
+	defaultPreviewRayCount = 2000
+	defaultRaysPerBatch    = 1000
+	defaultReceiverRadius  = 0.25
+)
+
+// RenderProgressive runs the 4-tier progressive rendering pipeline,
+// calling update after each tier or batch completes. Cancel ctx to abort
+// Tier 3/4 and return early.
+func RenderProgressive(ctx context.Context, sc *scene.Scene, cfg ProgressiveConfig, update UpdateFunc) error {
+	if sc == nil {
+		return errors.New("scene is nil")
+	}
+
+	cfg = fillProgressiveDefaults(cfg)
+
+	// Tier 1: statistical estimates (< 50 ms).
+	statsMetrics := computeStatisticalMetrics(sc)
+	update(TierResult{Tier: TierStatistical, Metrics: statsMetrics})
+
+	err := ctx.Err()
+	if err != nil {
+		return fmt.Errorf("cancelled after statistical tier: %w", err)
+	}
+
+	// Tier 2: fast preview — low ISM order + few rays.
+	previewBuf, err := renderPreviewTier(sc, cfg)
+	if err != nil {
+		return fmt.Errorf("tier preview: %w", err)
+	}
+
+	update(TierResult{Tier: TierPreview, Metrics: statsMetrics, Buffer: previewBuf})
+
+	err = ctx.Err()
+	if err != nil {
+		return fmt.Errorf("cancelled after preview tier: %w", err)
+	}
+
+	// Tier 3: refined — full ISM + progressive ray batches.
+	err = renderRefinedTier(ctx, sc, cfg, statsMetrics, update)
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("tier refined: %w", err)
+	}
+
+	err = ctx.Err()
+	if err != nil {
+		return fmt.Errorf("cancelled after refined tier: %w", err)
+	}
+
+	// Tier 4: final quality — full ray count with scattering/diffuse rain.
+	finalBuf, err := renderFinalTier(sc, cfg)
+	if err != nil {
+		return fmt.Errorf("tier final: %w", err)
+	}
+
+	update(TierResult{Tier: TierFinal, Metrics: statsMetrics, Buffer: finalBuf})
+
+	return nil
+}
+
+func fillProgressiveDefaults(cfg ProgressiveConfig) ProgressiveConfig {
+	if cfg.SpeedOfSound <= 0 {
+		cfg.SpeedOfSound = acoustics.SpeedOfSound
+	}
+
+	if cfg.PreviewISMOrder <= 0 {
+		cfg.PreviewISMOrder = defaultPreviewISMOrder
+	}
+
+	if cfg.PreviewRayCount <= 0 {
+		cfg.PreviewRayCount = defaultPreviewRayCount
+	}
+
+	if cfg.RaysPerBatch <= 0 {
+		cfg.RaysPerBatch = defaultRaysPerBatch
+	}
+
+	if cfg.MaxTimeSeconds <= 0 {
+		cfg.MaxTimeSeconds = cfg.Render.DurationSeconds
+	}
+
+	if cfg.ReceiverRadius <= 0 {
+		cfg.ReceiverRadius = defaultReceiverRadius
+	}
+
+	return cfg
+}
+
+func computeStatisticalMetrics(sc *scene.Scene) *StatisticalMetrics {
+	if sc.Room.Kind != scene.RoomKindShoebox {
+		return &StatisticalMetrics{}
+	}
+
+	stats, err := metrics.ShoeboxStatsFromScene(sc)
+	if err != nil {
+		return &StatisticalMetrics{}
+	}
+
+	bandCount := len(stats.AlphaByBand)
+	m := &StatisticalMetrics{
+		SabineRT60ByBand: make([]float64, bandCount),
+		EyringRT60ByBand: make([]float64, bandCount),
+		C80ByBand:        make([]float64, bandCount),
+		D50ByBand:        make([]float64, bandCount),
+	}
+
+	for band := range bandCount {
+		v, err := metrics.SabineRT60(stats, band)
+		if err == nil {
+			m.SabineRT60ByBand[band] = v
+		}
+
+		v, err = metrics.EyringRT60(stats, band)
+		if err == nil {
+			m.EyringRT60ByBand[band] = v
+		}
+
+		v, err = metrics.EstimateC80(stats, band)
+		if err == nil {
+			m.C80ByBand[band] = v
+		}
+
+		v, err = metrics.EstimateD50(stats, band)
+		if err == nil {
+			m.D50ByBand[band] = v
+		}
+	}
+
+	return m
+}
+
+func renderPreviewTier(sc *scene.Scene, cfg ProgressiveConfig) (*ir.Buffer, error) {
+	earlyEvents, err := solveISM(sc, cfg.PreviewISMOrder, cfg.SpeedOfSound)
+	if err != nil {
+		return nil, fmt.Errorf("ISM preview: %w", err)
+	}
+
+	histogram, err := traceRays(sc, cfg.PreviewRayCount, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("ray tracer preview: %w", err)
+	}
+
+	return combineEarlyLate(earlyEvents, histogram, sc.SampleRate, cfg)
+}
+
+func renderRefinedTier(ctx context.Context, sc *scene.Scene, cfg ProgressiveConfig, statsMetrics *StatisticalMetrics, update UpdateFunc) error {
+	earlyEvents, err := solveISM(sc, cfg.MaxOrder, cfg.SpeedOfSound)
+	if err != nil {
+		return fmt.Errorf("ISM refined: %w", err)
+	}
+
+	earlyBuffer, err := ir.RenderMono(earlyEvents, cfg.Render)
+	if err != nil {
+		return fmt.Errorf("render early refined: %w", err)
+	}
+
+	// Progressive ray batches: run with increasing cumulative ray count,
+	// sending an update after each batch.
+	raysCompleted := 0
+	batchCount := 0
+
+	for raysCompleted < cfg.NumRays {
+		err = ctx.Err()
+		if err != nil {
+			return fmt.Errorf("cancelled during ray batch: %w", err)
+		}
+
+		raysCompleted += cfg.RaysPerBatch
+		if raysCompleted > cfg.NumRays {
+			raysCompleted = cfg.NumRays
+		}
+
+		histogram, err := traceRays(sc, raysCompleted, cfg)
+		if err != nil {
+			return fmt.Errorf("ray batch %d: %w", batchCount+1, err)
+		}
+
+		lateBuffer := hybrid.HistogramToBuffer(histogram, sc.SampleRate)
+		lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, cfg.Hybrid)
+		combinedBuf := hybrid.CombineBuffers(earlyBuffer, lateBuffer, cfg.Hybrid)
+		batchCount++
+
+		update(TierResult{
+			Tier:       TierRefined,
+			Metrics:    statsMetrics,
+			Buffer:     combinedBuf,
+			RayBatches: batchCount,
+		})
+	}
+
+	return nil
+}
+
+func renderFinalTier(sc *scene.Scene, cfg ProgressiveConfig) (*ir.Buffer, error) {
+	earlyEvents, err := solveISM(sc, cfg.MaxOrder, cfg.SpeedOfSound)
+	if err != nil {
+		return nil, fmt.Errorf("ISM final: %w", err)
+	}
+
+	bounces := estimateBounces(cfg.MaxTimeSeconds, cfg.SpeedOfSound, cfg.MaxOrder)
+
+	tracer := &raytrace.RayTracer{
+		Config: raytrace.LaunchConfig{
+			NumRays:        cfg.NumRays,
+			MaxBounces:     bounces,
+			MaxTimeSeconds: cfg.MaxTimeSeconds,
+			SpeedOfSound:   cfg.SpeedOfSound,
+			DiffuseRain:    cfg.DiffuseRain,
+		},
+		Scene:          sc,
+		ReceiverRadius: cfg.ReceiverRadius,
+	}
+
+	histogram, err := tracer.Trace()
+	if err != nil {
+		return nil, fmt.Errorf("ray tracer final: %w", err)
+	}
+
+	return combineEarlyLate(earlyEvents, histogram, sc.SampleRate, cfg)
+}
+
+// solveISM runs the image-source method with the given order.
+func solveISM(sc *scene.Scene, maxOrder int, speedOfSound float64) ([]ir.Event, error) {
+	events, err := ism.ISMSolver{}.Solve(sc, ism.ISMConfig{
+		MaxOrder:     maxOrder,
+		SpeedOfSound: speedOfSound,
+		BandSpec:     sc.BandSpec,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ISM solve: %w", err)
+	}
+
+	return events, nil
+}
+
+// traceRays runs the ray tracer with the given ray count and returns the histogram.
+func traceRays(sc *scene.Scene, numRays int, cfg ProgressiveConfig) (*raytrace.EnergyHistogram, error) {
+	bounces := estimateBounces(cfg.MaxTimeSeconds, cfg.SpeedOfSound, cfg.MaxOrder)
+
+	tracer := &raytrace.RayTracer{
+		Config: raytrace.LaunchConfig{
+			NumRays:        numRays,
+			MaxBounces:     bounces,
+			MaxTimeSeconds: cfg.MaxTimeSeconds,
+			SpeedOfSound:   cfg.SpeedOfSound,
+		},
+		Scene:          sc,
+		ReceiverRadius: cfg.ReceiverRadius,
+	}
+
+	hist, err := tracer.Trace()
+	if err != nil {
+		return nil, fmt.Errorf("ray trace: %w", err)
+	}
+
+	return hist, nil
+}
+
+// combineEarlyLate renders ISM events and combines with the late-field histogram.
+func combineEarlyLate(earlyEvents []ir.Event, histogram *raytrace.EnergyHistogram, sampleRate int, cfg ProgressiveConfig) (*ir.Buffer, error) {
+	earlyBuffer, err := ir.RenderMono(earlyEvents, cfg.Render)
+	if err != nil {
+		return nil, fmt.Errorf("render early: %w", err)
+	}
+
+	lateBuffer := hybrid.HistogramToBuffer(histogram, sampleRate)
+	lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, cfg.Hybrid)
+
+	return hybrid.CombineBuffers(earlyBuffer, lateBuffer, cfg.Hybrid), nil
+}
+
+// estimateBounces computes a reasonable MaxBounces from the simulation duration.
+func estimateBounces(maxTimeSeconds, speedOfSound float64, ismOrder int) int {
+	bounceEstimate := int(math.Ceil(maxTimeSeconds*speedOfSound/8.0)) + 4
+
+	return max(bounceEstimate, ismOrder*2)
+}

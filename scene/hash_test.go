@@ -110,6 +110,94 @@ func TestGeometryHash_SourcePositionChange(t *testing.T) {
 	}
 }
 
+func TestRoomHash_IgnoresSourceAndReceiverMoves(t *testing.T) {
+	base := Scene{
+		Room: Room{
+			Kind: RoomKindShoebox,
+			Shoebox: &Shoebox{
+				Width: 5.0, Depth: 4.0, Height: 3.0,
+			},
+		},
+		Sources:   []Source{{Position: geometry.Vec3{X: 1, Y: 2, Z: 1.5}}},
+		Receivers: []Receiver{{Position: geometry.Vec3{X: 3, Y: 2, Z: 1.5}}},
+	}
+
+	moved := Scene{
+		Room: Room{
+			Kind: RoomKindShoebox,
+			Shoebox: &Shoebox{
+				Width: 5.0, Depth: 4.0, Height: 3.0,
+			},
+		},
+		Sources:   []Source{{Position: geometry.Vec3{X: 2.5, Y: 1, Z: 0.5}}},
+		Receivers: []Receiver{{Position: geometry.Vec3{X: 4, Y: 3, Z: 2}}},
+	}
+
+	if base.RoomHash() != moved.RoomHash() {
+		t.Fatal("RoomHash must be invariant under source/receiver moves")
+	}
+
+	if base.GeometryHash() == moved.GeometryHash() {
+		t.Fatal("baseline GeometryHash should differ when sources/receivers move")
+	}
+}
+
+func TestRoomHash_ChangesWithDimensions(t *testing.T) {
+	base := Scene{
+		Room: Room{
+			Kind: RoomKindShoebox,
+			Shoebox: &Shoebox{
+				Width: 5.0, Depth: 4.0, Height: 3.0,
+			},
+		},
+	}
+
+	changed := Scene{
+		Room: Room{
+			Kind: RoomKindShoebox,
+			Shoebox: &Shoebox{
+				Width: 5.5, Depth: 4.0, Height: 3.0,
+			},
+		},
+	}
+
+	if base.RoomHash() == changed.RoomHash() {
+		t.Fatal("RoomHash must differ when room dimensions change")
+	}
+}
+
+func TestRoomHash_MeshChange(t *testing.T) {
+	tri1 := geometry.Triangle{
+		V0: geometry.Vec3{X: 0, Y: 0, Z: 0},
+		V1: geometry.Vec3{X: 1, Y: 0, Z: 0},
+		V2: geometry.Vec3{X: 0, Y: 1, Z: 0},
+	}
+
+	tri2 := geometry.Triangle{
+		V0: geometry.Vec3{X: 0, Y: 0, Z: 0},
+		V1: geometry.Vec3{X: 2, Y: 0, Z: 0},
+		V2: geometry.Vec3{X: 0, Y: 1, Z: 0},
+	}
+
+	base := Scene{
+		Room: Room{
+			Kind: RoomKindMesh,
+			Mesh: &geometry.Mesh{Triangles: []geometry.Triangle{tri1}},
+		},
+	}
+
+	changed := Scene{
+		Room: Room{
+			Kind: RoomKindMesh,
+			Mesh: &geometry.Mesh{Triangles: []geometry.Triangle{tri2}},
+		},
+	}
+
+	if base.RoomHash() == changed.RoomHash() {
+		t.Fatal("RoomHash must differ when mesh triangles change")
+	}
+}
+
 func TestGeometryHash_MeshDeterministic(t *testing.T) {
 	tri := geometry.Triangle{
 		V0: geometry.Vec3{X: 0, Y: 0, Z: 0},
