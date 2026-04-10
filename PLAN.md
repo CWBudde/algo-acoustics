@@ -81,81 +81,19 @@ Diffuse rain spherical detector with BVH visibility checks. Surface detector var
 
 Directivity group definition (72 DGs: 12 azimuth x 6 elevation). Ray-tracer DG binning (detector hits + diffuse rain). DG hit probability computation. Binaural RIR construction with DG-weighted HRIRs (top-N blend). A/B regression and listening test fixtures.
 
+### Phase 17 — GPU Acceleration
+
+CPU profiling and standalone CUDA kernels (FDTD 23× speedup, ray-BVH 511× vs single-core). Subprocess integration architecture: Go + CUDA server via Unix socket and `/dev/shm`. FDTD GPU integration with CUDA streams and pinned host memory for overlapped compute/transfer. Ray tracing GPU integration. Production hardening: graceful CPU fallback on GPU OOM / kernel launch failure / driver crash, auto-detect GPU absence at startup, CI/CD with CUDA build and GPU runners, deployment documentation. See `docs/profiling-baseline.md`, `docs/profiling-gpu-kernels.md`, and `docs/gpu-deployment.md`.
+
+### Phase 18 — Real-Time Preview
+
+Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths with material replay for <100 ms material updates (`raytrace/`, `ism/`). Statistical pre-computation: Sabine/Eyring RT60, critical distance, C80, D50 estimators (<5 ms, within 15% of full simulation) (`metrics/`). Four-tier progressive rendering pipeline (statistical → preview → refined batches → final) with `context.WithCancel` cancellation and 50 ms debounce coalescing (`progressive.go`, `debounce.go`). Incremental `CachedISMSolver` with per-source image-source caching and `scene.RoomHash()` for fast receiver/material re-evaluation. Quality presets (Draft/Preview/Final) with per-field override (`preset.go`). Hybrid statistical tail: Eyring-driven exponential decay noise tail for preview tiers with cosine crossfade to ray-traced late field for Tier 4 (`statistical_tail.go`).
+
 ---
 
 ## Active / Remaining Phases
 
 > Ordered for serial execution. Each phase lists only open tasks.
-
-### Phase 17 — GPU Acceleration
-
-Phases 17.1-17.6 are complete: CPU profiling, standalone CUDA kernels (FDTD 23x speedup, ray-BVH 511x vs single-core), subprocess integration architecture (Go + CUDA server via Unix socket + `/dev/shm`), FDTD GPU integration (CUDA streams + pinned memory), ray tracing GPU integration, production hardening (error handling, CPU fallback, CI/CD, documentation). See `docs/profiling-baseline.md`, `docs/profiling-gpu-kernels.md`, and `docs/gpu-deployment.md`.
-
-#### 17.4 FDTD GPU integration — remaining items
-
-- [x] CUDA stream management: overlap compute and host-device transfer (double-buffering)
-- [x] Pinned (page-locked) host memory for 2-3x faster transfers
-- [x] End-to-end benchmark: full PDE simulation with GPU vs CPU-only
-
-#### 17.5 Ray tracing GPU integration — remaining item
-
-- [x] End-to-end benchmark: full ray-traced IR with GPU vs CPU-only
-
-#### 17.6 Production hardening
-
-- [x] Error handling: GPU OOM, kernel launch failure, driver crash -> graceful fallback to CPU
-- [x] CPU fallback path: detect GPU absence at startup, select CPU or GPU code path
-- [x] CI/CD: build pipeline with CUDA compilation, test on GPU-equipped runners (or skip with build tag)
-- [x] Document GPU requirements and deployment prerequisites
-
----
-
-### Phase 18 — Real-Time Preview
-
-> Enable sub-second feedback when users change materials, source/receiver positions, or room dimensions. Separate geometric tracing from energy evaluation so material changes reuse cached ray paths.
-
-#### 18.1 Trace/evaluate separation (`raytrace/`, `ism/`)
-
-- [x] Refactor ray tracer to store ray paths as geometry-only data: sequence of surface IDs + hit points + path lengths (no energy)
-- [x] Implement "replay" function: given cached paths + material coefficients -> energy histogram / IR
-- [x] Cache invalidation tags: geometry hash + source/receiver position hash + material hash
-- [x] Material-only change: reuse cached paths, recompute energy only (target < 100 ms for 10k paths)
-- [x] Geometry change: invalidate all cached paths, full re-trace required
-
-#### 18.2 Statistical pre-computation (`metrics/`)
-
-- [x] Instant estimates on any parameter change (< 5 ms): Sabine RT60, Eyring RT60, critical distance, estimated C80 and D50
-- [x] Display predicted parameters before simulation completes
-- [x] Unit test: statistical estimates match full simulation within 15% for a standard shoebox
-
-#### 18.3 Progressive rendering pipeline
-
-- [x] **Tier 1 — Instant (< 50 ms):** statistical estimates (Sabine/Eyring RT60, C80, D50)
-- [x] **Tier 2 — Fast preview (50-500 ms):** ISM order 2-3 + low ray count (1k-5k) + 3-band frequency resolution
-- [x] **Tier 3 — Refined (0.5-5 s):** full ISM order + progressive ray batches (1k rays per batch, update display after each)
-- [x] **Tier 4 — Final (background):** full ray count, all frequency bands, scattering, air absorption
-- [x] `context.WithCancel` cancellation: new user input cancels Tier 3/4, restarts from Tier 1
-- [x] Debounce rapid parameter changes (slider dragging): coalesce within 50 ms window
-
-#### 18.4 Incremental ISM with caching (`ism/`)
-
-- [x] Cache image source tree (geometry-dependent only, no material data)
-- [x] On material change: re-evaluate energy along cached IS paths without rebuilding tree
-- [x] On geometry change: invalidate and rebuild affected branches
-- [x] On source/receiver move: rebuild paths from new position using existing IS tree structure
-
-#### 18.5 Quality presets and LOD controls
-
-- [x] Expose quality level setting: Draft / Preview / Final with concrete parameter mappings (ISM order, ray count, bands, IR length, scattering)
-- [x] Allow manual override of each parameter for advanced users
-
-#### 18.6 Hybrid statistical tail
-
-- [x] For preview tiers: compute early reflections exactly (first 50-100 ms), append exponential decay tail from Eyring formula
-- [x] Full computation (Tier 4) replaces statistical tail with ray-traced result
-- [x] Smooth crossfade between statistical tail and ray-traced tail to avoid artifacts
-
----
 
 ### Phase 19 — Browser Demo Completion
 
