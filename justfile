@@ -127,3 +127,7 @@ clean:
     rm -f coverage.out coverage.html
     rm -f bin/roomir bin/roomplot bin/roombench
     rm -f cpu.prof mem.prof block.prof gomaxprocs_sweep.txt
+
+fix:
+    just lint-fix
+    just fmt
