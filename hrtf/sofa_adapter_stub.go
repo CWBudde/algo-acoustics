@@ -1,3 +1,5 @@
+//go:build !sofa
+
 package hrtf
 
 import "errors"

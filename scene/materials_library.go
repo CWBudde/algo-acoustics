@@ -1,5 +1,7 @@
 package scene
 
+const materialGlass = "glass"
+
 // MaterialLibrary provides a collection of pre-configured materials with published
 // absorption and scattering data for common surfaces.
 //
@@ -19,8 +21,8 @@ package scene
 var MaterialLibrary = map[string]Material{
 	// Hard, reflective surfaces (low absorption, low scattering)
 
-	"glass": {
-		Name: "glass",
+	materialGlass: {
+		Name: materialGlass,
 		AbsorptionByBand: []float64{
 			0.03, // 125 Hz
 			0.03, // 250 Hz
@@ -457,6 +459,9 @@ func (m *Material) FromLibrary(name string) (Material, bool) {
 	if !ok {
 		return Material{Name: name}, false
 	}
+
+	lib.AbsorptionByBand = append([]float64(nil), lib.AbsorptionByBand...)
+	lib.ScatteringByBand = append([]float64(nil), lib.ScatteringByBand...)
 
 	return lib, true
 }

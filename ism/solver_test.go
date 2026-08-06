@@ -68,7 +68,7 @@ func TestISMSolverSolveDirectPathTimeMatchesDistance(t *testing.T) {
 		t.Fatalf("Solve() error = %v", err)
 	}
 
-	direct := firstEventOfKind(events, ir.EventDirect)
+	direct := firstDirectEvent(events)
 	if direct == nil {
 		t.Fatal("expected a direct event")
 	}
@@ -430,9 +430,9 @@ func directionMatches(got, want geometry.Vec3) bool {
 	return math.Abs(got.X-want.X) <= 1e-9 && math.Abs(got.Y-want.Y) <= 1e-9 && math.Abs(got.Z-want.Z) <= 1e-9
 }
 
-func firstEventOfKind(events []ir.Event, kind ir.EventKind) *ir.Event {
+func firstDirectEvent(events []ir.Event) *ir.Event {
 	for index := range events {
-		if events[index].Kind == kind {
+		if events[index].Kind == ir.EventDirect {
 			return &events[index]
 		}
 	}

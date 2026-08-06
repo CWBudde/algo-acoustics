@@ -7,6 +7,8 @@ import (
 )
 
 // CardioidModel is a simple power-cardioid directivity pattern.
+//
+//nolint:tagliatelle // orderN is part of the established scene JSON schema.
 type CardioidModel struct {
 	Axis   geometry.Vec3 `json:"axis"`
 	OrderN float64       `json:"orderN"`

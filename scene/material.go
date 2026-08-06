@@ -13,7 +13,7 @@ const NumBands = 6
 
 // Material describes band-dependent absorption and scattering properties.
 //
-//nolint:recvcheck // UnmarshalJSON must mutate the receiver while read-only helpers stay value-based.
+//nolint:recvcheck,tagliatelle // Mutable JSON receiver; camel-case tags preserve the public scene schema.
 type Material struct {
 	Name             string            `json:"name"`
 	AbsorptionByBand []float64         `json:"absorptionByBand,omitempty"`
@@ -21,6 +21,7 @@ type Material struct {
 	ScatteringByBand []float64         `json:"scatteringByBand,omitempty"`
 }
 
+//nolint:tagliatelle // This compatibility payload mirrors the public scene schema.
 type materialJSON struct {
 	Name             string    `json:"name"`
 	AbsorptionByBand []float64 `json:"absorptionByBand,omitempty"`
@@ -69,14 +70,16 @@ func (m *Material) UnmarshalJSON(data []byte) error {
 		m.Scattering[i] = 0
 	}
 
-	if len(payload.ScatteringByBand) > 0 {
-		m.ScatteringByBand = append([]float64(nil), payload.ScatteringByBand...)
-		copy(m.Scattering[:], payload.ScatteringByBand)
-	}
-
 	if len(payload.Scattering) > 0 {
 		copy(m.Scattering[:], payload.Scattering)
 		m.ScatteringByBand = append([]float64(nil), payload.Scattering...)
+	}
+
+	// The variable-length field is authoritative when both representations are
+	// present. This preserves coefficients beyond the legacy six-band array.
+	if len(payload.ScatteringByBand) > 0 {
+		m.ScatteringByBand = append([]float64(nil), payload.ScatteringByBand...)
+		copy(m.Scattering[:], payload.ScatteringByBand)
 	}
 
 	return nil
@@ -84,7 +87,15 @@ func (m *Material) UnmarshalJSON(data []byte) error {
 
 // AbsorptionAt returns the absorption coefficient for the requested band.
 func (m Material) AbsorptionAt(bandIndex int) float64 {
-	if bandIndex < 0 || bandIndex >= len(m.AbsorptionByBand) {
+	if bandIndex < 0 || len(m.AbsorptionByBand) == 0 {
+		return 0
+	}
+
+	if len(m.AbsorptionByBand) == 1 {
+		return m.AbsorptionByBand[0]
+	}
+
+	if bandIndex >= len(m.AbsorptionByBand) {
 		return 0
 	}
 
@@ -172,8 +183,8 @@ func hasNonZeroScattering(scattering [NumBands]float64) bool {
 }
 
 func hasNonZeroFloatSlice(values []float64) bool {
-	for _, coeff := range values {
-		if coeff != 0 {
+	for _, value := range values {
+		if value != 0 {
 			return true
 		}
 	}

@@ -19,18 +19,12 @@ const iaccMaxLagSeconds = 0.001 // ±1 ms interaural lag window
 //
 // The result is in [0, 1]: 1 = fully correlated, 0 = uncorrelated.
 func IACC(left, right *ir.Buffer) (float64, error) {
-	if left == nil || right == nil {
-		return 0, errors.New("buffers must not be nil")
+	err := validateIACCInputs(left, right)
+	if err != nil {
+		return 0, err
 	}
 
-	if left.SampleRate <= 0 {
-		return 0, errors.New("sample rate must be positive")
-	}
-
-	n := min(len(left.Samples), len(right.Samples))
-	if n == 0 {
-		return 0, errors.New("buffers must not be empty")
-	}
+	n := len(left.Samples)
 
 	var leftEnergy, rightEnergy float64
 
@@ -67,4 +61,28 @@ func IACC(left, right *ir.Buffer) (float64, error) {
 	}
 
 	return maxCorr, nil
+}
+
+func validateIACCInputs(left, right *ir.Buffer) error {
+	if left == nil || right == nil {
+		return errors.New("buffers must not be nil")
+	}
+
+	if left.SampleRate <= 0 || right.SampleRate <= 0 {
+		return errors.New("buffer sample rates must be positive")
+	}
+
+	if left.SampleRate != right.SampleRate {
+		return errors.New("buffer sample rates must match")
+	}
+
+	if len(left.Samples) != len(right.Samples) {
+		return errors.New("buffer lengths must match")
+	}
+
+	if len(left.Samples) == 0 {
+		return errors.New("buffers must not be empty")
+	}
+
+	return nil
 }

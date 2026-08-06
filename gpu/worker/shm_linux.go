@@ -69,7 +69,8 @@ func closeShm(name string, data []byte) error {
 	}
 
 	if name != "" {
-		err = os.Remove(shmPath(name))
+		// Names returned by createShm have a fixed prefix and random hex suffix.
+		err = os.Remove(shmPath(name)) // #nosec G703
 		if err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove shm %s: %w", name, err)
 		}

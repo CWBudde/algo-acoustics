@@ -72,3 +72,47 @@ func TestCompareBuffersProducesPeakRMSCorrelationAndBandRows(t *testing.T) {
 		t.Fatalf("PrintComparisonReport() output missing rows:\n%s", output)
 	}
 }
+
+func TestCompareBuffersRejectsMalformedBandSpecs(t *testing.T) {
+	t.Parallel()
+
+	left := &ir.Buffer{SampleRate: 48000, Samples: []float64{1}}
+	right := &ir.Buffer{SampleRate: 48000, Samples: []float64{1}}
+
+	tests := []struct {
+		name string
+		spec acoustics.BandSpec
+	}{
+		{
+			name: "missing lower edge",
+			spec: acoustics.BandSpec{CenterFreqs: []float64{1000}, UpperEdges: []float64{1400}},
+		},
+		{
+			name: "extra upper edge",
+			spec: acoustics.BandSpec{UpperEdges: []float64{1400}},
+		},
+		{
+			name: "non-positive center",
+			spec: acoustics.BandSpec{CenterFreqs: []float64{0}, LowerEdges: []float64{700}, UpperEdges: []float64{1400}},
+		},
+		{
+			name: "non-finite edge",
+			spec: acoustics.BandSpec{CenterFreqs: []float64{1000}, LowerEdges: []float64{700}, UpperEdges: []float64{math.Inf(1)}},
+		},
+		{
+			name: "center outside edges",
+			spec: acoustics.BandSpec{CenterFreqs: []float64{1000}, LowerEdges: []float64{1000}, UpperEdges: []float64{1400}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := CompareBuffers(left, right, test.spec)
+			if err == nil {
+				t.Fatal("CompareBuffers() error = nil, want error")
+			}
+		})
+	}
+}

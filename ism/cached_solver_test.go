@@ -375,6 +375,44 @@ func TestCachedISMSolver_MeshMaterialChangeReusesCache(t *testing.T) {
 	}
 }
 
+func TestCachedISMSolver_MeshSpeedChangeRebuildsCache(t *testing.T) {
+	t.Parallel()
+
+	sc := testMeshScene()
+	sc.Receivers[0].Type = scene.ReceiverOmni
+	cfg := ISMConfig{MaxOrder: 2, SpeedOfSound: acoustics.SpeedOfSound, BandSpec: acoustics.Octave6}
+	cached := &CachedISMSolver{}
+
+	_, err := cached.Solve(sc, cfg)
+	if err != nil {
+		t.Fatalf("first Solve error = %v", err)
+	}
+
+	if len(cached.meshCache[0]) == 0 {
+		t.Fatal("expected populated mesh image-source cache")
+	}
+
+	first := &cached.meshCache[0][0]
+
+	cfg.SpeedOfSound = 100
+
+	got, err := cached.Solve(sc, cfg)
+	if err != nil {
+		t.Fatalf("second Solve error = %v", err)
+	}
+
+	if &cached.meshCache[0][0] == first {
+		t.Fatal("effective mesh maximum distance change should rebuild cached candidates")
+	}
+
+	want, err := ISMSolver{}.Solve(sc, cfg)
+	if err != nil {
+		t.Fatalf("reference Solve error = %v", err)
+	}
+
+	assertEventsEqual(t, want, got, "speed changed")
+}
+
 func TestCachedISMSolver_Invalidate(t *testing.T) {
 	t.Parallel()
 

@@ -1,6 +1,10 @@
 package scene
 
-import "github.com/cwbudde/algo-acoustics/geometry"
+import (
+	"math"
+
+	"github.com/cwbudde/algo-acoustics/geometry"
+)
 
 // RoomKind describes the supported room representations.
 type RoomKind string
@@ -13,6 +17,8 @@ const (
 )
 
 // Shoebox stores axis-aligned room dimensions and wall-material references.
+//
+//nolint:tagliatelle // wallMaterials is part of the established public scene schema.
 type Shoebox struct {
 	Width         float64   `json:"width"`
 	Depth         float64   `json:"depth"`
@@ -26,6 +32,8 @@ func (s Shoebox) Bounds() geometry.Box {
 }
 
 // Room is the top-level geometry container for a scene.
+//
+//nolint:tagliatelle // Camel-case tags are part of the established public scene schema.
 type Room struct {
 	Kind         RoomKind       `json:"kind"`
 	Shoebox      *Shoebox       `json:"shoebox,omitempty"`
@@ -74,4 +82,40 @@ func (r Room) Bounds() (geometry.Box, bool) {
 	default:
 		return geometry.Box{}, false
 	}
+}
+
+// Volume returns the room's physical enclosed volume when it can be derived
+// without approximating arbitrary geometry by its axis-aligned bounds.
+func (r Room) Volume() (float64, bool) {
+	switch r.Kind {
+	case RoomKindShoebox:
+		if r.Shoebox == nil {
+			return 0, false
+		}
+
+		if !positiveFiniteDimension(r.Shoebox.Width) ||
+			!positiveFiniteDimension(r.Shoebox.Depth) ||
+			!positiveFiniteDimension(r.Shoebox.Height) {
+			return 0, false
+		}
+
+		volume := r.Shoebox.Width * r.Shoebox.Depth * r.Shoebox.Height
+		if !positiveFiniteDimension(volume) {
+			return 0, false
+		}
+
+		return volume, true
+	case RoomKindMesh:
+		if r.Mesh == nil {
+			return 0, false
+		}
+
+		return r.Mesh.EnclosedVolume()
+	default:
+		return 0, false
+	}
+}
+
+func positiveFiniteDimension(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }

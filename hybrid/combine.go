@@ -71,40 +71,8 @@ func CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer {
 		return nil
 	}
 
-	cutoffSample := min(max(int(cfg.CrossoverTimeSeconds*float64(early.SampleRate)), 0), len(early.Samples))
-
-	windowSamples := crossoverWindowSamples(early.SampleRate)
-
-	start := max(cutoffSample-windowSamples/2, 0)
-
-	end := min(min(start+windowSamples, len(early.Samples)), len(late.Samples))
-
-	if start > end {
-		start = end
-	}
-
-	earlyOut := cloneBuffer(early)
-	lateIn := cloneBuffer(late)
-
-	if cfg.SmoothenCrossover {
-		earlyOut = ApplyFadeWithWindow(earlyOut, start, end, false, cfg.CrossoverWindow)
-		lateIn = ApplyFadeWithWindow(lateIn, start, end, true, cfg.CrossoverWindow)
-	} else {
-		span := maxInt(1, end-start-1)
-		for i := start; i < end && i < len(earlyOut.Samples) && i < len(lateIn.Samples); i++ {
-			weight := float64(i-start) / float64(span)
-			earlyOut.Samples[i] *= 1 - weight
-			lateIn.Samples[i] *= weight
-		}
-	}
-
-	for i := end; i < len(earlyOut.Samples); i++ {
-		earlyOut.Samples[i] = 0
-	}
-
-	for i := 0; i < start && i < len(lateIn.Samples); i++ {
-		lateIn.Samples[i] = 0
-	}
+	start, end := crossoverSampleRange(early, late, cfg)
+	earlyOut, lateIn := crossfadeBuffers(early, late, start, end, cfg)
 
 	out := cloneBuffer(earlyOut)
 	if len(lateIn.Samples) > len(out.Samples) {
@@ -122,6 +90,41 @@ func CombineBuffers(early, late *ir.Buffer, cfg HybridConfig) *ir.Buffer {
 	}
 
 	return out
+}
+
+func crossoverSampleRange(early, late *ir.Buffer, cfg HybridConfig) (int, int) {
+	cutoff := min(max(int(cfg.CrossoverTimeSeconds*float64(early.SampleRate)), 0), len(early.Samples))
+	windowSamples := crossoverWindowSamples(early.SampleRate)
+	start := max(cutoff-windowSamples/2, 0)
+	end := min(min(start+windowSamples, len(early.Samples)), len(late.Samples))
+
+	return min(start, end), end
+}
+
+func crossfadeBuffers(early, late *ir.Buffer, start, end int, cfg HybridConfig) (*ir.Buffer, *ir.Buffer) {
+	earlyOut := cloneBuffer(early)
+	lateIn := cloneBuffer(late)
+
+	if cfg.SmoothenCrossover {
+		earlyOut = ApplyFadeWithWindow(earlyOut, start, end, false, cfg.CrossoverWindow)
+		lateIn = ApplyFadeWithWindow(lateIn, start, end, true, cfg.CrossoverWindow)
+	} else {
+		applyLinearCrossfade(earlyOut, lateIn, start, end)
+	}
+
+	clear(earlyOut.Samples[end:])
+	clear(lateIn.Samples[:start])
+
+	return earlyOut, lateIn
+}
+
+func applyLinearCrossfade(early, late *ir.Buffer, start, end int) {
+	span := maxInt(1, end-start-1)
+	for i := start; i < end; i++ {
+		weight := float64(i-start) / float64(span)
+		early.Samples[i] *= 1 - weight
+		late.Samples[i] *= weight
+	}
 }
 
 func effectiveCrossoverTime(early []ir.Event, cfg HybridConfig) float64 {

@@ -13,6 +13,7 @@ import {
   dbToLinear,
 } from "./app-utils.js";
 import { normalizeReflectionOrder } from "./reflection-preview.mjs";
+import { RenderWorkerController } from "./render-worker-controller.mjs";
 
 const MATERIALS = presets.MATERIALS;
 const ROOM_PRESETS = presets.ROOM_PRESETS;
@@ -93,12 +94,11 @@ const THEME_ICONS = {
 const state = structuredClone(DEFAULT_STATE);
 let currentThemeMode = "auto";
 let mediaThemeQuery = null;
-let renderWorker = null;
+let renderWorkerController = null;
 let renderSession = null;
 let renderButtonAnimation = 0;
 let urlSyncTimer = 0;
 let latestEncodedState = null;
-let renderWorkerReady = false;
 let audioContext = null;
 let currentIRBuffer = null;
 let currentAuralizationSource = null;
@@ -157,7 +157,9 @@ const refs = {
   ),
   renderScene: document.getElementById("render-scene"),
   renderButtonTitle: document.querySelector("#render-scene .button-title"),
-  renderButtonSubtitle: document.querySelector("#render-scene .button-subtitle"),
+  renderButtonSubtitle: document.querySelector(
+    "#render-scene .button-subtitle",
+  ),
   downloadWav: document.getElementById("download-wav"),
   audioStatus: document.getElementById("audio-status"),
   drySource: document.getElementById("dry-source"),
@@ -243,9 +245,10 @@ appState.setAppStateContext({
 let sceneView = null;
 let lastRender = null;
 let lastAudioURL = null;
-let workerReadyResolve = null;
-let workerReadyReject = null;
 let currentRenderId = 0;
+
+window.algoAcousticsDemoReady = false;
+window.algoAcousticsDemoLastRender = null;
 
 init();
 
@@ -270,58 +273,60 @@ async function init() {
 
 async function initWasm() {
   try {
+    setPageReady(false);
     setEngineStatus("Loading WASM", "loading");
-    const readyPromise = waitForWorkerReady();
-    renderWorker = createRenderWorker();
-    await readyPromise;
+    renderWorkerController = createRenderWorkerController();
+    await renderWorkerController.start();
     setEngineStatus("WASM ready", "ready");
     setRenderBadge("Waiting for render", "ready");
+    setPageReady(true);
   } catch (error) {
+    setPageReady(false);
     setEngineStatus("WASM failed", "error");
     setRenderBadge("Engine error", "error");
     refs.renderLog.textContent = `${error}`;
   }
 }
 
-function createRenderWorker() {
-  const worker = new Worker("worker.js");
-  worker.addEventListener("message", handleWorkerMessage);
-  worker.addEventListener("error", (event) => {
-    if (workerReadyReject) {
-      workerReadyReject(event.error ?? new Error(event.message));
-      workerReadyReject = null;
-      workerReadyResolve = null;
-    }
-    setEngineStatus("WASM failed", "error");
-    refs.renderLog.textContent = `${event.message}`;
+function createRenderWorkerController() {
+  return new RenderWorkerController({
+    createWorker: () => new Worker("worker.js"),
+    onMessage: handleWorkerMessage,
+    onError: (error) => {
+      setPageReady(false);
+      if (renderSession) {
+        finalizeRenderSession("Render failed", "error");
+      }
+      setRenderBadge("Engine error", "error");
+      setEngineStatus("WASM failed", "error");
+      refs.renderLog.textContent = `${error}`;
+    },
   });
-  worker.postMessage({ type: "init" });
-  return worker;
 }
 
-function waitForWorkerReady() {
-  if (renderWorkerReady) {
-    return Promise.resolve();
+function setPageReady(ready) {
+  window.algoAcousticsDemoReady = ready;
+  if (ready) {
+    window.dispatchEvent(new Event("algo-acoustics-demo-ready"));
   }
+}
 
-  return new Promise((resolve, reject) => {
-    workerReadyResolve = resolve;
-    workerReadyReject = reject;
-  });
+function publishRenderResult(requestId, result) {
+  window.algoAcousticsDemoLastRender = {
+    requestId,
+    mode: result.mode,
+    sampleCount: result.samples?.length ?? 0,
+    wavByteLength: result.wavBytes?.length ?? 0,
+  };
+  window.dispatchEvent(
+    new CustomEvent("algo-acoustics-demo-render", {
+      detail: window.algoAcousticsDemoLastRender,
+    }),
+  );
 }
 
 function handleWorkerMessage(event) {
   const { type, requestId, result, stage, percent, message } = event.data ?? {};
-
-  if (type === "ready") {
-    renderWorkerReady = true;
-    if (workerReadyResolve) {
-      workerReadyResolve();
-      workerReadyResolve = null;
-      workerReadyReject = null;
-    }
-    return;
-  }
 
   if (type === "progress") {
     if (!renderSession || requestId !== renderSession.requestId) {
@@ -367,13 +372,18 @@ function handleWorkerMessage(event) {
       return;
     }
 
-    const samples = result?.samples ? new Float32Array(result.samples) : new Float32Array();
-    const wavBytes = result?.wavBytes ? new Uint8Array(result.wavBytes) : new Uint8Array();
+    const samples = result?.samples
+      ? new Float32Array(result.samples)
+      : new Float32Array();
+    const wavBytes = result?.wavBytes
+      ? new Uint8Array(result.wavBytes)
+      : new Uint8Array();
     lastRender = {
       ...result,
       samples,
       wavBytes,
     };
+    publishRenderResult(requestId, lastRender);
 
     // Sync the actual mode used back into state (mesh rooms are forced to "late").
     if (lastRender.mode && lastRender.mode !== state.render.mode) {
@@ -688,7 +698,7 @@ function onRenderButtonClick() {
 }
 
 function startRender() {
-  if (!renderWorker) {
+  if (!renderWorkerController?.ready) {
     setRenderBadge("Engine unavailable", "error");
     refs.renderLog.textContent = "WASM worker is not ready.";
     return;
@@ -711,10 +721,11 @@ function startRender() {
   refs.renderScene.disabled = false;
   refs.downloadWav.disabled = true;
   setRenderBadge("Rendering…", "busy");
-  refs.renderLog.textContent = "Rendering hybrid impulse response in the browser…";
+  refs.renderLog.textContent =
+    "Rendering hybrid impulse response in the browser…";
   updateRenderButton("Cancel", "Starting render…", 0);
   scheduleRenderButtonAnimation();
-  renderWorker.postMessage({
+  renderWorkerController.postMessage({
     type: "render",
     requestId,
     payload: request,
@@ -729,7 +740,33 @@ function requestRenderCancel() {
   renderSession.cancelRequested = true;
   setRenderBadge("Cancel requested", "busy");
   updateRenderButton("Cancel", "Cancel requested", renderSession.progress);
-  renderWorker?.postMessage({ type: "cancel", requestId: renderSession.requestId });
+  void restartWorkerAfterCancel(renderSession.requestId);
+}
+
+async function restartWorkerAfterCancel(requestId) {
+  setPageReady(false);
+  setEngineStatus("Restarting WASM", "loading");
+  refs.renderScene.disabled = true;
+
+  try {
+    await renderWorkerController.restart();
+  } catch (error) {
+    setPageReady(false);
+    setEngineStatus("WASM failed", "error");
+    if (renderSession?.requestId === requestId) {
+      finalizeRenderSession("Render failed", "error");
+    }
+    setRenderBadge("Engine error", "error");
+    refs.renderLog.textContent = `${error}`;
+    return;
+  }
+
+  setEngineStatus("WASM ready", "ready");
+  setPageReady(true);
+  if (renderSession?.requestId === requestId) {
+    finalizeRenderSession("Render canceled", "ready");
+    refs.renderLog.textContent = "Render canceled.";
+  }
 }
 
 function isRenderActive() {
@@ -824,7 +861,9 @@ function updateAudio(wavBytes) {
   const blob = new Blob([wavBytes], { type: "audio/wav" });
   lastAudioURL = URL.createObjectURL(blob);
   refs.audioPlayer.src = lastAudioURL;
-  lastAuralizedWav = wavBytes.slice ? wavBytes.slice() : new Uint8Array(wavBytes);
+  lastAuralizedWav = wavBytes.slice
+    ? wavBytes.slice()
+    : new Uint8Array(wavBytes);
   currentIRBuffer = null;
   updateAuralizationStatus("IR ready", "ready");
   syncAuralizationControls();
@@ -842,13 +881,19 @@ function syncAuralizationControls() {
   refs.wetMixValue.textContent = `${Math.round(wetMix * 100)}%`;
   refs.audioGain.value = String(gainDb);
   refs.audioGainValue.textContent = `${gainDb.toFixed(1)} dB`;
-  refs.playAuralization.textContent = currentAuralizationPlaying ? "Stop" : "Play";
-  refs.playAuralization.classList.toggle("is-playing", currentAuralizationPlaying);
+  refs.playAuralization.textContent = currentAuralizationPlaying
+    ? "Stop"
+    : "Play";
+  refs.playAuralization.classList.toggle(
+    "is-playing",
+    currentAuralizationPlaying,
+  );
   refs.playAuralization.setAttribute(
     "aria-pressed",
     String(currentAuralizationPlaying),
   );
-  refs.playAuralization.disabled = !lastAuralizedWav && !currentAuralizationPlaying;
+  refs.playAuralization.disabled =
+    !lastAuralizedWav && !currentAuralizationPlaying;
   refs.exportAuralization.disabled = !lastAuralizedWav;
   if (!lastAuralizedWav) {
     updateAuralizationStatus("Waiting for IR", "loading");
@@ -939,9 +984,12 @@ async function startAuralizationPlayback() {
   updateAuralizationStatus("Playing", "busy");
 
   drySource.start();
-  currentAuralizationStopTimer = window.setTimeout(() => {
-    stopAuralizationPlayback();
-  }, Math.ceil(drySource.buffer.duration * 1000) + 1200);
+  currentAuralizationStopTimer = window.setTimeout(
+    () => {
+      stopAuralizationPlayback();
+    },
+    Math.ceil(drySource.buffer.duration * 1000) + 1200,
+  );
 
   drySource.onended = () => {
     if (currentAuralizationPlaying) {
@@ -1001,7 +1049,9 @@ async function renderAuralizationOffline() {
   const dryBuffer = buildDrySourceBuffer(baseContext, refs.drySource.value);
   const offline = new OfflineAudioContext(
     1,
-    Math.ceil((dryBuffer.duration + irBuffer.duration + 1.2) * baseContext.sampleRate),
+    Math.ceil(
+      (dryBuffer.duration + irBuffer.duration + 1.2) * baseContext.sampleRate,
+    ),
     baseContext.sampleRate,
   );
 
@@ -1032,7 +1082,6 @@ async function renderAuralizationOffline() {
 function encodeAudioBufferToWav(audioBuffer) {
   return audioModule.encodeAudioBufferToWav(audioBuffer);
 }
-
 
 // State helpers moved to app-state.js.
 

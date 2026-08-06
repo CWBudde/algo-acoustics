@@ -189,13 +189,13 @@ func assignBandWeights(weights [][]float64, k int, freq float64, spec acoustics.
 
 	// Below the lowest band's lower edge → all weight to band 0.
 	if freq <= spec.LowerEdges[0] {
-		weights[0][k] = 1
+		weights[0][k] = 1 // #nosec G602 -- non-empty outer slice and FFT-bin index are validated by the caller.
 		return
 	}
 
 	// Above the highest band's upper edge → all weight to last band.
 	if freq >= spec.UpperEdges[bandCount-1] {
-		weights[bandCount-1][k] = 1
+		weights[bandCount-1][k] = 1 // #nosec G602 -- bandCount and FFT-bin index are validated above/by the caller.
 		return
 	}
 
@@ -221,8 +221,8 @@ func assignBandWeights(weights [][]float64, k int, freq float64, spec acoustics.
 
 			if freq >= transitionLow && freq <= transitionHigh {
 				x := logRatio(freq, transitionLow, transitionHigh)
-				weights[b][k] = 0.5 * (1 - math.Cos(math.Pi*x))
-				weights[b-1][k] = 0.5 * (1 + math.Cos(math.Pi*x))
+				weights[b][k] = 0.5 * (1 - math.Cos(math.Pi*x))   // #nosec G602 -- b and k are bounded by the loops/caller.
+				weights[b-1][k] = 0.5 * (1 + math.Cos(math.Pi*x)) // #nosec G602 -- guarded by b > 0.
 
 				return
 			}
@@ -236,15 +236,15 @@ func assignBandWeights(weights [][]float64, k int, freq float64, spec acoustics.
 
 			if freq >= transitionLow && freq <= transitionHigh {
 				x := logRatio(freq, transitionLow, transitionHigh)
-				weights[b][k] = 0.5 * (1 + math.Cos(math.Pi*x))
-				weights[b+1][k] = 0.5 * (1 - math.Cos(math.Pi*x))
+				weights[b][k] = 0.5 * (1 + math.Cos(math.Pi*x))   // #nosec G602 -- b and k are bounded by the loops/caller.
+				weights[b+1][k] = 0.5 * (1 - math.Cos(math.Pi*x)) // #nosec G602 -- guarded by b < bandCount-1.
 
 				return
 			}
 		}
 
 		// Flat passband interior.
-		weights[b][k] = 1
+		weights[b][k] = 1 // #nosec G602 -- b and k are bounded by the loops/caller.
 
 		return
 	}

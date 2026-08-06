@@ -30,6 +30,10 @@ func newMaterialsCommand() *cobra.Command {
 		Short: "Print a band table for a material library entry or material file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if format != outputFormatTable && format != outputFormatCSV {
+				return fmt.Errorf("unsupported format %q", format)
+			}
+
 			material, source, err := loadMaterialSpec(args[0])
 			if err != nil {
 				return err
@@ -50,18 +54,16 @@ func newMaterialsCommand() *cobra.Command {
 			}
 
 			switch format {
-			case "table":
+			case outputFormatTable:
 				err = writeMaterialTable(writer, source, material, rows)
 				if err != nil {
 					return fmt.Errorf("write table: %w", err)
 				}
-			case "csv":
+			case outputFormatCSV:
 				err = writeMaterialCSV(writer, source, rows)
 				if err != nil {
 					return fmt.Errorf("write csv: %w", err)
 				}
-			default:
-				return fmt.Errorf("unsupported format %q", format)
 			}
 
 			destination := "stdout"
@@ -76,7 +78,7 @@ func newMaterialsCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "output file (defaults to stdout)")
-	cmd.Flags().StringVar(&format, "format", "table", "output format (table|csv)")
+	cmd.Flags().StringVar(&format, "format", outputFormatTable, "output format (table|csv)")
 
 	return cmd
 }

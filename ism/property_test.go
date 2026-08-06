@@ -24,7 +24,7 @@ func TestISMSolverSolveDirectAmplitudeHalvesWhenDistanceDoubles(t *testing.T) {
 		t.Fatalf("Solve(near) error = %v", err)
 	}
 
-	nearDirect := firstEventOfKind(nearEvents, ir.EventDirect)
+	nearDirect := firstDirectEvent(nearEvents)
 	if nearDirect == nil {
 		t.Fatal("expected near direct event")
 	}
@@ -36,7 +36,7 @@ func TestISMSolverSolveDirectAmplitudeHalvesWhenDistanceDoubles(t *testing.T) {
 		t.Fatalf("Solve(far) error = %v", err)
 	}
 
-	farDirect := firstEventOfKind(farEvents, ir.EventDirect)
+	farDirect := firstDirectEvent(farEvents)
 	if farDirect == nil {
 		t.Fatal("expected far direct event")
 	}

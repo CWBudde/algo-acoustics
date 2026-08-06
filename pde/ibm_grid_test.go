@@ -36,6 +36,7 @@ func rectRoom(w, d, h float64) *ConvexRoom {
 	return room
 }
 
+//nolint:gocyclo // This white-box test exhaustively checks every grid class and neighbor invariant.
 func TestClassifyGrid_RectangularRoom(t *testing.T) {
 	// A 2×2×2 room with h=0.5 should give a grid where the interior nodes
 	// form a regular pattern identical to what a shoebox solver would use.
@@ -174,6 +175,7 @@ func TestClassifyGrid_RectangularRoom(t *testing.T) {
 	}
 }
 
+//nolint:nestif // The nested coordinate walk mirrors the three-dimensional grid invariant.
 func TestClassifyGrid_RectangularMatchesShoebox(t *testing.T) {
 	// For a rectangular room aligned with axes, the IBM classification should
 	// produce a pattern that exactly matches what a regular shoebox solver
@@ -267,7 +269,8 @@ func TestClassifyGrid_RotatedSquare(t *testing.T) {
 	}
 
 	allWalls := make([]geometry.Plane, 0, 6)
-	allWalls = append(allWalls,
+	allWalls = append(
+		allWalls,
 		geometry.Plane{Normal: geometry.Vec3{Z: 1}, Distance: 0},
 		geometry.Plane{Normal: geometry.Vec3{Z: -1}, Distance: -4},
 	)

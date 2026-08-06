@@ -2,6 +2,7 @@ package raytrace
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 
@@ -21,6 +22,8 @@ type RayTracer struct {
 }
 
 // Trace runs the Monte Carlo ray tracer and returns a banded energy histogram.
+//
+//nolint:gocyclo,maintidx,nestif // The per-bounce solver deliberately keeps coupled path state in one loop.
 func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	if r == nil {
 		return nil, errors.New("raytracer is nil")
@@ -30,12 +33,12 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 		return nil, errors.New("scene is nil")
 	}
 
-	if len(r.Scene.Sources) == 0 {
-		return nil, errors.New("scene has no sources")
+	if len(r.Scene.Sources) != 1 {
+		return nil, fmt.Errorf("raytrace Trace requires exactly one source, got %d", len(r.Scene.Sources))
 	}
 
-	if len(r.Scene.Receivers) == 0 {
-		return nil, errors.New("scene has no receivers")
+	if len(r.Scene.Receivers) != 1 {
+		return nil, fmt.Errorf("raytrace Trace requires exactly one receiver, got %d", len(r.Scene.Receivers))
 	}
 
 	if r.Config.NumRays <= 0 {
@@ -80,14 +83,11 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 	source := r.Scene.Sources[0]
 	receiverData := r.Scene.Receivers[0]
 
-	receiverRadius := r.ReceiverRadius
-	if receiverRadius <= 0 {
-		receiverRadius = 0.25
-	}
+	receiverRadius := effectiveReceiverRadius(r.ReceiverRadius)
 
 	receiver := SphereReceiver{Center: receiverData.Position, Radius: receiverRadius}
 
-	rng := rand.New(rand.NewSource(1))
+	rng := rand.New(rand.NewSource(1)) // #nosec G404 -- deterministic Monte Carlo simulation, not security randomness.
 
 	rays := LaunchRays(source.Position, r.Config)
 	if len(rays) == 0 {
@@ -137,7 +137,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit {
 					arrivalTime := (pathLength + tHit) / r.Config.SpeedOfSound
 					if arrivalTime <= r.Config.MaxTimeSeconds {
-						hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit, defaultAirTemperatureC, defaultRelativeHumidity)
+						hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit)
 
 						capture := receiver.AngularWeight(currentRay.Direction)
 						for bandIndex := range hitEnergy {
@@ -165,9 +165,10 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				break
 			}
 
-			state.Energy = attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, segmentLength, defaultAirTemperatureC, defaultRelativeHumidity)
+			state.Energy = attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, segmentLength)
 
 			material := r.sceneMaterialForWall(wallIdx)
+			incidentNormal := faceIncidentSide(currentRay.Direction, hitNormal)
 
 			absorption := make([]float64, bandCount)
 			for bandIndex := range absorption {
@@ -181,12 +182,7 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				// The wall normal from the tracer may point outward. For diffuse
 				// rain we need the inward-facing normal — the one on the side
 				// the ray arrived from.
-				inwardNormal := hitNormal
-				if currentRay.Direction.Dot(hitNormal) > 0 {
-					inwardNormal = hitNormal.Scale(-1)
-				}
-
-				rain := computeDiffuseRain(hitPoint, inwardNormal, remainingEnergy, scattering, receiver, tracer, r.Scene.BandSpec.CenterFreqs, pathLength, r.Config.SpeedOfSound)
+				rain := computeDiffuseRain(hitPoint, incidentNormal, remainingEnergy, scattering, receiver, tracer, r.Scene.BandSpec.CenterFreqs, pathLength, r.Config.SpeedOfSound)
 				if rain != nil && rain.ArrivalTime <= r.Config.MaxTimeSeconds {
 					hist.Add(rain.ArrivalTime, rain.BandEnergy)
 
@@ -199,8 +195,8 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 			}
 
 			scatterCoeff := averageCoeff(scattering)
-			specularDir := SpecularReflect(currentRay.Direction, hitNormal)
-			diffuseDir := LambertDirection(hitNormal, rng)
+			specularDir := SpecularReflect(currentRay.Direction, incidentNormal)
+			diffuseDir := LambertDirection(incidentNormal, rng)
 
 			switch r.Config.ReflectionStrategy {
 			case ReflectionStrategyDeterministicBlend:
@@ -224,13 +220,13 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				currentRay = geometry.Ray{}
 				state.Energy = nil
 			default:
-				if scatterCoeff >= 1 || (scatterCoeff > 0 && rng.Float64() < scatterCoeff) {
-					state.Energy = diffuseEnergy
-					currentRay = geometry.NewRay(hitPoint.Add(diffuseDir.Scale(wallEpsilon)), diffuseDir)
+				nextDir, nextEnergy, diffuse := sampleProbabilisticReflection(specularDir, diffuseDir, remainingEnergy, scatterCoeff, rng)
+				state.Energy = nextEnergy
+				currentRay = geometry.NewRay(hitPoint.Add(nextDir.Scale(wallEpsilon)), nextDir)
+
+				if diffuse {
 					rainCovered = r.Config.DiffuseRain
 				} else {
-					state.Energy = specEnergy
-					currentRay = geometry.NewRay(hitPoint.Add(specularDir.Scale(wallEpsilon)), specularDir)
 					rainCovered = false
 				}
 			}

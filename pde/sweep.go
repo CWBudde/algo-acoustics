@@ -11,6 +11,8 @@ import (
 	"github.com/cwbudde/algo-pde/poisson"
 )
 
+const boundaryNeumann = "neumann"
+
 // SweepShoebox computes a frequency response for a shoebox room.
 func SweepShoebox(room *scene.Shoebox, src, rcv geometry.Vec3, cfg SweepConfig) (*TransferFunction, error) {
 	if room == nil {
@@ -48,7 +50,9 @@ func SweepShoebox(room *scene.Shoebox, src, rcv geometry.Vec3, cfg SweepConfig) 
 }
 
 func solveAtFrequency(room *scene.Shoebox, src, rcv geometry.Vec3, freqHz float64, boundaryCondition string) (complex128, error) {
-	alpha := 2 * math.Pi * freqHz / acoustics.SpeedOfSound * (2 * math.Pi * freqHz / acoustics.SpeedOfSound)
+	waveNumber := 2 * math.Pi * freqHz / acoustics.SpeedOfSound
+	// algo-pde solves (alpha - Delta)u=f; acoustic Helmholtz requires alpha=-k^2.
+	alpha := -waveNumber * waveNumber
 	hx, hy, hz := gridSpacing(room, freqHz)
 	nx := maxInt(4, int(math.Ceil(room.Width/hx)))
 	ny := maxInt(4, int(math.Ceil(room.Depth/hy)))

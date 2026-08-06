@@ -1,16 +1,19 @@
 # algo-acoustics
 
-[![CI](https://github.com/cwbudde/algo-acoustics/actions/workflows/ci.yml/badge.svg)](https://github.com/cwbudde/algo-acoustics/actions/workflows/ci.yml)
+[![CI](https://github.com/cwbudde/algo-acoustics/actions/workflows/tests.yml/badge.svg)](https://github.com/cwbudde/algo-acoustics/actions/workflows/tests.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cwbudde/algo-acoustics)](https://goreportcard.com/report/github.com/cwbudde/algo-acoustics)
 [![Go Reference](https://pkg.go.dev/badge/github.com/cwbudde/algo-acoustics.svg)](https://pkg.go.dev/github.com/cwbudde/algo-acoustics)
 
 A Go-native room acoustics toolkit for offline simulation of sound propagation,
-early reflections, diffuse late reverberation, and optional binaural rendering —
-built around a scene → propagation engines → event stream → IR/export pipeline.
+early reflections, diffuse late reverberation, low-frequency modal blending, and
+optional binaural rendering. The shipped `NewISMEngine` produces sparse early
+events; `NewRaytraceEngine` preserves banded late-field energy as a dense mono
+or directional binaural buffer.
 
 ## Status
 
-Work in progress. See [PLAN.md](PLAN.md) for the phased implementation roadmap.
+Work in progress. The core mono, binaural, hybrid, progressive, and validation
+paths are implemented; [PLAN.md](PLAN.md) records completed and future phases.
 
 ## Docs
 

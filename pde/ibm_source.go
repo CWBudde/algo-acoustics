@@ -42,6 +42,14 @@ type IBMSource struct {
 // NewIBMSource creates a point source at the given position on the IBM grid.
 // Returns an error if the position is outside the room geometry.
 func NewIBMSource(room *ConvexRoom, grid *IBMGrid, pos geometry.Vec3, mode SourceMode) (*IBMSource, error) {
+	if room == nil {
+		return nil, errors.New("source room is nil")
+	}
+
+	if grid == nil {
+		return nil, errors.New("source grid is nil")
+	}
+
 	if !room.PointInside(pos) {
 		return nil, errors.New("source position is outside the room")
 	}
@@ -70,9 +78,21 @@ func NewIBMSource(room *ConvexRoom, grid *IBMGrid, pos geometry.Vec3, mode Sourc
 // Inject adds or sets the source signal value into the pressure field
 // at the source node, depending on the source mode.
 func (s *IBMSource) Inject(field []float64, signal float64) {
+	if s == nil || s.Grid == nil {
+		return
+	}
+
 	idx := s.NodeIdx
 	if s.Grid.Compressed {
+		if idx < 0 || idx >= len(s.Grid.CompactMap) {
+			return
+		}
+
 		idx = s.Grid.CompactMap[idx]
+	}
+
+	if idx < 0 || idx >= len(field) {
+		return
 	}
 
 	switch s.Mode {
@@ -144,7 +164,12 @@ func findNearestActive(g *IBMGrid, cx, cy, cz int) int {
 // where t0 is the pulse center and σ controls the width.
 // The bandwidth is approximately 1/(π·σ) Hz.
 func GaussianPulse(t, t0, sigma float64) float64 {
+	if !finite(t) || !finite(t0) || !finite(sigma) || sigma <= 0 {
+		return 0
+	}
+
 	x := (t - t0) / sigma
+
 	return math.Exp(-x * x)
 }
 
@@ -155,7 +180,15 @@ func GaussianPulse(t, t0, sigma float64) float64 {
 // where w(t) is a Hann window over [0, nCycles/f].
 // The burst contains exactly nCycles complete cycles of frequency f.
 func SineBurst(t, freqHz float64, nCycles int) float64 {
+	if !finite(t) || !finite(freqHz) || freqHz <= 0 || nCycles <= 0 {
+		return 0
+	}
+
 	duration := float64(nCycles) / freqHz
+	if !finite(duration) || duration <= 0 {
+		return 0
+	}
+
 	if t < 0 || t > duration {
 		return 0
 	}
@@ -164,6 +197,10 @@ func SineBurst(t, freqHz float64, nCycles int) float64 {
 	w := 0.5 * (1 - math.Cos(2*math.Pi*t/duration))
 
 	return math.Sin(2*math.Pi*freqHz*t) * w
+}
+
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }
 
 func clampInt(v, lo, hi int) int {

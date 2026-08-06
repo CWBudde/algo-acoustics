@@ -45,7 +45,7 @@ func AlphaAirISO9613_1(frequencyHz, temperatureC, relativeHumidity float64) floa
 	return 8.686 * frequencyHz * frequencyHz * (classical + math.Pow(temperatureRatio, -2.5)*(oxygen+nitrogen))
 }
 
-func attenuateEnergyByAir(energy []float64, bandFreqs []float64, distanceMeters, temperatureC, relativeHumidity float64) []float64 {
+func attenuateEnergyByAir(energy []float64, bandFreqs []float64, distanceMeters float64) []float64 {
 	if len(energy) == 0 || distanceMeters <= 0 {
 		return cloneEnergy(energy)
 	}
@@ -57,7 +57,7 @@ func attenuateEnergyByAir(energy []float64, bandFreqs []float64, distanceMeters,
 			freqHz = bandFreqs[i]
 		}
 
-		alpha := AlphaAirISO9613_1(freqHz, temperatureC, relativeHumidity)
+		alpha := AlphaAirISO9613_1(freqHz, defaultAirTemperatureC, defaultRelativeHumidity)
 		out[i] *= math.Pow(10, -alpha*distanceMeters/10)
 	}
 

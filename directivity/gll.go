@@ -147,6 +147,8 @@ func selectSourceDefinition(file *ggll.File, preset string) (*ggll.SourceDefinit
 				return item.Definition, item.Key, nil
 			}
 		}
+
+		return nil, "", fmt.Errorf("gll preset %q does not match a source definition key or label", preset)
 	}
 
 	for _, item := range sourceDefinitions {

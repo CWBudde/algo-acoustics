@@ -8,6 +8,8 @@ import (
 )
 
 // HistogramBin stores the accumulated per-band energy for a time window.
+//
+//nolint:tagliatelle // Camel-case tags are part of the established histogram JSON schema.
 type HistogramBin struct {
 	TimeSeconds float64   `json:"timeSeconds"`
 	BandEnergy  []float64 `json:"bandEnergy"`
@@ -16,6 +18,7 @@ type HistogramBin struct {
 // EnergyHistogram stores ray energy as banded time bins.
 type EnergyHistogram struct {
 	Bins        []HistogramBin
+	Duration    float64
 	BinDuration float64
 	BandCount   int
 }
@@ -23,7 +26,7 @@ type EnergyHistogram struct {
 // NewEnergyHistogram allocates a histogram for the requested duration.
 func NewEnergyHistogram(duration, binDuration float64, bandCount int) *EnergyHistogram {
 	if duration <= 0 || binDuration <= 0 || bandCount <= 0 {
-		return &EnergyHistogram{BinDuration: binDuration, BandCount: bandCount}
+		return &EnergyHistogram{Duration: duration, BinDuration: binDuration, BandCount: bandCount}
 	}
 
 	binCount := int(math.Ceil(duration / binDuration))
@@ -36,12 +39,12 @@ func NewEnergyHistogram(duration, binDuration float64, bandCount int) *EnergyHis
 		}
 	}
 
-	return &EnergyHistogram{Bins: bins, BinDuration: binDuration, BandCount: bandCount}
+	return &EnergyHistogram{Bins: bins, Duration: duration, BinDuration: binDuration, BandCount: bandCount}
 }
 
 // Add accumulates band energy into the bin covering timeSeconds.
 func (h *EnergyHistogram) Add(timeSeconds float64, bandEnergy []float64) {
-	if h == nil || h.BinDuration <= 0 || len(h.Bins) == 0 || timeSeconds < 0 {
+	if h == nil || h.BinDuration <= 0 || len(h.Bins) == 0 || timeSeconds < 0 || timeSeconds >= h.Duration {
 		return
 	}
 
@@ -51,7 +54,7 @@ func (h *EnergyHistogram) Add(timeSeconds float64, bandEnergy []float64) {
 	}
 
 	if index >= len(h.Bins) {
-		index = len(h.Bins) - 1
+		return
 	}
 
 	bin := &h.Bins[index]
@@ -62,7 +65,7 @@ func (h *EnergyHistogram) Add(timeSeconds float64, bandEnergy []float64) {
 	limit := min(len(bandEnergy), h.BandCount)
 
 	for i := range limit {
-		bin.BandEnergy[i] += bandEnergy[i]
+		bin.BandEnergy[i] += bandEnergy[i] // #nosec G602 -- i is bounded by both slice lengths above.
 	}
 }
 
@@ -73,7 +76,7 @@ func (h *EnergyHistogram) ToLateMono(sampleRate int) *ir.Buffer {
 	}
 
 	buf := ir.NewBuffer(sampleRate, float64(len(h.Bins))*h.BinDuration)
-	rng := rand.New(rand.NewSource(1))
+	rng := rand.New(rand.NewSource(1)) // #nosec G404 -- deterministic simulation noise, not security randomness.
 
 	for binIndex, bin := range h.Bins {
 		start := int(math.Round(float64(binIndex) * h.BinDuration * float64(sampleRate)))

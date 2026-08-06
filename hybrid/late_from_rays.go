@@ -1,6 +1,7 @@
 package hybrid
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 
@@ -16,7 +17,7 @@ func HistogramToEvents(h *raytrace.EnergyHistogram, rng *rand.Rand) []ir.Event {
 	}
 
 	if rng == nil {
-		rng = rand.New(rand.NewSource(1))
+		rng = rand.New(rand.NewSource(1)) // #nosec G404 -- deterministic simulation phases, not security randomness.
 	}
 
 	events := make([]ir.Event, 0, len(h.Bins))
@@ -32,7 +33,7 @@ func HistogramToEvents(h *raytrace.EnergyHistogram, rng *rand.Rand) []ir.Event {
 
 		events = append(events, ir.Event{
 			TimeSeconds:  bin.TimeSeconds,
-			Amplitude:    totalEnergy,
+			Amplitude:    math.Sqrt(totalEnergy),
 			PhaseRadians: 2 * math.Pi * rng.Float64(),
 			Kind:         ir.EventDiffuse,
 		})
@@ -66,11 +67,16 @@ func HistogramToPoissonBuffer(h *raytrace.EnergyHistogram, volume float64, spec 
 		}
 	}
 
-	return ir.RenderMonoPoisson(ir.PoissonConfig{
+	buf, err := ir.RenderMonoPoisson(ir.PoissonConfig{
 		Bins:        bins,
 		BinDuration: h.BinDuration,
 		Volume:      volume,
 		BandSpec:    spec,
 		SampleRate:  sampleRate,
 	}, rng)
+	if err != nil {
+		return nil, fmt.Errorf("render histogram Poisson buffer: %w", err)
+	}
+
+	return buf, nil
 }

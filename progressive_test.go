@@ -3,6 +3,7 @@ package algoacoustics
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -252,6 +253,87 @@ func TestRenderProgressive_NilScene(t *testing.T) {
 	err := RenderProgressive(context.Background(), nil, ProgressiveConfig{}, func(TierResult) {})
 	if err == nil {
 		t.Fatal("expected error for nil scene")
+	}
+}
+
+func TestRenderProgressive_RejectsNilContextAndUpdate(t *testing.T) {
+	t.Parallel()
+
+	sc := progressiveTestScene()
+	cfg := progressiveTestConfig()
+
+	err := RenderProgressive(nil, sc, cfg, func(TierResult) {}) //nolint:staticcheck // nil context is the input under test
+	if err == nil || !strings.Contains(err.Error(), "context is nil") {
+		t.Fatalf("nil context error = %v, want context is nil", err)
+	}
+
+	err = RenderProgressive(context.Background(), sc, cfg, nil)
+	if err == nil || !strings.Contains(err.Error(), "update callback is nil") {
+		t.Fatalf("nil update error = %v, want update callback is nil", err)
+	}
+}
+
+func TestRenderProgressive_ValidatesBeforeFirstUpdate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		scene   *scene.Scene
+		cfg     ProgressiveConfig
+		wantErr string
+	}{
+		{
+			name: "invalid scene",
+			scene: func() *scene.Scene {
+				sc := progressiveTestScene()
+				sc.SampleRate = 0
+
+				return sc
+			}(),
+			cfg:     progressiveTestConfig(),
+			wantErr: "validate scene",
+		},
+		{
+			name:  "invalid config",
+			scene: progressiveTestScene(),
+			cfg: func() ProgressiveConfig {
+				cfg := progressiveTestConfig()
+				cfg.Render.DurationSeconds = 0
+
+				return cfg
+			}(),
+			wantErr: "render duration must be positive",
+		},
+		{
+			name:  "negative defaultable config value",
+			scene: progressiveTestScene(),
+			cfg: func() ProgressiveConfig {
+				cfg := progressiveTestConfig()
+				cfg.SpeedOfSound = -1
+
+				return cfg
+			}(),
+			wantErr: "speed of sound must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			updates := 0
+
+			err := RenderProgressive(context.Background(), tt.scene, tt.cfg, func(TierResult) {
+				updates++
+			})
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("RenderProgressive() error = %v, want %q", err, tt.wantErr)
+			}
+
+			if updates != 0 {
+				t.Fatalf("update called %d times for invalid input, want 0", updates)
+			}
+		})
 	}
 }
 

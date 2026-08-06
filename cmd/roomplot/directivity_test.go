@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -55,5 +57,37 @@ func TestWriteSourceDirectivityCSV(t *testing.T) {
 
 	if !strings.Contains(output, "0.0,1,0") {
 		t.Fatalf("CSV output missing row: %q", output)
+	}
+}
+
+func TestSourceDirectivityInvalidFormatDoesNotTruncateOutput(t *testing.T) {
+	outputPath := filepath.Join(t.TempDir(), "directivity.txt")
+	const sentinel = "keep this content"
+
+	err := os.WriteFile(outputPath, []byte(sentinel), 0o600)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cmd := newRootCommand()
+	stderr := &bytes.Buffer{}
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{
+		"source-directivity", "unused.gll",
+		"--format", "invalid",
+		"--output", outputPath,
+	})
+
+	if exitCode := run(cmd); exitCode == 0 {
+		t.Fatalf("run() = 0, want error; stderr=%q", stderr.String())
+	}
+
+	got, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	if string(got) != sentinel {
+		t.Fatalf("output content = %q, want sentinel %q", got, sentinel)
 	}
 }

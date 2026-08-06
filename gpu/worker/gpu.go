@@ -48,7 +48,7 @@ func Probe(ctx context.Context, serverBin string) error {
 // Otherwise, standard locations are searched.
 func resolveServerBinary(serverBin string) (string, error) {
 	if serverBin != "" {
-		_, err := os.Stat(serverBin)
+		_, err := os.Stat(serverBin) // #nosec G703 -- caller explicitly selects the executable to probe.
 		if err != nil {
 			return "", fmt.Errorf("server binary %q: %w", serverBin, err)
 		}

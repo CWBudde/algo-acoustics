@@ -26,6 +26,10 @@ func EvaluateShoebox(sources []ImageSource, sc *scene.Scene, cfg ISMConfig) ([]i
 		return nil, errors.New("EvaluateShoebox requires at least one source")
 	}
 
+	if len(sc.Sources) > 1 {
+		return nil, errors.New("EvaluateShoebox requires exactly one source because image sources are source-specific")
+	}
+
 	if len(sc.Receivers) == 0 {
 		return nil, errors.New("EvaluateShoebox requires at least one receiver")
 	}
@@ -95,6 +99,10 @@ func EvaluateMesh(sources []MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]
 
 	if len(sc.Sources) == 0 {
 		return nil, errors.New("EvaluateMesh requires at least one source")
+	}
+
+	if len(sc.Sources) > 1 {
+		return nil, errors.New("EvaluateMesh requires exactly one source because image sources are source-specific")
 	}
 
 	if len(sc.Receivers) == 0 {

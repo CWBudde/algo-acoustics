@@ -82,3 +82,37 @@ band,center_hz,absorption,scattering
 		}
 	}
 }
+
+func TestMaterialsInvalidFormatDoesNotTruncateOutput(t *testing.T) {
+	t.Parallel()
+
+	outputPath := filepath.Join(t.TempDir(), "materials.txt")
+	const sentinel = "keep this content"
+
+	err := os.WriteFile(outputPath, []byte(sentinel), 0o600)
+	if err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cmd := newRootCommand()
+	stderr := &bytes.Buffer{}
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{
+		"materials", "glass",
+		"--format", "invalid",
+		"--output", outputPath,
+	})
+
+	if exitCode := run(cmd); exitCode == 0 {
+		t.Fatalf("run() = 0, want error; stderr=%q", stderr.String())
+	}
+
+	got, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	if string(got) != sentinel {
+		t.Fatalf("output content = %q, want sentinel %q", got, sentinel)
+	}
+}

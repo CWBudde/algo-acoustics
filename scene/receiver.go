@@ -16,6 +16,9 @@ const (
 	ReceiverOmni ReceiverType = "omni"
 	// ReceiverBinaural is a left/right receiver pair using an HRTF dataset.
 	ReceiverBinaural ReceiverType = "binaural"
+
+	hrtfTypeNoop            = "noop"
+	hrtfTypeNearestNeighbor = "nearestNeighbor"
 )
 
 // Receiver is a listening position in the scene.
@@ -35,21 +38,23 @@ type receiverJSON struct {
 	HRTF        *hrtfJSON           `json:"hrtf,omitempty"`
 }
 
+//nolint:tagliatelle // Scene files use the established camelCase JSON schema.
 type hrtfJSON struct {
-	Type         string `json:"type"`
-	SampleRateHz int    `json:"sampleRate,omitempty"`
+	Type         string                `json:"type"`
+	SampleRateHz int                   `json:"sampleRate,omitempty"`
+	Grid         *hrtf.MeasurementGrid `json:"grid,omitempty"`
 }
 
 func hrtfJSONFromDataset(dataset hrtf.Dataset) (*hrtfJSON, error) {
 	switch typed := dataset.(type) {
 	case hrtf.NoopDataset:
-		return &hrtfJSON{Type: "noop", SampleRateHz: typed.SampleRateHz}, nil
+		return &hrtfJSON{Type: hrtfTypeNoop, SampleRateHz: typed.SampleRateHz}, nil
 	case *hrtf.NoopDataset:
-		return &hrtfJSON{Type: "noop", SampleRateHz: typed.SampleRateHz}, nil
+		return &hrtfJSON{Type: hrtfTypeNoop, SampleRateHz: typed.SampleRateHz}, nil
 	case hrtf.NearestNeighborDataset:
-		return &hrtfJSON{Type: "nearestNeighbor", SampleRateHz: typed.SampleRateHz}, nil
+		return &hrtfJSON{Type: hrtfTypeNearestNeighbor, SampleRateHz: typed.SampleRateHz, Grid: typed.Grid}, nil
 	case *hrtf.NearestNeighborDataset:
-		return &hrtfJSON{Type: "nearestNeighbor", SampleRateHz: typed.SampleRateHz}, nil
+		return &hrtfJSON{Type: hrtfTypeNearestNeighbor, SampleRateHz: typed.SampleRateHz, Grid: typed.Grid}, nil
 	default:
 		return nil, fmt.Errorf("unsupported HRTF dataset %T", dataset)
 	}
@@ -57,10 +62,10 @@ func hrtfJSONFromDataset(dataset hrtf.Dataset) (*hrtfJSON, error) {
 
 func (h hrtfJSON) toDataset() (hrtf.Dataset, error) {
 	switch h.Type {
-	case "noop":
+	case hrtfTypeNoop:
 		return hrtf.NoopDataset{SampleRateHz: h.SampleRateHz}, nil
-	case "nearestNeighbor":
-		return hrtf.NearestNeighborDataset{SampleRateHz: h.SampleRateHz}, nil
+	case hrtfTypeNearestNeighbor:
+		return hrtf.NearestNeighborDataset{SampleRateHz: h.SampleRateHz, Grid: h.Grid}, nil
 	default:
 		return nil, fmt.Errorf("unsupported HRTF type %q", h.Type)
 	}

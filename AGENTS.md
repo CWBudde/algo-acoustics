@@ -34,25 +34,24 @@ Private dependencies require: `GOPRIVATE=github.com/cwbudde` (set in justfile).
 ### Rendering Pipeline
 
 ```
-Scene → validate → EventEngine.Generate() → []ir.Event (sparse)
-                                                ↓
-                              hybrid.Combine(early, late) → merged events
-                                                ↓
-                              ir.RenderMono/RenderBinaural → ir.Buffer (dense samples)
-                                                ↓
-                              LowFreqEngine.Transfer() → pde.TransferFunction
-                                                ↓
-                              hybrid.BlendLowFreq() → final IR
-                                                ↓
-                              export.WriteMonoWAV/WriteStereoWAV → output
+Scene → validate
+  ├─ NewISMEngine → []ir.Event (sparse direct/specular early field)
+  │                    └─ ir.RenderMono/RenderBinaural → ir.Buffer
+  ├─ NewRaytraceEngine → energy histogram (dense late field)
+  │                    ├─ mono buffer synthesis
+  │                    └─ directional groups → binaural Poisson/HRTF synthesis
+  └─ LowFreqEngine.Transfer() → pde.TransferFunction (mono only)
+                                   ↓
+                 time/frequency crossover → final IR → WAV/export
 ```
 
 Orchestrated by `Renderer` in `renderer.go` at the module root.
 
 ### Key Interfaces
 
-- **`EventEngine`** (`renderer.go`) — generates sparse acoustic events from a scene. Implemented by `ism.ISMSolver` (early specular reflections) and `raytrace.RayTracer` (late diffuse energy).
-- **`LowFreqEngine`** (`renderer.go`) — produces a frequency-domain transfer function for modal blending. Implemented by `pde.ShoeboxSolver`.
+- **`EventEngine`** (`renderer.go`) — generates sparse pressure events. The shipped `NewISMEngine` adapter supports one or more sources and exactly one receiver.
+- **`LateBufferEngine` / `BinauralLateBufferEngine`** (`renderer.go`) — dense late-field rendering. The shipped `NewRaytraceEngine` adapter requires exactly one source and receiver and preserves directional groups for binaural synthesis; it deliberately does not implement `EventEngine`.
+- **`LowFreqEngine`** (`renderer.go`) — produces a frequency-domain transfer function for modal blending. Implemented by `pde.PDELowFreqEngine`.
 - **`directivity.Model`** — source directivity (omni, cardioid, GLL balloon). Single method: `GainLinear(freqHz, direction)`.
 - **`hrtf.Dataset`** — binaural HRTF lookup. `Lookup(direction) → (left, right, delay)`.
 
@@ -64,7 +63,7 @@ Orchestrated by `Renderer` in `renderer.go` at the module root.
 | `geometry`      | Vec3, Ray, Plane, Triangle, BVH, intersection tests, quaternions                |
 | `scene`         | Room definition (shoebox/mesh), materials, sources, receivers, validation       |
 | `directivity`   | Source directivity models behind `Model` interface                              |
-| `hrtf`          | HRTF dataset interface, SOFA adapter                                            |
+| `hrtf`          | HRTF dataset lookup/interpolation; tagged SOFA adapter is still a loading stub  |
 | `ir`            | Sparse `Event` → dense `Buffer` rendering, band gain aggregation, normalization |
 | `ism`           | Image-source method solver (early specular reflections)                         |
 | `raytrace`      | Monte Carlo ray tracer (late-field diffuse energy histograms)                   |
@@ -81,7 +80,7 @@ Orchestrated by `Renderer` in `renderer.go` at the module root.
 - `ir.Event` — sparse: time, amplitude, direction, distance, per-band gains, phase, kind (Direct/Specular/Diffuse/PDE)
 - `ir.Buffer` — dense: `[]float64` samples at a sample rate
 - `scene.Scene` — root container: room geometry, materials, sources, receivers, band spec, sample rate
-- `pde.TransferFunction` — complex H(f), convertible to time-domain via IFFT
+- `pde.TransferFunction` — complex H(f), converted and blended only for mono rendering
 
 ### Sibling Libraries
 
@@ -100,6 +99,7 @@ All under `github.com/cwbudde` (private):
 - **White-box tests** — test files live in the same package (not `_test` packages).
 - **Table-driven tests** are the standard pattern.
 - **Regression baselines** live in `testdata/regression/`; `roombench` tracks drift.
+- **Benchmark corpus ranges** are internal deterministic regression envelopes, not measured or third-party reference data.
 - **JSON struct tags** must use `snake_case` (enforced by tagliatelle linter).
 - **Magic numbers are allowed** — this is acoustics/DSP code; the mnd linter is disabled.
 - **Short variable names are idiomatic** — `varnamelen` is disabled for math-heavy code.

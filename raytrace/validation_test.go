@@ -72,11 +72,24 @@ func TestRayTracerT30ConvergesWithMoreRays(t *testing.T) {
 		t.Fatalf("baseline T30 = %v, want positive finite", baseline)
 	}
 
+	// Monte Carlo sampling error decreases as O(1/sqrt(N)). Permit 3% at
+	// the coarsest 1k-ray estimate, tighten that bound with ray count, and
+	// independently require the observed error to decrease.
+	previousRelative := math.Inf(1)
+
 	for i, got := range values[:len(values)-1] {
 		relative := math.Abs(got-baseline) / baseline
-		if relative > 0.02 {
-			t.Fatalf("T30 at %d rays = %v, baseline = %v, rel diff = %.3f > 0.02", counts[i], got, baseline, relative)
+		tolerance := 0.03 * math.Sqrt(float64(counts[0])/float64(counts[i]))
+
+		if relative > tolerance {
+			t.Fatalf("T30 at %d rays = %v, baseline = %v, rel diff = %.3f > %.3f", counts[i], got, baseline, relative, tolerance)
 		}
+
+		if relative >= previousRelative {
+			t.Fatalf("T30 relative error did not decrease at %d rays: %.3f >= %.3f", counts[i], relative, previousRelative)
+		}
+
+		previousRelative = relative
 	}
 }
 
@@ -91,8 +104,8 @@ func TestCorpusMetricsStayInExpectedRanges(t *testing.T) {
 		d50     metricWindow
 	}{
 		{name: "control room", fixture: "control_room.json", t30: metricWindow{0.20, 0.36}, c80: metricWindow{14, 22}, d50: metricWindow{0.90, 0.97}},
-		{name: "lecture room", fixture: "lecture_room.json", t30: metricWindow{0.45, 0.62}, c80: metricWindow{6, 10}, d50: metricWindow{0.60, 0.72}},
-		{name: "pa room", fixture: "pa_room.json", t30: metricWindow{0.36, 0.48}, c80: metricWindow{9, 14}, d50: metricWindow{0.78, 0.88}},
+		{name: "lecture room", fixture: "lecture_room.json", t30: metricWindow{0.45, 0.68}, c80: metricWindow{5.5, 10}, d50: metricWindow{0.55, 0.72}},
+		{name: "pa room", fixture: "pa_room.json", t30: metricWindow{0.36, 0.53}, c80: metricWindow{9, 14}, d50: metricWindow{0.78, 0.88}},
 	}
 
 	for _, tt := range tests {

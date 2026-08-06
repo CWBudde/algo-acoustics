@@ -17,6 +17,8 @@ const (
 	defaultSourceDirectivityFreqHz    = 1000
 	defaultSourceDirectivityStepDeg   = 5
 	defaultSourceDirectivityElevation = 0
+	outputFormatCSV                   = "csv"
+	outputFormatTable                 = "table"
 )
 
 type sourceDirectivityRow struct {
@@ -40,6 +42,11 @@ func newSourceDirectivityCommand() *cobra.Command {
 		Short: "Print source directivity gain by azimuth.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			err := validateSourceDirectivityOptions(format, freqHz, stepDeg, elevationDeg)
+			if err != nil {
+				return err
+			}
+
 			gllPath := args[0]
 
 			model, err := loadGLLModel(gllPath, preset)
@@ -63,18 +70,16 @@ func newSourceDirectivityCommand() *cobra.Command {
 			}
 
 			switch format {
-			case "csv":
+			case outputFormatCSV:
 				err := writeSourceDirectivityCSV(writer, rows)
 				if err != nil {
 					return fmt.Errorf("write csv: %w", err)
 				}
-			case "table":
+			case outputFormatTable:
 				err := writeSourceDirectivityTable(writer, rows)
 				if err != nil {
 					return fmt.Errorf("write table: %w", err)
 				}
-			default:
-				return fmt.Errorf("unsupported format %q", format)
 			}
 
 			destination := "stdout"
@@ -91,11 +96,31 @@ func newSourceDirectivityCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "output file (defaults to stdout)")
 	cmd.Flags().StringVar(&preset, "preset", "", "GLL preset selector")
 	cmd.Flags().Float64Var(&freqHz, "freq", defaultSourceDirectivityFreqHz, "frequency in Hz")
-	cmd.Flags().StringVar(&format, "format", "csv", "output format (csv|table)")
+	cmd.Flags().StringVar(&format, "format", outputFormatCSV, "output format (csv|table)")
 	cmd.Flags().Float64Var(&elevationDeg, "elevation", defaultSourceDirectivityElevation, "elevation angle in degrees")
 	cmd.Flags().Float64Var(&stepDeg, "step-deg", defaultSourceDirectivityStepDeg, "azimuth step in degrees")
 
 	return cmd
+}
+
+func validateSourceDirectivityOptions(format string, freqHz, stepDeg, elevationDeg float64) error {
+	if format != outputFormatCSV && format != outputFormatTable {
+		return fmt.Errorf("unsupported format %q", format)
+	}
+
+	if freqHz <= 0 || math.IsNaN(freqHz) || math.IsInf(freqHz, 0) {
+		return fmt.Errorf("frequency must be a finite positive value in Hz, got %g", freqHz)
+	}
+
+	if stepDeg <= 0 || math.IsNaN(stepDeg) || math.IsInf(stepDeg, 0) {
+		return fmt.Errorf("azimuth step must be a finite positive value in degrees, got %g", stepDeg)
+	}
+
+	if math.IsNaN(elevationDeg) || math.IsInf(elevationDeg, 0) {
+		return fmt.Errorf("elevation must be finite, got %g", elevationDeg)
+	}
+
+	return nil
 }
 
 func buildSourceDirectivityRows(model directivity.Model, freqHz, elevationDeg, stepDeg float64) []sourceDirectivityRow {

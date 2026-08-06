@@ -3,12 +3,118 @@ package raytrace
 import (
 	"math"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
+
+func TestRayTracerTraceRequiresSingleSourceAndReceiver(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		sources   int
+		receivers int
+		want      string
+	}{
+		{name: "no sources", sources: 0, receivers: 1, want: "exactly one source, got 0"},
+		{name: "multiple sources", sources: 2, receivers: 1, want: "exactly one source, got 2"},
+		{name: "no receivers", sources: 1, receivers: 0, want: "exactly one receiver, got 0"},
+		{name: "multiple receivers", sources: 1, receivers: 2, want: "exactly one receiver, got 2"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			sc := newTestShoeboxScene(4, 4, 4)
+			sc.Sources = make([]scene.Source, test.sources)
+			sc.Receivers = make([]scene.Receiver, test.receivers)
+
+			rt := &RayTracer{
+				Config: LaunchConfig{
+					NumRays:        1,
+					MaxTimeSeconds: 0.1,
+					SpeedOfSound:   acoustics.SpeedOfSound,
+				},
+				Scene: sc,
+			}
+
+			_, err := rt.Trace()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Trace() error = %v, want error containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestRayTracerDiffuseStrategiesContinueInsideShoebox(t *testing.T) {
+	t.Parallel()
+
+	strategies := []struct {
+		name     string
+		strategy ReflectionStrategy
+	}{
+		{name: "probabilistic", strategy: ReflectionStrategyProbabilistic},
+		{name: "deterministic blend", strategy: ReflectionStrategyDeterministicBlend},
+		{name: "russian roulette", strategy: ReflectionStrategyRussianRoulette},
+	}
+
+	for _, test := range strategies {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			fullyDiffuse := scene.Material{
+				AbsorptionByBand: make([]float64, scene.NumBands),
+				Scattering:       [scene.NumBands]float64{1, 1, 1, 1, 1, 1},
+			}
+			sc := newTestShoeboxScene(4, 4, 4)
+			sc.Materials["reflective"] = fullyDiffuse
+			sc.Sources[0].Position = geometry.Vec3{X: 2, Y: 2, Z: 2}
+			sc.Receivers[0].Position = sc.Sources[0].Position
+
+			rt := &RayTracer{
+				Config: LaunchConfig{
+					NumRays:            8192,
+					MaxBounces:         2,
+					MaxTimeSeconds:     0.1,
+					SpeedOfSound:       acoustics.SpeedOfSound,
+					ReflectionStrategy: test.strategy,
+				},
+				Scene:              sc,
+				ReceiverRadius:     0.5,
+				BinDurationSeconds: 0.005,
+			}
+
+			hist, err := rt.Trace()
+			if err != nil {
+				t.Fatalf("Trace() error = %v", err)
+			}
+
+			// Direct captures occur before 2 ms. Energy at or after 10 ms can
+			// only arrive after a wall hit and continuation back into the room.
+			var continuedEnergy float64
+
+			for _, bin := range hist.Bins {
+				if bin.TimeSeconds < 0.01 {
+					continue
+				}
+
+				for _, energy := range bin.BandEnergy {
+					continuedEnergy += energy
+				}
+			}
+
+			if continuedEnergy <= 0 {
+				t.Fatal("Trace() produced no post-reflection energy; diffuse ray left the shoebox")
+			}
+		})
+	}
+}
 
 func TestCalibratedRayLaunchEnergyMatchesDirectIntensity(t *testing.T) {
 	t.Parallel()
@@ -273,7 +379,7 @@ func normalizedTailEnergy(hist *EnergyHistogram) []float64 {
 	tail := make([]float64, len(totals))
 
 	var sum float64
-	for i := len(totals) - 1; i >= 0; i-- {
+	for i := range slices.Backward(totals) {
 		sum += totals[i]
 		tail[i] = sum
 	}

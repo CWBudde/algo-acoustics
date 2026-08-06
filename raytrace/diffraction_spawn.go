@@ -39,7 +39,7 @@ func spawnDiffractionBranches(state RayState, ray geometry.Ray, hitPoint geometr
 			continue
 		}
 
-		edgeEnergy := attenuateEnergyByAir(state.Energy, bandFreqs, rayT, defaultAirTemperatureC, defaultRelativeHumidity)
+		edgeEnergy := attenuateEnergyByAir(state.Energy, bandFreqs, rayT)
 		if maxEnergy(edgeEnergy) <= 0 {
 			continue
 		}

@@ -52,9 +52,10 @@ bench:
 
 # Build all CLI tools
 build:
-    go build ./cmd/roomir/...
-    go build ./cmd/roomplot/...
-    go build ./cmd/roombench/...
+	mkdir -p bin
+	go build -o bin/roomir ./cmd/roomir
+	go build -o bin/roomplot ./cmd/roomplot
+	go build -o bin/roombench ./cmd/roombench
 
 # Build the browser WebAssembly demo
 build-web-demo:

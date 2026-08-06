@@ -7,6 +7,8 @@ import (
 )
 
 // MeasurementGrid stores the measured HRTF directions and HRIRs for a dataset.
+//
+//nolint:tagliatelle // These tags preserve the established browser/external JSON schema.
 type MeasurementGrid struct {
 	Directions []geometry.Vec3 `json:"directions,omitempty"`
 	LeftHRIRs  [][]float64     `json:"leftHrir,omitempty"`
@@ -16,7 +18,19 @@ type MeasurementGrid struct {
 }
 
 // NearestNeighborDataset stores a sample rate and an optional measurement grid.
+//
+//nolint:tagliatelle // sampleRate is part of the established browser/external JSON schema.
 type NearestNeighborDataset struct {
+	SampleRateHz int              `json:"sampleRate"`
+	Grid         *MeasurementGrid `json:"grid,omitempty"`
+}
+
+// InterpolatingDataset uses the explicit triangle topology in Grid to blend
+// measurements. Lookup falls back to the nearest measurement when no
+// containing valid triangle is available.
+//
+//nolint:tagliatelle // sampleRate is part of the established browser/external JSON schema.
+type InterpolatingDataset struct {
 	SampleRateHz int              `json:"sampleRate"`
 	Grid         *MeasurementGrid `json:"grid,omitempty"`
 }
@@ -34,6 +48,26 @@ func (d NearestNeighborDataset) Lookup(direction geometry.Vec3) (left, right []f
 	}
 
 	left, right, delaySeconds = LookupNearest(d.Grid, direction)
+	if len(left) == 0 && len(right) == 0 {
+		return []float64{1}, []float64{1}, 0, nil
+	}
+
+	return left, right, delaySeconds, nil
+}
+
+// SampleRate returns the dataset sample rate.
+func (d InterpolatingDataset) SampleRate() int {
+	return d.SampleRateHz
+}
+
+// Lookup returns an interpolated HRIR pair using explicit grid triangles, or a
+// centered identity impulse when no measurement grid is available.
+func (d InterpolatingDataset) Lookup(direction geometry.Vec3) (left, right []float64, delaySeconds float64, err error) {
+	if d.Grid == nil || len(d.Grid.Directions) == 0 {
+		return []float64{1}, []float64{1}, 0, nil
+	}
+
+	left, right, delaySeconds = InterpolateHRIR(d.Grid, direction)
 	if len(left) == 0 && len(right) == 0 {
 		return []float64{1}, []float64{1}, 0, nil
 	}

@@ -35,6 +35,24 @@ func TestNewIBMSource_OutsideRoom(t *testing.T) {
 	}
 }
 
+func TestNewIBMSource_NilInputs(t *testing.T) {
+	t.Parallel()
+
+	room := rectRoom(3, 3, 3)
+	g := ClassifyGrid(room, 0.5)
+	pos := geometry.Vec3{X: 1, Y: 1, Z: 1}
+
+	_, err := NewIBMSource(nil, g, pos, SoftSource)
+	if err == nil {
+		t.Fatal("expected error for nil room")
+	}
+
+	_, err = NewIBMSource(room, nil, pos, SoftSource)
+	if err == nil {
+		t.Fatal("expected error for nil grid")
+	}
+}
+
 func TestNewIBMSource_OnWall(t *testing.T) {
 	// Position exactly on wall is outside (strict PointInside).
 	room := rectRoom(3, 3, 3)
@@ -152,6 +170,40 @@ func TestSineBurst_Shape(t *testing.T) {
 
 	if maxVal > 1.0+1e-12 {
 		t.Errorf("max amplitude %v exceeds 1.0", maxVal)
+	}
+}
+
+func TestPulseFunctions_InvalidParametersReturnFiniteZero(t *testing.T) {
+	t.Parallel()
+
+	gaussianCases := [][3]float64{
+		{0, 0, 0},
+		{0, 0, -1},
+		{math.NaN(), 0, 1},
+		{0, math.Inf(1), 1},
+		{0, 0, math.Inf(1)},
+	}
+	for _, tc := range gaussianCases {
+		if got := GaussianPulse(tc[0], tc[1], tc[2]); got != 0 || math.IsNaN(got) || math.IsInf(got, 0) {
+			t.Errorf("GaussianPulse(%v, %v, %v) = %v, want finite zero", tc[0], tc[1], tc[2], got)
+		}
+	}
+
+	sineCases := []struct {
+		t      float64
+		freq   float64
+		cycles int
+	}{
+		{t: 0, freq: 0, cycles: 1},
+		{t: 0, freq: -1, cycles: 1},
+		{t: 0, freq: 1, cycles: 0},
+		{t: math.NaN(), freq: 1, cycles: 1},
+		{t: 0, freq: math.Inf(1), cycles: 1},
+	}
+	for _, tc := range sineCases {
+		if got := SineBurst(tc.t, tc.freq, tc.cycles); got != 0 || math.IsNaN(got) || math.IsInf(got, 0) {
+			t.Errorf("SineBurst(%v, %v, %v) = %v, want finite zero", tc.t, tc.freq, tc.cycles, got)
+		}
 	}
 }
 
@@ -288,7 +340,8 @@ func TestIBMSource_RotatedRoom(t *testing.T) {
 	}
 
 	allWalls := make([]geometry.Plane, 0, 6)
-	allWalls = append(allWalls,
+	allWalls = append(
+		allWalls,
 		geometry.Plane{Normal: geometry.Vec3{Z: 1}, Distance: 0},
 		geometry.Plane{Normal: geometry.Vec3{Z: -1}, Distance: -4},
 	)

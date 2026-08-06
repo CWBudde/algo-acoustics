@@ -26,6 +26,7 @@ const (
 	sourcePositionX               = 3.0
 	sourcePositionY               = 2.25
 	sourcePositionZ               = 1.2
+	plasterMaterialName           = "plaster"
 )
 
 type energyComparison struct {
@@ -238,7 +239,7 @@ func renderHybridIR(sourceDirectivity directivity.Model, receiver geometry.Vec3,
 func shoeboxScene(sourceDirectivity directivity.Model, receiver geometry.Vec3) *scene.Scene {
 	bandSpec := acoustics.Octave6
 	absorption := scene.Material{
-		Name:             "plaster",
+		Name:             plasterMaterialName,
 		AbsorptionByBand: []float64{0.85, 0.85, 0.85, 0.85, 0.85, 0.85},
 		ScatteringByBand: []float64{0, 0, 0, 0, 0, 0},
 	}
@@ -251,12 +252,12 @@ func shoeboxScene(sourceDirectivity directivity.Model, receiver geometry.Vec3) *
 				Depth:  4.5,
 				Height: 2.8,
 				WallMaterials: [6]string{
-					"plaster",
-					"plaster",
-					"plaster",
-					"plaster",
-					"plaster",
-					"plaster",
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
 				},
 			},
 		},

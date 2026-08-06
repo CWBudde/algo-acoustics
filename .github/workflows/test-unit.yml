@@ -8,12 +8,8 @@ permissions:
 
 jobs:
   test:
-    name: Test (Go ${{ matrix.go-version }})
+    name: Test (Go 1.25)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: ["1.24.x", "1.25.x"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,13 +17,39 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: go.mod
 
       - name: Test
         run: go test ./...
 
       - name: Smoke test roomir validate
         run: go run ./cmd/roomir validate testdata/rooms/shoebox_simple.json
+
+  web-tests:
+    name: Web and WASM Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test web JavaScript
+        run: node --test web/*.test.mjs
+
+      - name: Compile WASM tests
+        run: GOOS=js GOARCH=wasm go test -c -o /tmp/algo-acoustics-wasm.test ./web/wasm/
+
+      - name: Run WASM tests
+        run: env -i HOME="$HOME" PATH="$PATH" "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" /tmp/algo-acoustics-wasm.test -test.v -test.timeout 120s
 
   roombench-run:
     name: Roombench Regression Run

@@ -29,17 +29,22 @@ const (
 	TierFinal
 )
 
+const (
+	previewLabel = "preview"
+	finalLabel   = "final"
+)
+
 // String returns a human-readable tier name.
 func (t Tier) String() string {
 	switch t {
 	case TierStatistical:
 		return "statistical"
 	case TierPreview:
-		return "preview"
+		return previewLabel
 	case TierRefined:
 		return "refined"
 	case TierFinal:
-		return "final"
+		return finalLabel
 	default:
 		return fmt.Sprintf("tier(%d)", int(t))
 	}
@@ -67,6 +72,8 @@ type UpdateFunc func(TierResult)
 
 // ProgressiveConfig controls the 4-tier progressive rendering pipeline.
 type ProgressiveConfig struct {
+	// Render controls dense buffer rendering. RenderProgressive always uses the
+	// scene's SampleRate and BandSpec so every simulation tier shares one format.
 	Render       ir.RenderConfig
 	Hybrid       hybrid.HybridConfig
 	SpeedOfSound float64
@@ -100,17 +107,37 @@ const (
 // calling update after each tier or batch completes. Cancel ctx to abort
 // Tier 3/4 and return early.
 func RenderProgressive(ctx context.Context, sc *scene.Scene, cfg ProgressiveConfig, update UpdateFunc) error {
+	if ctx == nil {
+		return errors.New("context is nil")
+	}
+
 	if sc == nil {
 		return errors.New("scene is nil")
 	}
 
+	if update == nil {
+		return errors.New("update callback is nil")
+	}
+
+	err := scene.Validate(sc)
+	if err != nil {
+		return fmt.Errorf("validate scene: %w", err)
+	}
+
 	cfg = fillProgressiveDefaults(cfg)
+	cfg.Render.SampleRate = sc.SampleRate
+	cfg.Render.BandSpec = sc.BandSpec
+
+	err = validateProgressiveConfig(sc, cfg)
+	if err != nil {
+		return fmt.Errorf("validate progressive config: %w", err)
+	}
 
 	// Tier 1: statistical estimates (< 50 ms).
 	statsMetrics := computeStatisticalMetrics(sc)
 	update(TierResult{Tier: TierStatistical, Metrics: statsMetrics})
 
-	err := ctx.Err()
+	err = ctx.Err()
 	if err != nil {
 		return fmt.Errorf("cancelled after statistical tier: %w", err)
 	}
@@ -150,28 +177,115 @@ func RenderProgressive(ctx context.Context, sc *scene.Scene, cfg ProgressiveConf
 	return nil
 }
 
-func fillProgressiveDefaults(cfg ProgressiveConfig) ProgressiveConfig {
-	if cfg.SpeedOfSound <= 0 {
-		cfg.SpeedOfSound = acoustics.SpeedOfSound
+func validateProgressiveConfig(sc *scene.Scene, cfg ProgressiveConfig) error {
+	err := validateProgressiveSceneCardinality(sc)
+	if err != nil {
+		return err
 	}
 
-	if cfg.PreviewISMOrder <= 0 {
-		cfg.PreviewISMOrder = defaultPreviewISMOrder
+	err = validateProgressiveRenderConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	return validateProgressiveSimulationConfig(cfg)
+}
+
+func validateProgressiveSceneCardinality(sc *scene.Scene) error {
+	if len(sc.Sources) != 1 {
+		return fmt.Errorf("progressive rendering requires exactly one source, got %d", len(sc.Sources))
+	}
+
+	if len(sc.Receivers) != 1 {
+		return fmt.Errorf("progressive rendering requires exactly one receiver, got %d", len(sc.Receivers))
+	}
+
+	return nil
+}
+
+func validateProgressiveRenderConfig(cfg ProgressiveConfig) error {
+	if cfg.Render.DurationSeconds <= 0 {
+		return errors.New("render duration must be positive")
+	}
+
+	bandCount := cfg.Render.BandSpec.BandCount()
+	if bandCount <= 0 {
+		return errors.New("scene band spec must contain at least one band")
+	}
+
+	if len(cfg.Render.BandSpec.LowerEdges) != bandCount || len(cfg.Render.BandSpec.UpperEdges) != bandCount {
+		return errors.New("scene band spec lengths must match")
+	}
+
+	return nil
+}
+
+func validateProgressiveSimulationConfig(cfg ProgressiveConfig) error {
+	if cfg.MaxOrder < 0 {
+		return errors.New("maximum ISM order must be non-negative")
+	}
+
+	if cfg.PreviewISMOrder < 0 {
+		return errors.New("preview ISM order must be non-negative")
+	}
+
+	if cfg.NumRays <= 0 {
+		return errors.New("ray count must be positive")
 	}
 
 	if cfg.PreviewRayCount <= 0 {
-		cfg.PreviewRayCount = defaultPreviewRayCount
+		return errors.New("preview ray count must be positive")
 	}
 
 	if cfg.RaysPerBatch <= 0 {
-		cfg.RaysPerBatch = defaultRaysPerBatch
+		return errors.New("rays per batch must be positive")
+	}
+
+	if cfg.MaxBounces < 0 {
+		return errors.New("maximum bounce count must be non-negative")
 	}
 
 	if cfg.MaxTimeSeconds <= 0 {
-		cfg.MaxTimeSeconds = cfg.Render.DurationSeconds
+		return errors.New("maximum ray time must be positive")
+	}
+
+	if cfg.SpeedOfSound <= 0 {
+		return errors.New("speed of sound must be positive")
 	}
 
 	if cfg.ReceiverRadius <= 0 {
+		return errors.New("receiver radius must be positive")
+	}
+
+	if cfg.Hybrid.CrossoverTimeSeconds < 0 {
+		return errors.New("hybrid crossover time must be non-negative")
+	}
+
+	return nil
+}
+
+func fillProgressiveDefaults(cfg ProgressiveConfig) ProgressiveConfig {
+	if cfg.SpeedOfSound == 0 {
+		cfg.SpeedOfSound = acoustics.SpeedOfSound
+	}
+
+	if cfg.PreviewISMOrder == 0 {
+		cfg.PreviewISMOrder = defaultPreviewISMOrder
+	}
+
+	if cfg.PreviewRayCount == 0 {
+		cfg.PreviewRayCount = defaultPreviewRayCount
+	}
+
+	if cfg.RaysPerBatch == 0 {
+		cfg.RaysPerBatch = defaultRaysPerBatch
+	}
+
+	if cfg.MaxTimeSeconds == 0 {
+		cfg.MaxTimeSeconds = cfg.Render.DurationSeconds
+	}
+
+	if cfg.ReceiverRadius == 0 {
 		cfg.ReceiverRadius = defaultReceiverRadius
 	}
 
@@ -246,8 +360,10 @@ func renderRefinedTier(ctx context.Context, sc *scene.Scene, cfg ProgressiveConf
 		return fmt.Errorf("render early refined: %w", err)
 	}
 
-	// Progressive ray batches: run with increasing cumulative ray count,
-	// sending an update after each batch.
+	// Progressive ray batches use increasing cumulative ray counts. Ray launch
+	// directions depend on the total ray count, and the raytrace API cannot
+	// select a deterministic direction range, so retracing is currently needed
+	// to preserve the coverage of each advertised cumulative result.
 	raysCompleted := 0
 	batchCount := 0
 

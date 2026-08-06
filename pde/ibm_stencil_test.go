@@ -57,6 +57,35 @@ func TestIBMStencil_ExteriorNodesStayZero(t *testing.T) {
 	}
 }
 
+func TestNewIBMStencilChecked_ValidatesInputs(t *testing.T) {
+	t.Parallel()
+
+	stencil, err := NewIBMStencilChecked(nil, RigidWallBC())
+	if err == nil || stencil != nil {
+		t.Fatalf("NewIBMStencilChecked(nil) = (%v, %v), want (nil, error)", stencil, err)
+	}
+
+	g := ClassifyGrid(rectRoom(3, 3, 3), 0.5)
+	bc := WallBC{Type: WallADE, ADEPoles: []float64{1, 2}, ADEResidues: []float64{3}}
+
+	stencil, err = NewIBMStencilChecked(g, bc)
+	if err == nil || stencil != nil {
+		t.Fatalf("NewIBMStencilChecked(mismatched ADE) = (%v, %v), want (nil, error)", stencil, err)
+	}
+
+	legacy := NewIBMStencil(g, bc)
+	if legacy == nil {
+		t.Fatal("legacy NewIBMStencil should return an inert stencil for invalid ADE configuration")
+	}
+
+	err = legacy.UpdateADEChecked(makeField(g), 0.001)
+	if err == nil {
+		t.Fatal("UpdateADEChecked should report mismatched ADE poles and residues")
+	}
+
+	legacy.UpdateADE(makeField(g), 0.001)
+}
+
 func TestIBMStencil_NoReadsFromExterior(t *testing.T) {
 	// Place sentinel NaN values in all exterior nodes.  If the stencil
 	// reads from any exterior node, the result will contain NaN.
@@ -392,7 +421,8 @@ func TestIBMStencil_RotatedRoom_CFL(t *testing.T) {
 	}
 
 	allWalls := make([]geometry.Plane, 0, 6)
-	allWalls = append(allWalls,
+	allWalls = append(
+		allWalls,
 		geometry.Plane{Normal: geometry.Vec3{Z: 1}, Distance: 0},
 		geometry.Plane{Normal: geometry.Vec3{Z: -1}, Distance: -4},
 	)

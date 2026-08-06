@@ -8,22 +8,64 @@ import (
 
 const barycentricEpsilon = 1e-9
 
-// BarycentricWeights returns the barycentric weights of p relative to tri.
+// BarycentricWeights returns directional barycentric weights for p relative to
+// tri. The direction ray through p is intersected with the plane of the
+// normalized triangle before ordinary planar barycentric coordinates are
+// evaluated. Degenerate triangles, triangles whose plane passes through the
+// origin, and directions that intersect behind the origin return zero weights.
 func BarycentricWeights(p geometry.Vec3, tri [3]geometry.Vec3) [3]float64 {
-	totalArea := triangleArea(tri[0], tri[1], tri[2])
-	if totalArea <= 0 {
+	p = p.Normalize()
+	a := tri[0].Normalize()
+	b := tri[1].Normalize()
+
+	c := tri[2].Normalize()
+	if p == geometry.Vec3Zero || a == geometry.Vec3Zero || b == geometry.Vec3Zero || c == geometry.Vec3Zero {
 		return [3]float64{}
 	}
 
-	return [3]float64{
-		triangleArea(p, tri[1], tri[2]) / totalArea,
-		triangleArea(tri[0], p, tri[2]) / totalArea,
-		triangleArea(tri[0], tri[1], p) / totalArea,
+	ab := b.Sub(a)
+	ac := c.Sub(a)
+	normal := ab.Cross(ac)
+
+	normalNorm := normal.Norm()
+	if normalNorm == 0 {
+		return [3]float64{}
 	}
+
+	planeOffset := normal.Dot(a)
+
+	rayDotNormal := normal.Dot(p)
+	if math.Abs(planeOffset) <= barycentricEpsilon*normalNorm ||
+		math.Abs(rayDotNormal) <= barycentricEpsilon*normalNorm {
+		return [3]float64{}
+	}
+
+	distance := planeOffset / rayDotNormal
+	if distance <= 0 || math.IsNaN(distance) || math.IsInf(distance, 0) {
+		return [3]float64{}
+	}
+
+	projected := p.Scale(distance)
+	ap := projected.Sub(a)
+	dotABAB := ab.Dot(ab)
+	dotABAC := ab.Dot(ac)
+	dotACAC := ac.Dot(ac)
+	dotAPAB := ap.Dot(ab)
+	dotAPAC := ap.Dot(ac)
+
+	denominator := dotABAB*dotACAC - dotABAC*dotABAC
+	if denominator <= barycentricEpsilon*dotABAB*dotACAC {
+		return [3]float64{}
+	}
+
+	weightB := (dotACAC*dotAPAB - dotABAC*dotAPAC) / denominator
+	weightC := (dotABAB*dotAPAC - dotABAC*dotAPAB) / denominator
+
+	return [3]float64{1 - weightB - weightC, weightB, weightC}
 }
 
-// InterpolateHRIR returns a blended HRIR for dir using the enclosing triangle
-// when one can be found, or a nearest-neighbor fallback otherwise.
+// InterpolateHRIR returns a blended HRIR for dir using an enclosing triangle
+// explicitly listed in the measurement grid, or a nearest-neighbor fallback.
 func InterpolateHRIR(grid *MeasurementGrid, dir geometry.Vec3) (left, right []float64, delay float64) {
 	if grid == nil || len(grid.Directions) == 0 {
 		return nil, nil, 0
@@ -33,12 +75,9 @@ func InterpolateHRIR(grid *MeasurementGrid, dir geometry.Vec3) (left, right []fl
 		return measurementAt(grid, index)
 	}
 
-	triangles := grid.Triangles
-	if len(triangles) == 0 {
-		triangles = allMeasurementTriangles(len(grid.Directions))
-	}
-
-	for _, triangle := range triangles {
+	// Only explicit topology is safe here. Arbitrarily combining measurement
+	// directions can create triangles that cross unrelated parts of the sphere.
+	for _, triangle := range grid.Triangles {
 		if !triangleValid(triangle, len(grid.Directions)) {
 			continue
 		}
@@ -78,23 +117,6 @@ func exactDirectionIndex(grid *MeasurementGrid, dir geometry.Vec3) int {
 	}
 
 	return -1
-}
-
-func allMeasurementTriangles(count int) [][3]int {
-	if count < 3 {
-		return nil
-	}
-
-	triangles := make([][3]int, 0, count*(count-1)*(count-2)/6)
-	for i := range count - 2 {
-		for j := i + 1; j < count-1; j++ {
-			for k := j + 1; k < count; k++ {
-				triangles = append(triangles, [3]int{i, j, k})
-			}
-		}
-	}
-
-	return triangles
 }
 
 func triangleValid(triangle [3]int, count int) bool {
@@ -161,8 +183,4 @@ func blendMeasurements(grid *MeasurementGrid, triangle [3]int, weights [3]float6
 	}
 
 	return left, right, delay
-}
-
-func triangleArea(a, b, c geometry.Vec3) float64 {
-	return b.Sub(a).Cross(c.Sub(a)).Norm() * 0.5
 }

@@ -33,3 +33,24 @@ func TestEnergyHistogramAddAndRender(t *testing.T) {
 		t.Fatal("ToLateMono() produced silent buffer")
 	}
 }
+
+func TestEnergyHistogramAddIgnoresOutOfDurationTimes(t *testing.T) {
+	t.Parallel()
+
+	hist := NewEnergyHistogram(0.12, 0.05, 1)
+	hist.Add(-0.001, []float64{1})
+	hist.Add(0.12, []float64{2})
+	hist.Add(10, []float64{4})
+
+	for i, bin := range hist.Bins {
+		if bin.BandEnergy[0] != 0 {
+			t.Fatalf("out-of-duration energy leaked into bin %d: %v", i, bin.BandEnergy[0])
+		}
+	}
+
+	hist.Add(0.119, []float64{8})
+
+	if got := hist.Bins[2].BandEnergy[0]; got != 8 {
+		t.Fatalf("last valid partial-bin energy = %v, want 8", got)
+	}
+}

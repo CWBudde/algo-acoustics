@@ -14,7 +14,10 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-const outputFilename = "output.wav"
+const (
+	outputFilename      = "output.wav"
+	plasterMaterialName = "plaster"
+)
 
 func main() {
 	err := run(outputFilename)
@@ -71,7 +74,7 @@ func shoeboxScene() *scene.Scene {
 
 	bandSpec := acoustics.Octave6
 	absorber := scene.Material{
-		Name:             "plaster",
+		Name:             plasterMaterialName,
 		AbsorptionByBand: []float64{0.2, 0.2, 0.2, 0.2, 0.2, 0.2},
 		ScatteringByBand: []float64{0, 0, 0, 0, 0, 0},
 	}
@@ -84,17 +87,17 @@ func shoeboxScene() *scene.Scene {
 				Depth:  roomDepth,
 				Height: roomHeight,
 				WallMaterials: [6]string{
-					"plaster",
-					"plaster",
-					"plaster",
-					"plaster",
-					"plaster",
-					"plaster",
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
+					plasterMaterialName,
 				},
 			},
 		},
 		Materials: map[string]scene.Material{
-			"plaster": absorber,
+			plasterMaterialName: absorber,
 		},
 		Sources: []scene.Source{
 			{

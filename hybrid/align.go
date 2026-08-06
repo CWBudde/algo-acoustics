@@ -1,8 +1,13 @@
 package hybrid
 
-import "github.com/cwbudde/algo-acoustics/ir"
+import (
+	"math"
 
-// AlignLateTail scales the late buffer so its energy near the crossover matches the early tail.
+	"github.com/cwbudde/algo-acoustics/ir"
+)
+
+// AlignLateTail scales the late buffer so its post-crossover energy matches
+// the early events in an equally sized pre-crossover window.
 func AlignLateTail(late *ir.Buffer, earlyEvents []ir.Event, cfg HybridConfig) *ir.Buffer {
 	if late == nil {
 		return nil
@@ -24,7 +29,13 @@ func AlignLateTail(late *ir.Buffer, earlyEvents []ir.Event, cfg HybridConfig) *i
 
 	end := min(cutoffSample+window, len(aligned.Samples))
 
-	earlyEnergy := eventEnergyRMS(earlyEvents, cfg.CrossoverTimeSeconds)
+	cutoffSeconds := float64(cutoffSample) / float64(aligned.SampleRate)
+	windowSeconds := float64(end-start) / float64(aligned.SampleRate)
+	earlyEnergy := eventEnergyRMSInWindow(
+		earlyEvents,
+		max(cutoffSeconds-windowSeconds, 0),
+		cutoffSeconds,
+	)
 
 	lateEnergy := bufferEnergyRMS(aligned, start, end)
 	if earlyEnergy <= 0 || lateEnergy <= 0 {
@@ -40,15 +51,29 @@ func AlignLateTail(late *ir.Buffer, earlyEvents []ir.Event, cfg HybridConfig) *i
 }
 
 func eventEnergyRMS(events []ir.Event, cutoffSeconds float64) float64 {
+	return eventEnergyRMSInWindow(events, 0, cutoffSeconds)
+}
+
+func eventEnergyRMSInWindow(events []ir.Event, startSeconds, endSeconds float64) float64 {
 	var sum float64
 	var count int
 
 	for _, event := range events {
-		if event.TimeSeconds > cutoffSeconds {
+		if event.TimeSeconds < startSeconds || event.TimeSeconds > endSeconds {
 			continue
 		}
 
-		sum += event.Amplitude * event.Amplitude
+		bandEnergyGain := 1.0
+		if len(event.BandGain) > 0 {
+			bandEnergyGain = 0
+			for _, gain := range event.BandGain {
+				bandEnergyGain += gain * gain
+			}
+
+			bandEnergyGain /= float64(len(event.BandGain))
+		}
+
+		sum += event.Amplitude * event.Amplitude * bandEnergyGain
 		count++
 	}
 
@@ -56,7 +81,7 @@ func eventEnergyRMS(events []ir.Event, cutoffSeconds float64) float64 {
 		return 0
 	}
 
-	return sqrt(sum / float64(count))
+	return math.Sqrt(sum / float64(count))
 }
 
 func bufferEnergyRMS(buf *ir.Buffer, start, end int) float64 {
@@ -80,18 +105,5 @@ func bufferEnergyRMS(buf *ir.Buffer, start, end int) float64 {
 		return 0
 	}
 
-	return sqrt(sum / float64(count))
-}
-
-func sqrt(v float64) float64 {
-	if v <= 0 {
-		return 0
-	}
-
-	z := v
-	for range 8 {
-		z = 0.5 * (z + v/z)
-	}
-
-	return z
+	return math.Sqrt(sum / float64(count))
 }

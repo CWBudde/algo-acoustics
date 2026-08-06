@@ -3,8 +3,6 @@ package algoacoustics
 import (
 	"context"
 	"testing"
-
-	"github.com/cwbudde/algo-acoustics/acoustics"
 )
 
 func TestQualityPreset_String(t *testing.T) {
@@ -150,26 +148,43 @@ func TestPresetConfig_FieldOverride(t *testing.T) {
 	}
 }
 
-// TestPresetConfig_UsableWithRenderProgressive smoke-tests that a preset
-// config is a valid input to RenderProgressive after setting the sample rate.
+// TestPresetConfig_UsableWithRenderProgressive verifies that the scene remains
+// authoritative for sample rate and band layout, even when a named preset has
+// a different preferred band resolution.
 func TestPresetConfig_UsableWithRenderProgressive(t *testing.T) {
 	t.Parallel()
 
 	sc := progressiveTestScene()
 
-	cfg := PresetConfig(QualityDraft)
-	cfg.Render.SampleRate = sc.SampleRate
-	cfg.Render.BandSpec = acoustics.Octave6
+	cfg := PresetConfig(QualityFinal)
+	if cfg.Render.BandSpec.BandCount() != 8 || sc.BandSpec.BandCount() != 6 {
+		t.Fatal("test requires an Octave8 preset and Octave6 scene")
+	}
+
+	// Keep the test focused on format reconciliation rather than preset cost.
+	cfg.Render.SampleRate = 44100
+	cfg.Render.DurationSeconds = 0.05
+	cfg.MaxOrder = 1
+	cfg.PreviewISMOrder = 1
+	cfg.NumRays = 1
+	cfg.PreviewRayCount = 1
+	cfg.RaysPerBatch = 1
+	cfg.MaxTimeSeconds = 0.05
+	cfg.DiffuseRain = false
 
 	var sawFinal bool
 
 	err := RenderProgressive(context.Background(), sc, cfg, func(r TierResult) {
+		if r.Buffer != nil && r.Buffer.SampleRate != sc.SampleRate {
+			t.Errorf("%s buffer sample rate = %d, want scene rate %d", r.Tier, r.Buffer.SampleRate, sc.SampleRate)
+		}
+
 		if r.Tier == TierFinal {
 			sawFinal = true
 		}
 	})
 	if err != nil {
-		t.Fatalf("RenderProgressive with Draft preset: %v", err)
+		t.Fatalf("RenderProgressive with Final preset and Octave6 scene: %v", err)
 	}
 
 	if !sawFinal {

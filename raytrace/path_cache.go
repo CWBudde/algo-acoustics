@@ -20,7 +20,10 @@ type TracedPath struct {
 	Steps     []PathStep
 }
 
-// PathCache holds all traced paths plus a validity key.
+// PathCache holds all traced paths plus a validity key. A path cache is tied to
+// the scene geometry (including source/receiver positions) and effective
+// receiver radius used when it was created; it must not be reused after either
+// changes.
 type PathCache struct {
 	Paths          []TracedPath
 	GeometryHash   uint64
@@ -37,5 +40,13 @@ func (c *PathCache) ValidFor(sc *scene.Scene, receiverRadius float64) bool {
 		return false
 	}
 
-	return c.GeometryHash == sc.GeometryHash() && c.ReceiverRadius == receiverRadius
+	return c.GeometryHash == sc.GeometryHash() && c.ReceiverRadius == effectiveReceiverRadius(receiverRadius)
+}
+
+func effectiveReceiverRadius(receiverRadius float64) float64 {
+	if receiverRadius <= 0 {
+		return 0.25
+	}
+
+	return receiverRadius
 }

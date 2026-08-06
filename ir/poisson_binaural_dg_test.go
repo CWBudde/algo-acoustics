@@ -127,9 +127,8 @@ func TestRenderBinauralPoissonDGLateralITD(t *testing.T) {
 
 	// With all energy from the left (+Y) direction and an ITD dataset,
 	// the left channel should have earlier onset than the right channel.
-	threshold := 1e-6
-	leftFirst := findFirstSignificant(left.Samples, threshold)
-	rightFirst := findFirstSignificant(right.Samples, threshold)
+	leftFirst := findFirstSignificant(left.Samples)
+	rightFirst := findFirstSignificant(right.Samples)
 
 	if leftFirst < 0 || rightFirst < 0 {
 		t.Fatalf("no significant samples: left=%d, right=%d", leftFirst, rightFirst)
@@ -364,17 +363,19 @@ func TestDGDirectionForSlotBlended(t *testing.T) {
 	dirs := []geometry.Vec3{
 		{X: 1, Y: 0, Z: 0},
 		{X: 0, Y: 1, Z: 0},
+		{X: -1, Y: 0, Z: 0},
 	}
 
 	probs := [][]float64{
 		{0.6},
-		{0.4},
+		{0.3},
+		{0.1},
 	}
 
-	// Blend top 2: weighted average → (0.6, 0.4, 0), normalized.
+	// Blend top 2: the third direction must not affect the weighted average.
 	dir := dgDirectionForSlot(dirs, probs, 0, 2)
 	wantX := 0.6
-	wantY := 0.4
+	wantY := 0.3
 	norm := math.Sqrt(wantX*wantX + wantY*wantY)
 
 	if math.Abs(dir.X-wantX/norm) > 1e-10 || math.Abs(dir.Y-wantY/norm) > 1e-10 {

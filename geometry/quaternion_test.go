@@ -24,6 +24,24 @@ func TestQuatIdentityRotate(t *testing.T) {
 	}
 }
 
+func TestQuatFromZeroAxisReturnsIdentity(t *testing.T) {
+	v := geometry.Vec3{X: 2, Y: -3, Z: 4}
+	q := geometry.QuatFromAxisAngle(geometry.Vec3Zero, math.Pi/2)
+	got := q.Rotate(v)
+
+	if q != geometry.QuatIdentity() {
+		t.Fatalf("QuatFromAxisAngle(zero, angle) = %#v, want identity", q)
+	}
+
+	if !vec3Near(got, v, quatEps) {
+		t.Fatalf("zero-axis rotation = %v, want %v", got, v)
+	}
+
+	if math.Abs(got.Norm()-v.Norm()) > quatEps {
+		t.Fatalf("zero-axis rotation changed length from %v to %v", v.Norm(), got.Norm())
+	}
+}
+
 func TestQuatRotateXAxis90(t *testing.T) {
 	// 90° around Z: (1,0,0) → (0,1,0)
 	q := geometry.QuatFromAxisAngle(geometry.Vec3{0, 0, 1}, math.Pi/2)

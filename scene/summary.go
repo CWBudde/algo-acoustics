@@ -15,25 +15,25 @@ func Summary(sc *Scene) string {
 	var b strings.Builder
 
 	b.WriteString("scene summary\n")
-	b.WriteString(fmt.Sprintf("room: %s", sc.Room.Kind))
+	fmt.Fprintf(&b, "room: %s", sc.Room.Kind)
 
 	switch sc.Room.Kind {
 	case RoomKindShoebox:
 		if sc.Room.Shoebox != nil {
-			b.WriteString(fmt.Sprintf(" (%.3fm x %.3fm x %.3fm)", sc.Room.Shoebox.Width, sc.Room.Shoebox.Depth, sc.Room.Shoebox.Height))
+			fmt.Fprintf(&b, " (%.3fm x %.3fm x %.3fm)", sc.Room.Shoebox.Width, sc.Room.Shoebox.Depth, sc.Room.Shoebox.Height)
 		}
 	case RoomKindMesh:
 		if sc.Room.MeshPath != "" {
-			b.WriteString(fmt.Sprintf(" (%s)", sc.Room.MeshPath))
+			fmt.Fprintf(&b, " (%s)", sc.Room.MeshPath)
 		}
 
 		if sc.Room.Mesh != nil {
-			b.WriteString(fmt.Sprintf(" [%d triangles]", len(sc.Room.Mesh.Triangles)))
+			fmt.Fprintf(&b, " [%d triangles]", len(sc.Room.Mesh.Triangles))
 		}
 	}
 
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("materials: %d", len(sc.Materials)))
+	fmt.Fprintf(&b, "materials: %d", len(sc.Materials))
 
 	if len(sc.Materials) > 0 {
 		names := make([]string, 0, len(sc.Materials))
@@ -48,29 +48,35 @@ func Summary(sc *Scene) string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("sources: %d", len(sc.Sources)))
+	fmt.Fprintf(&b, "sources: %d", len(sc.Sources))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("receivers: %d", len(sc.Receivers)))
+	fmt.Fprintf(&b, "receivers: %d", len(sc.Receivers))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("band count: %d", sc.BandSpec.BandCount()))
+	fmt.Fprintf(&b, "band count: %d", sc.BandSpec.BandCount())
 
-	if count := sc.BandSpec.BandCount(); count > 0 {
-		b.WriteString(" [")
-
-		for i, freq := range sc.BandSpec.CenterFreqs {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-
-			b.WriteString(fmt.Sprintf("%.0f", freq))
-		}
-
-		b.WriteString(" Hz]")
-	}
+	writeBandSummary(&b, sc.BandSpec.CenterFreqs)
 
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("sample rate: %d", sc.SampleRate))
+	fmt.Fprintf(&b, "sample rate: %d", sc.SampleRate)
 	b.WriteString(" Hz\n")
 
 	return b.String()
+}
+
+func writeBandSummary(b *strings.Builder, centerFreqs []float64) {
+	if len(centerFreqs) == 0 {
+		return
+	}
+
+	b.WriteString(" [")
+
+	for i, freq := range centerFreqs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+
+		fmt.Fprintf(b, "%.0f", freq)
+	}
+
+	b.WriteString(" Hz]")
 }

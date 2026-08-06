@@ -3,6 +3,7 @@ package directivity
 import (
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
@@ -30,6 +31,32 @@ func TestLoadGLLMissingFile(t *testing.T) {
 	_, err := LoadGLL(path, "")
 	if err == nil {
 		t.Fatal("LoadGLL() succeeded for missing file")
+	}
+}
+
+func TestLoadGLLFileMissingExplicitPreset(t *testing.T) {
+	t.Parallel()
+
+	file := &ggll.File{Database: &ggll.Database{SourceDefinitions: []ggll.SourceDefinitionItem{{
+		Key: "main",
+		Definition: &ggll.SourceDefinition{
+			Label:       "Main Source",
+			BalloonData: &ggll.BalloonData{},
+		},
+	}}}}
+
+	_, err := LoadGLLFile(file, "missing")
+	if err == nil || !strings.Contains(err.Error(), `preset "missing"`) {
+		t.Fatalf("LoadGLLFile() error = %v, want missing preset error", err)
+	}
+
+	model, err := LoadGLLFile(file, "")
+	if err != nil {
+		t.Fatalf("LoadGLLFile() default selection error = %v", err)
+	}
+
+	if model.SourceKey != "main" {
+		t.Fatalf("default SourceKey = %q, want main", model.SourceKey)
 	}
 }
 

@@ -13,6 +13,7 @@
 ## Task 1: Add `GeometryHash()` to `scene.Scene`
 
 **Files:**
+
 - Create: `scene/hash.go`
 - Create: `scene/hash_test.go`
 
@@ -273,6 +274,7 @@ git commit -m "feat(scene): add GeometryHash for cache invalidation"
 ## Task 2: Add `PathCache` types to `raytrace/`
 
 **Files:**
+
 - Create: `raytrace/path_cache.go`
 - Create: `raytrace/path_cache_test.go`
 
@@ -418,6 +420,7 @@ git commit -m "feat(raytrace): add PathCache types with validity check"
 ## Task 3: Implement `TracePaths()` on `RayTracer`
 
 **Files:**
+
 - Modify: `raytrace/path_cache.go` (add `TracePaths` method)
 - Create: `raytrace/trace_paths_test.go`
 
@@ -727,6 +730,7 @@ git commit -m "feat(raytrace): implement TracePaths for geometry-only tracing"
 ## Task 4: Implement `EvaluatePaths()` on `RayTracer`
 
 **Files:**
+
 - Create: `raytrace/evaluate_paths.go`
 - Create: `raytrace/evaluate_paths_test.go`
 
@@ -1069,6 +1073,7 @@ git commit -m "feat(raytrace): implement EvaluatePaths to replay cached paths wi
 ## Task 5: Wire `Trace()` through `TracePaths` + `EvaluatePaths` and verify parity
 
 **Files:**
+
 - Modify: `raytrace/raytrace.go` (no change to `Trace()` itself — keep both paths)
 - Create: `raytrace/parity_test.go`
 
@@ -1220,6 +1225,7 @@ git commit -m "test(raytrace): add parity tests for TracePaths/EvaluatePaths vs 
 ## Task 6: ISM `EvaluateShoebox()` function
 
 **Files:**
+
 - Create: `ism/evaluate.go`
 - Create: `ism/evaluate_test.go`
 
@@ -1431,6 +1437,7 @@ git commit -m "feat(ism): add EvaluateShoebox for replaying cached image sources
 ## Task 7: ISM `EvaluateMesh()` function
 
 **Files:**
+
 - Modify: `ism/evaluate.go` (add `EvaluateMesh`)
 - Modify: `ism/evaluate_test.go` (add mesh tests)
 
@@ -1581,6 +1588,7 @@ git commit -m "feat(ism): add EvaluateMesh for replaying cached mesh image sourc
 ## Task 8: ISM `ImageSourceCache` with validity check
 
 **Files:**
+
 - Create: `ism/cache.go`
 - Create: `ism/cache_test.go`
 
@@ -1718,6 +1726,7 @@ git commit -m "feat(ism): add ShoeboxCache and MeshCache with validity checks"
 ## Task 9: Benchmark — replay performance target
 
 **Files:**
+
 - Create: `raytrace/bench_cache_test.go`
 
 **Step 1: Write benchmark**
@@ -1849,6 +1858,7 @@ git commit -m "fix: address lint and format issues from Phase 18.1"
 ## Task 11: Update PLAN.md
 
 **Files:**
+
 - Modify: `PLAN.md`
 
 Mark the completed Phase 18.1 items:

@@ -21,7 +21,7 @@ func TestAirAbsorptionAttenuatesOverDistance(t *testing.T) {
 
 	energy := []float64{1}
 
-	attenuated := attenuateEnergyByAir(energy, []float64{4000}, 50, 20, 0.5)
+	attenuated := attenuateEnergyByAir(energy, []float64{4000}, 50)
 	if len(attenuated) != 1 {
 		t.Fatalf("attenuated length = %d, want 1", len(attenuated))
 	}

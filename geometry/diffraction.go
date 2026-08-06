@@ -98,73 +98,10 @@ func ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge {
 	rawEdges := make([]DiffractionEdge, 0, len(adjacency))
 
 	for edgeKey, faces := range adjacency {
-		if len(faces) != 2 {
-			continue
+		edge, ok := diffractionEdgeFromFaces(edgeKey, faces, vertexByKey)
+		if ok {
+			rawEdges = append(rawEdges, edge)
 		}
-
-		start, startOK := vertexByKey[edgeKey.A]
-
-		end, endOK := vertexByKey[edgeKey.B]
-		if !startOK || !endOK {
-			continue
-		}
-
-		direction := end.Sub(start)
-
-		length := direction.Norm()
-		if length <= diffractionAngleEpsilon {
-			continue
-		}
-
-		direction = direction.Scale(1 / length)
-		faceO := faces[0]
-		faceN := faces[1]
-
-		n0 := faceO.Normal.Normalize()
-
-		n1 := faceN.Normal.Normalize()
-		if n0.Norm() == 0 || n1.Norm() == 0 {
-			continue
-		}
-
-		dot := clampFloat64(n0.Dot(n1), -1, 1)
-
-		theta := math.Acos(dot)
-		if theta <= diffractionAngleEpsilon || math.Abs(math.Pi-theta) <= diffractionAngleEpsilon {
-			continue
-		}
-
-		// Convex edges have the adjacent opposite vertices behind each face plane.
-		d01 := n0.Dot(faceN.Opposite.Sub(faceO.Start))
-
-		d10 := n1.Dot(faceO.Opposite.Sub(faceN.Start))
-		if d01 >= -diffractionAngleEpsilon || d10 >= -diffractionAngleEpsilon {
-			continue
-		}
-
-		exteriorAngle := math.Pi + theta
-
-		basis2 := direction.Cross(n0).Normalize()
-		if basis2.Norm() == 0 {
-			continue
-		}
-
-		rawEdges = append(rawEdges, DiffractionEdge{
-			Start:       start,
-			End:         end,
-			Direction:   direction,
-			Length:      length,
-			WedgeIndex:  exteriorAngle / math.Pi,
-			FaceONormal: n0,
-			FaceNNormal: n1,
-			FaceOID:     faceO.FaceID,
-			FaceNID:     faceN.FaceID,
-			LocalBasis: [3]Vec3{
-				direction,
-				n0,
-				basis2,
-			},
-		})
 	}
 
 	merged := mergeDiffractionEdges(rawEdges)
@@ -174,6 +111,65 @@ func ExtractDiffractionEdges(mesh *Mesh) []DiffractionEdge {
 	})
 
 	return merged
+}
+
+func diffractionEdgeFromFaces(edgeKey meshEdgeKey, faces []diffractionFaceEdge, vertexByKey map[meshVertexKey]Vec3) (DiffractionEdge, bool) {
+	if len(faces) != 2 {
+		return DiffractionEdge{}, false
+	}
+
+	start, startOK := vertexByKey[edgeKey.A]
+
+	end, endOK := vertexByKey[edgeKey.B]
+	if !startOK || !endOK {
+		return DiffractionEdge{}, false
+	}
+
+	direction := end.Sub(start)
+
+	length := direction.Norm()
+	if length <= diffractionAngleEpsilon {
+		return DiffractionEdge{}, false
+	}
+
+	direction = direction.Scale(1 / length)
+	faceO, faceN := faces[0], faces[1]
+
+	n0, n1 := faceO.Normal.Normalize(), faceN.Normal.Normalize()
+	if n0.Norm() == 0 || n1.Norm() == 0 {
+		return DiffractionEdge{}, false
+	}
+
+	theta := math.Acos(clampFloat64(n0.Dot(n1), -1, 1))
+	if theta <= diffractionAngleEpsilon || math.Abs(math.Pi-theta) <= diffractionAngleEpsilon {
+		return DiffractionEdge{}, false
+	}
+
+	// Convex edges have the adjacent opposite vertices behind each face plane.
+	d01 := n0.Dot(faceN.Opposite.Sub(faceO.Start))
+
+	d10 := n1.Dot(faceO.Opposite.Sub(faceN.Start))
+	if d01 >= -diffractionAngleEpsilon || d10 >= -diffractionAngleEpsilon {
+		return DiffractionEdge{}, false
+	}
+
+	basis2 := direction.Cross(n0).Normalize()
+	if basis2.Norm() == 0 {
+		return DiffractionEdge{}, false
+	}
+
+	return DiffractionEdge{
+		Start:       start,
+		End:         end,
+		Direction:   direction,
+		Length:      length,
+		WedgeIndex:  (math.Pi + theta) / math.Pi,
+		FaceONormal: n0,
+		FaceNNormal: n1,
+		FaceOID:     faceO.FaceID,
+		FaceNID:     faceN.FaceID,
+		LocalBasis:  [3]Vec3{direction, n0, basis2},
+	}, true
 }
 
 func mergeDiffractionEdges(edges []DiffractionEdge) []DiffractionEdge {

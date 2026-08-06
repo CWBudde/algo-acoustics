@@ -36,9 +36,9 @@ func (q QualityPreset) String() string {
 	case QualityDraft:
 		return "draft"
 	case QualityPreview:
-		return "preview"
+		return previewLabel
 	case QualityFinal:
-		return "final"
+		return finalLabel
 	default:
 		return fmt.Sprintf("quality(%d)", int(q))
 	}
@@ -68,13 +68,13 @@ const (
 
 // PresetConfig returns a ProgressiveConfig populated with sensible defaults
 // for the given quality preset. The returned config uses a fresh
-// ir.RenderConfig and hybrid.HybridConfig — callers only need to set the
-// scene sample rate (typically 48000) and any field they wish to override.
+// ir.RenderConfig and hybrid.HybridConfig. RenderProgressive uses the scene's
+// sample rate and band specification; a preset's BandSpec documents its
+// preferred resolution when constructing a matching scene.
 //
 // Example:
 //
 //	cfg := PresetConfig(QualityPreview)
-//	cfg.Render.SampleRate = sc.SampleRate
 //	cfg.NumRays = 8000 // override
 //	RenderProgressive(ctx, sc, cfg, update)
 func PresetConfig(preset QualityPreset) ProgressiveConfig {

@@ -2,114 +2,239 @@ package algoacoustics
 
 import (
 	"context"
+	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
+const debouncerTestDeadline = 2 * time.Second
+
+type controlledDebounceTimer struct {
+	mu      sync.Mutex
+	fn      func()
+	stopped bool
+	fired   bool
+}
+
+func (timer *controlledDebounceTimer) Stop() bool {
+	timer.mu.Lock()
+	defer timer.mu.Unlock()
+
+	active := !timer.stopped && !timer.fired
+	timer.stopped = true
+
+	return active
+}
+
+// Fire invokes even a stopped timer to model time.AfterFunc's documented race:
+// Stop may return false because the callback has already been dispatched.
+func (timer *controlledDebounceTimer) Fire() {
+	timer.mu.Lock()
+	if timer.fired {
+		timer.mu.Unlock()
+
+		return
+	}
+
+	timer.fired = true
+	fn := timer.fn
+	timer.mu.Unlock()
+
+	fn()
+}
+
+type controlledDebounceScheduler struct {
+	mu     sync.Mutex
+	timers []*controlledDebounceTimer
+}
+
+func (scheduler *controlledDebounceScheduler) AfterFunc(_ time.Duration, fn func()) debounceTimer {
+	timer := &controlledDebounceTimer{fn: fn}
+
+	scheduler.mu.Lock()
+	scheduler.timers = append(scheduler.timers, timer)
+	scheduler.mu.Unlock()
+
+	return timer
+}
+
+func (scheduler *controlledDebounceScheduler) Timers(t *testing.T) []*controlledDebounceTimer {
+	t.Helper()
+
+	scheduler.mu.Lock()
+	defer scheduler.mu.Unlock()
+
+	return append([]*controlledDebounceTimer(nil), scheduler.timers...)
+}
+
+func newControlledDebouncer() (*Debouncer, *controlledDebounceScheduler) {
+	scheduler := &controlledDebounceScheduler{}
+
+	return &Debouncer{wait: time.Hour, afterFunc: scheduler.AfterFunc}, scheduler
+}
+
+func receiveDebouncerValue[T any](t *testing.T, values <-chan T) T {
+	t.Helper()
+
+	select {
+	case value := <-values:
+		return value
+	case <-time.After(debouncerTestDeadline):
+		t.Fatal("timed out waiting for debouncer callback")
+
+		var zero T
+
+		return zero
+	}
+}
+
 func TestDebouncer_CoalescesRapidCalls(t *testing.T) {
 	t.Parallel()
 
-	d := NewDebouncer(50 * time.Millisecond)
+	d, scheduler := newControlledDebouncer()
 	defer d.Cancel()
 
-	var callCount atomic.Int32
+	called := make(chan int, 10)
 
-	for range 10 {
-		d.Trigger(func(_ context.Context) {
-			callCount.Add(1)
+	for index := range 10 {
+		d.Trigger(func(context.Context) {
+			called <- index
 		})
-
-		time.Sleep(10 * time.Millisecond)
 	}
 
-	// Wait for the debounce window to fire after the last trigger.
-	time.Sleep(100 * time.Millisecond)
+	timers := scheduler.Timers(t)
+	if len(timers) != 10 {
+		t.Fatalf("scheduled timers = %d, want 10", len(timers))
+	}
 
-	if got := callCount.Load(); got != 1 {
-		t.Errorf("callCount = %d, want 1 (debounce should coalesce)", got)
+	// Force every stopped timer closure to run, as if Stop lost a dispatch
+	// race. Only the current generation may invoke its render function.
+	for _, timer := range timers {
+		timer.Fire()
+	}
+
+	if got := receiveDebouncerValue(t, called); got != 9 {
+		t.Fatalf("callback index = %d, want final trigger 9", got)
+	}
+
+	select {
+	case got := <-called:
+		t.Fatalf("stale timer invoked callback %d", got)
+	default:
 	}
 }
 
-func TestDebouncer_Cancel(t *testing.T) {
+func TestDebouncer_CancelInvalidatesDispatchedTimer(t *testing.T) {
 	t.Parallel()
 
-	d := NewDebouncer(50 * time.Millisecond)
+	d, scheduler := newControlledDebouncer()
+	called := make(chan struct{}, 1)
 
-	var called atomic.Bool
-
-	d.Trigger(func(_ context.Context) {
-		called.Store(true)
+	d.Trigger(func(context.Context) {
+		called <- struct{}{}
 	})
-
 	d.Cancel()
-	time.Sleep(100 * time.Millisecond)
 
-	if called.Load() {
-		t.Error("render function called after Cancel")
+	timers := scheduler.Timers(t)
+	if len(timers) != 1 {
+		t.Fatalf("scheduled timers = %d, want 1", len(timers))
+	}
+
+	timers[0].Fire()
+
+	select {
+	case <-called:
+		t.Fatal("render function called after Cancel")
+	default:
 	}
 }
 
-func TestDebouncer_CancelsContext(t *testing.T) {
+func TestDebouncer_NewerTriggerCancelsStartedContext(t *testing.T) {
 	t.Parallel()
 
-	d := NewDebouncer(20 * time.Millisecond)
+	d, scheduler := newControlledDebouncer()
 	defer d.Cancel()
 
-	var mu sync.Mutex
-	var ctxErrors []error
+	started := make(chan struct{})
+	canceled := make(chan error, 1)
+	firstDone := make(chan struct{})
 
-	// First trigger — will be cancelled by the second.
 	d.Trigger(func(ctx context.Context) {
-		// By the time this runs (if it runs), context should be cancelled
-		// because we trigger again before the window fires.
-		mu.Lock()
+		close(started)
+		<-ctx.Done()
 
-		ctxErrors = append(ctxErrors, ctx.Err())
-		mu.Unlock()
+		canceled <- ctx.Err()
 	})
 
-	// Immediately trigger again — cancels the first context.
-	d.Trigger(func(ctx context.Context) {
-		mu.Lock()
+	firstTimer := scheduler.Timers(t)[0]
+	go func() {
+		firstTimer.Fire()
+		close(firstDone)
+	}()
 
-		ctxErrors = append(ctxErrors, ctx.Err())
-		mu.Unlock()
+	receiveDebouncerValue(t, started)
+
+	secondCalled := make(chan error, 1)
+
+	d.Trigger(func(ctx context.Context) {
+		secondCalled <- ctx.Err()
 	})
 
-	time.Sleep(100 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Only the second trigger should fire, with a non-cancelled context.
-	if len(ctxErrors) != 1 {
-		t.Fatalf("expected 1 callback, got %d", len(ctxErrors))
+	err := receiveDebouncerValue(t, canceled)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("started callback context error = %v, want context.Canceled", err)
 	}
 
-	if ctxErrors[0] != nil {
-		t.Errorf("second trigger's context error = %v, want nil", ctxErrors[0])
+	receiveDebouncerValue(t, firstDone)
+
+	timers := scheduler.Timers(t)
+	if len(timers) != 2 {
+		t.Fatalf("scheduled timers = %d, want 2", len(timers))
+	}
+
+	timers[1].Fire()
+
+	err = receiveDebouncerValue(t, secondCalled)
+	if err != nil {
+		t.Fatalf("current callback context error = %v, want nil", err)
 	}
 }
 
 func TestDebouncer_MultipleSequentialTriggers(t *testing.T) {
 	t.Parallel()
 
-	d := NewDebouncer(30 * time.Millisecond)
+	d, scheduler := newControlledDebouncer()
 	defer d.Cancel()
 
-	var callCount atomic.Int32
+	called := make(chan int, 2)
 
-	// First burst
-	d.Trigger(func(_ context.Context) { callCount.Add(1) })
-	time.Sleep(60 * time.Millisecond) // Wait for first to fire
+	d.Trigger(func(context.Context) { called <- 1 })
+	scheduler.Timers(t)[0].Fire()
 
-	// Second burst
-	d.Trigger(func(_ context.Context) { callCount.Add(1) })
-	time.Sleep(60 * time.Millisecond) // Wait for second to fire
+	d.Trigger(func(context.Context) { called <- 2 })
+	scheduler.Timers(t)[1].Fire()
 
-	if got := callCount.Load(); got != 2 {
-		t.Errorf("callCount = %d, want 2 (two separated bursts)", got)
+	if got := receiveDebouncerValue(t, called); got != 1 {
+		t.Fatalf("first callback = %d, want 1", got)
 	}
+
+	if got := receiveDebouncerValue(t, called); got != 2 {
+		t.Fatalf("second callback = %d, want 2", got)
+	}
+}
+
+func TestDebouncer_DefaultTimerFires(t *testing.T) {
+	t.Parallel()
+
+	d := NewDebouncer(time.Millisecond)
+	defer d.Cancel()
+
+	called := make(chan struct{})
+
+	d.Trigger(func(context.Context) {
+		close(called)
+	})
+
+	receiveDebouncerValue(t, called)
 }

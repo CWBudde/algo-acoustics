@@ -1,84 +1,53 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/cwbudde/algo-acoustics/ir"
-	"github.com/cwbudde/algo-acoustics/metrics"
-	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-func TestBenchmarkCorpusSmoke(t *testing.T) {
-	t.Parallel()
-
-	corpus := []string{
-		roomFixturePath("tiny_room.json"),
-		roomFixturePath("control_room.json"),
-		roomFixturePath("lecture_room.json"),
-		roomFixturePath("pa_room.json"),
+func TestBenchmarkCorpusHybridRanges(t *testing.T) {
+	fixtureDir, err := filepath.Abs(filepath.Join("..", "..", "testdata", "rooms"))
+	if err != nil {
+		t.Fatalf("Abs() error = %v", err)
 	}
 
-	for _, path := range corpus {
-		t.Run(filepath.Base(path), func(t *testing.T) {
-			t.Parallel()
-
-			sc, err := scene.LoadSceneFile(path)
-			if err != nil {
-				t.Fatalf("LoadSceneFile() error = %v", err)
-			}
-
-			err = scene.Validate(sc)
-			if err != nil {
-				t.Fatalf("Validate() error = %v", err)
-			}
-
-			events, err := solveFixture(sc, 2)
-			if err != nil {
-				t.Fatalf("solveFixture() error = %v", err)
-			}
-
-			buf, err := ir.RenderMono(events, ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 2.5, BandSpec: sc.BandSpec})
-			if err != nil {
-				t.Fatalf("RenderMono() error = %v", err)
-			}
-
-			_, err = metrics.T60FromDecaySlope(buf)
-			if err != nil {
-				t.Fatalf("T60FromDecaySlope() error = %v", err)
-			}
-
-			_, err = metrics.EDT(buf)
-			if err != nil {
-				t.Fatalf("EDT() error = %v", err)
-			}
-
-			_, err = metrics.C80(buf)
-			if err != nil {
-				t.Fatalf("C80() error = %v", err)
-			}
-		})
-	}
-}
-
-func roomFixturePath(name string) string {
-	candidates := []string{
-		filepath.Join("testdata", "rooms", name),
-		filepath.Join("..", "..", "testdata", "rooms", name),
+	rows, err := buildCorpusReport(fixtureDir, 3)
+	if err != nil {
+		t.Fatalf("buildCorpusReport() error = %v", err)
 	}
 
-	for _, candidate := range candidates {
-		absCandidate, err := filepath.Abs(candidate)
-		if err != nil {
+	if len(rows) != len(defaultCorpusCases) {
+		t.Fatalf("buildCorpusReport() returned %d rows, want %d", len(rows), len(defaultCorpusCases))
+	}
+
+	casesByName := make(map[string]corpusCase, len(defaultCorpusCases))
+	for _, corpusCase := range defaultCorpusCases {
+		casesByName[corpusCase.name] = corpusCase
+	}
+
+	for _, row := range rows {
+		corpusCase, ok := casesByName[row.name]
+		if !ok {
+			t.Errorf("unexpected corpus row %q", row.name)
 			continue
 		}
 
-		_, err = os.Stat(absCandidate)
-		if err == nil {
-			return absCandidate
+		t.Logf("%s: T60 %.3f s, EDT %.3f s, C80 %.3f dB", row.name, row.t60, row.edt, row.c80)
+
+		if !inRange(row.t60, corpusCase.t60Range) {
+			t.Errorf("%s T60 = %.6f, want %v", row.name, row.t60, corpusCase.t60Range)
+		}
+
+		if !inRange(row.edt, corpusCase.edtRange) {
+			t.Errorf("%s EDT = %.6f, want %v", row.name, row.edt, corpusCase.edtRange)
+		}
+
+		if !inRange(row.c80, corpusCase.c80Range) {
+			t.Errorf("%s C80 = %.6f, want %v", row.name, row.c80, corpusCase.c80Range)
 		}
 	}
 
-	return candidates[0]
+	if !corpusRowsPass(rows) {
+		t.Fatal("corpusRowsPass() = false, want all corrected hybrid rows to pass")
+	}
 }

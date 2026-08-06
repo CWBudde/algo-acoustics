@@ -1,6 +1,7 @@
 package hrtf
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -19,6 +20,30 @@ func TestNearestNeighborDatasetSampleRate(t *testing.T) {
 	dataset := NearestNeighborDataset{SampleRateHz: 48000}
 	if got := dataset.SampleRate(); got != 48000 {
 		t.Fatalf("SampleRate() = %d, want 48000", got)
+	}
+}
+
+func TestInterpolatingDatasetMarshalsEstablishedSampleRateField(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(InterpolatingDataset{SampleRateHz: 48000})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	var fields map[string]any
+
+	err = json.Unmarshal(data, &fields)
+	if err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if got := fields["sampleRate"]; got != float64(48000) {
+		t.Fatalf("sampleRate = %v, want 48000", got)
+	}
+
+	if _, ok := fields["sample_rate"]; ok {
+		t.Fatalf("marshaled dataset contains legacy sample_rate field: %s", data)
 	}
 }
 

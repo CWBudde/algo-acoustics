@@ -208,6 +208,32 @@ func TestEvaluateMesh_NilScene(t *testing.T) {
 	}
 }
 
+func TestEvaluateShoebox_RejectsMultipleSources(t *testing.T) {
+	t.Parallel()
+
+	sc := testScene(t)
+	sc.Sources = append(sc.Sources, scene.Source{Position: sc.Sources[0].Position})
+	sources := GenerateImageSources(sc.Sources[0].Position, sc.Room.Shoebox, 1)
+
+	_, err := EvaluateShoebox(sources, &sc, ISMConfig{MaxOrder: 1})
+	if err == nil {
+		t.Fatal("expected error for source-specific image list with multiple scene sources")
+	}
+}
+
+func TestEvaluateMesh_RejectsMultipleSources(t *testing.T) {
+	t.Parallel()
+
+	sc := testMeshScene()
+	sc.Sources = append(sc.Sources, scene.Source{Position: sc.Sources[0].Position})
+	sources := GenerateMeshImageSources(sc.Sources[0].Position, sc.Room.Mesh, MeshISMConfig{MaxOrder: 1})
+
+	_, err := EvaluateMesh(sources, sc, ISMConfig{MaxOrder: 1})
+	if err == nil {
+		t.Fatal("expected error for source-specific image list with multiple scene sources")
+	}
+}
+
 func filterSpecular(events []ir.Event) []ir.Event {
 	var result []ir.Event
 

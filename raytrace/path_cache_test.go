@@ -80,3 +80,17 @@ func TestPathCache_ValidFor_DifferentReceiverRadius(t *testing.T) {
 		t.Fatal("ValidFor() = true for different receiver radius, want false")
 	}
 }
+
+func TestPathCache_ValidFor_UsesEffectiveDefaultReceiverRadius(t *testing.T) {
+	t.Parallel()
+
+	sc := newTestShoeboxScene(6, 4.5, 2.8)
+	cache := &PathCache{
+		GeometryHash:   sc.GeometryHash(),
+		ReceiverRadius: 0.25,
+	}
+
+	if !cache.ValidFor(sc, 0) {
+		t.Fatal("ValidFor() = false for default receiver radius, want true")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/geometry"
@@ -40,23 +41,16 @@ type BinauralPoissonConfig struct {
 //  5. Convolve the slot's weighted signal with left/right HRIRs.
 //  6. Overlap-add with a 50% Hanning window into continuous left/right channels.
 func RenderBinauralPoisson(cfg BinauralPoissonConfig, rng *rand.Rand) (left, right *Buffer, err error) {
-	bandCount := cfg.BandSpec.BandCount()
-	if bandCount == 0 {
-		return nil, nil, errors.New("band spec has no bands")
-	}
-
-	if cfg.SampleRate <= 0 {
-		return nil, nil, errors.New("sample rate must be positive")
-	}
-
-	if cfg.HRTF == nil {
-		return nil, nil, errors.New("HRTF dataset must not be nil")
+	err = validateBinauralPoissonConfig(cfg, rng)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	if len(cfg.Bins) == 0 {
 		return NewBuffer(cfg.SampleRate, 0), NewBuffer(cfg.SampleRate, 0), nil
 	}
 
+	bandCount := cfg.BandSpec.BandCount()
 	duration := cfg.Bins[len(cfg.Bins)-1].TimeSeconds + cfg.BinDuration
 	bufLen := int(math.Ceil(duration * float64(cfg.SampleRate)))
 	fftSize := nextPow2(2 * bufLen)
@@ -81,10 +75,13 @@ func RenderBinauralPoisson(cfg BinauralPoissonConfig, rng *rand.Rand) (left, rig
 
 	slotSamples := max(int(math.Round(cfg.BinDuration*float64(cfg.SampleRate))), 1)
 
-	// Build Hanning window for overlap-add (50% overlap).
-	halfSlot := slotSamples / 2
-	windowLen := slotSamples + halfSlot // extended window for 50% overlap
+	// A periodic Hann window with length twice the nominal slot uses the slot
+	// duration as its 50% hop. Per-sample normalization below also preserves
+	// unity gain at boundaries and for irregularly spaced histogram bins.
+	windowLen := 2 * slotSamples
+	frameOffset := -slotSamples / 2
 	window := buildHanningWindow(windowLen)
+	windowCoverage := buildWindowCoverage(cfg.Bins, cfg.SampleRate, frameOffset, window, bufLen)
 
 	for slotIdx, bin := range cfg.Bins {
 		slotStart := int(math.Round(bin.TimeSeconds * float64(cfg.SampleRate)))
@@ -94,8 +91,8 @@ func RenderBinauralPoisson(cfg BinauralPoissonConfig, rng *rand.Rand) (left, rig
 
 		dir := slotDirection(cfg, slotIdx, rng)
 
-		err = convolveBinSlotDir(cfg, dir, slotStart, bufLen, halfSlot, windowLen,
-			window, monoWeighted, leftSamples, rightSamples, outLen)
+		err = convolveBinSlotDir(cfg, dir, slotStart, bufLen, frameOffset,
+			window, windowCoverage, monoWeighted, leftSamples, rightSamples, outLen)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -111,6 +108,45 @@ func RenderBinauralPoisson(cfg BinauralPoissonConfig, rng *rand.Rand) (left, rig
 	right = &Buffer{SampleRate: cfg.SampleRate, Samples: rightSamples}
 
 	return left, right, nil
+}
+
+func validateBinauralPoissonConfig(cfg BinauralPoissonConfig, rng *rand.Rand) error {
+	err := validatePoissonInputs(cfg.Bins, cfg.BinDuration, cfg.Volume, cfg.BandSpec, cfg.SampleRate, rng)
+	if err != nil {
+		return err
+	}
+
+	if cfg.HRTF == nil {
+		return errors.New("HRTF dataset must not be nil")
+	}
+
+	hrtfSampleRate := cfg.HRTF.SampleRate()
+	if hrtfSampleRate != cfg.SampleRate {
+		return fmt.Errorf("HRTF sample rate %d does not match render sample rate %d", hrtfSampleRate, cfg.SampleRate)
+	}
+
+	return nil
+}
+
+func buildWindowCoverage(
+	bins []EnergyBin,
+	sampleRate, frameOffset int,
+	window []float64,
+	bufLen int,
+) []float64 {
+	coverage := make([]float64, bufLen)
+
+	for _, bin := range bins {
+		slotStart := int(math.Round(bin.TimeSeconds * float64(sampleRate)))
+		for index, weight := range window {
+			sourceIndex := slotStart + frameOffset + index
+			if sourceIndex >= 0 && sourceIndex < bufLen {
+				coverage[sourceIndex] += weight
+			}
+		}
+	}
+
+	return coverage
 }
 
 // buildBinauralMonoWeighted filters the Poisson spectrum into per-band
@@ -170,8 +206,8 @@ func slotDirection(cfg BinauralPoissonConfig, slotIdx int, rng *rand.Rand) geome
 // the result into the output buffers.
 func convolveBinSlotDir(
 	cfg BinauralPoissonConfig, dir geometry.Vec3,
-	slotStart, bufLen, halfSlot, windowLen int,
-	window, monoWeighted, leftSamples, rightSamples []float64, outLen int,
+	slotStart, bufLen, frameOffset int,
+	window, windowCoverage, monoWeighted, leftSamples, rightSamples []float64, outLen int,
 ) error {
 	leftHRIR, rightHRIR, delaySeconds, lookupErr := cfg.HRTF.Lookup(dir)
 	if lookupErr != nil {
@@ -180,13 +216,18 @@ func convolveBinSlotDir(
 
 	delaySamples := int(math.Round(delaySeconds * float64(cfg.SampleRate)))
 
-	for i := range windowLen {
-		srcIdx := slotStart - halfSlot + i
+	for i := range window {
+		srcIdx := slotStart + frameOffset + i
 		if srcIdx < 0 || srcIdx >= bufLen {
 			continue
 		}
 
-		sample := monoWeighted[srcIdx] * window[i]
+		coverage := windowCoverage[srcIdx]
+		if coverage <= 0 {
+			continue
+		}
+
+		sample := monoWeighted[srcIdx] * window[i] / coverage
 		writeStart := srcIdx + delaySamples
 
 		for h, lv := range leftHRIR {
@@ -239,35 +280,65 @@ func dgDirectionForSlot(dirs []geometry.Vec3, probs [][]float64, slotIdx, blendC
 	}
 
 	if blendCount <= 1 {
-		bestIdx := 0
-		bestProb := -1.0
-
-		for d := range dirs {
-			if d >= len(probs) || slotIdx >= len(probs[d]) {
-				continue
-			}
-
-			if probs[d][slotIdx] > bestProb {
-				bestProb = probs[d][slotIdx]
-				bestIdx = d
-			}
-		}
-
-		return dirs[bestIdx]
+		return maxProbabilityDirection(dirs, probs, slotIdx)
 	}
 
-	// Blend top-N: weighted average of directions by probability.
-	var blended geometry.Vec3
+	return blendTopDirections(dirs, probs, slotIdx, blendCount)
+}
 
-	for d := range dirs {
-		if d >= len(probs) || slotIdx >= len(probs[d]) {
+type dgCandidate struct {
+	index       int
+	probability float64
+}
+
+func maxProbabilityDirection(dirs []geometry.Vec3, probs [][]float64, slotIdx int) geometry.Vec3 {
+	bestIndex := 0
+	bestProbability := -1.0
+
+	for directionIndex := range dirs {
+		if directionIndex >= len(probs) || slotIdx < 0 || slotIdx >= len(probs[directionIndex]) {
 			continue
 		}
 
-		w := probs[d][slotIdx]
-		blended.X += dirs[d].X * w
-		blended.Y += dirs[d].Y * w
-		blended.Z += dirs[d].Z * w
+		if probs[directionIndex][slotIdx] > bestProbability {
+			bestProbability = probs[directionIndex][slotIdx]
+			bestIndex = directionIndex
+		}
+	}
+
+	return dirs[bestIndex]
+}
+
+func blendTopDirections(dirs []geometry.Vec3, probs [][]float64, slotIdx, blendCount int) geometry.Vec3 {
+	candidates := make([]dgCandidate, 0, len(dirs))
+	for directionIndex := range dirs {
+		if directionIndex >= len(probs) || slotIdx < 0 || slotIdx >= len(probs[directionIndex]) {
+			continue
+		}
+
+		probability := probs[directionIndex][slotIdx]
+		if probability <= 0 || math.IsNaN(probability) || math.IsInf(probability, 0) {
+			continue
+		}
+
+		candidates = append(candidates, dgCandidate{index: directionIndex, probability: probability})
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].probability > candidates[j].probability
+	})
+
+	if blendCount > len(candidates) {
+		blendCount = len(candidates)
+	}
+
+	var blended geometry.Vec3
+
+	for _, candidate := range candidates[:blendCount] {
+		direction := dirs[candidate.index]
+		blended.X += direction.X * candidate.probability
+		blended.Y += direction.Y * candidate.probability
+		blended.Z += direction.Z * candidate.probability
 	}
 
 	norm := blended.Norm()
@@ -278,11 +349,12 @@ func dgDirectionForSlot(dirs []geometry.Vec3, probs [][]float64, slotIdx, blendC
 	return blended.Scale(1 / norm)
 }
 
-// buildHanningWindow creates a Hanning window of the given length.
+// buildHanningWindow creates a periodic Hann window of the given length. With
+// a half-window hop, adjacent windows sum to one.
 func buildHanningWindow(length int) []float64 {
 	w := make([]float64, length)
 	for i := range length {
-		w[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(length-1)))
+		w[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(length)))
 	}
 
 	return w

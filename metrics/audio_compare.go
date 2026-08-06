@@ -24,20 +24,9 @@ type ComparisonRow struct {
 // CompareBuffers compares two dense IR buffers and returns summary rows for
 // peak, RMS, correlation, and band-limited energy deltas.
 func CompareBuffers(left, right *ir.Buffer, bandSpec acoustics.BandSpec) ([]ComparisonRow, error) {
-	if left == nil || right == nil {
-		return nil, errors.New("buffers must not be nil")
-	}
-
-	if left.SampleRate <= 0 || right.SampleRate <= 0 {
-		return nil, errors.New("buffer sample rates must be positive")
-	}
-
-	if left.SampleRate != right.SampleRate {
-		return nil, errors.New("buffer sample rates must match")
-	}
-
-	if len(left.Samples) == 0 || len(right.Samples) == 0 {
-		return nil, errors.New("buffers must not be empty")
+	err := validateComparisonInputs(left, right, bandSpec)
+	if err != nil {
+		return nil, err
 	}
 
 	rows := make([]ComparisonRow, 0, 3+bandSpec.BandCount())
@@ -110,6 +99,54 @@ func CompareBuffers(left, right *ir.Buffer, bandSpec acoustics.BandSpec) ([]Comp
 	}
 
 	return rows, nil
+}
+
+func validateComparisonInputs(left, right *ir.Buffer, bandSpec acoustics.BandSpec) error {
+	if left == nil || right == nil {
+		return errors.New("buffers must not be nil")
+	}
+
+	if left.SampleRate <= 0 || right.SampleRate <= 0 {
+		return errors.New("buffer sample rates must be positive")
+	}
+
+	if left.SampleRate != right.SampleRate {
+		return errors.New("buffer sample rates must match")
+	}
+
+	if len(left.Samples) == 0 || len(right.Samples) == 0 {
+		return errors.New("buffers must not be empty")
+	}
+
+	return validateBandSpec(bandSpec)
+}
+
+func validateBandSpec(spec acoustics.BandSpec) error {
+	bandCount := len(spec.CenterFreqs)
+	if len(spec.LowerEdges) != bandCount || len(spec.UpperEdges) != bandCount {
+		return errors.New("band spec centers and edges must have matching lengths")
+	}
+
+	for index, center := range spec.CenterFreqs {
+		lower, upper := spec.LowerEdges[index], spec.UpperEdges[index]
+		if math.IsNaN(center) || math.IsInf(center, 0) || center <= 0 {
+			return fmt.Errorf("band %d center frequency must be finite and positive", index)
+		}
+
+		if math.IsNaN(lower) || math.IsInf(lower, 0) || lower < 0 {
+			return fmt.Errorf("band %d lower edge must be finite and non-negative", index)
+		}
+
+		if math.IsNaN(upper) || math.IsInf(upper, 0) || upper <= 0 {
+			return fmt.Errorf("band %d upper edge must be finite and positive", index)
+		}
+
+		if lower >= center || center >= upper {
+			return fmt.Errorf("band %d frequencies must satisfy lower < center < upper", index)
+		}
+	}
+
+	return nil
 }
 
 // PrintComparisonReport renders a compact tabular comparison report.

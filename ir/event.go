@@ -14,6 +14,8 @@ const (
 )
 
 // Event describes a sparse contribution that can later be rendered into a dense IR.
+//
+//nolint:tagliatelle // Camel-case tags are part of the established exported event schema.
 type Event struct {
 	TimeSeconds    float64       `json:"timeSeconds"`
 	Amplitude      float64       `json:"amplitude"`
