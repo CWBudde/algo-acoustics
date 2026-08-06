@@ -99,6 +99,7 @@ func TestMeshEnclosedVolumeRejectsUnsupportedMeshes(t *testing.T) {
 
 	first := geometry.MeshFromBox(geometry.Vec3Zero, geometry.Vec3{X: 1, Y: 1, Z: 1})
 	second := geometry.MeshFromBox(geometry.Vec3{X: 2}, geometry.Vec3{X: 3, Y: 1, Z: 1})
+
 	disconnected := &geometry.Mesh{Triangles: append(first.Triangles, second.Triangles...)}
 	if _, ok := disconnected.EnclosedVolume(); ok {
 		t.Fatal("EnclosedVolume() accepted disconnected closed shells")

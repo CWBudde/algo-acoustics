@@ -109,8 +109,8 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 19.5 Web Audio API — remaining
 
-- [ ] Load dry audio samples: speech, clap, music (bundled as small MP3/OGG files)
-- [ ] On IR update: crossfade between old and new `ConvolverNode` to avoid clicks
+- [x] Load dry audio samples: speech, clap, music (bundled as small MP3/OGG files)
+- [x] On IR update: crossfade between old and new `ConvolverNode` to avoid clicks
 
 #### 19.6 Deployment — remaining
 

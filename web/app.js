@@ -2,6 +2,11 @@ import * as presets from "./app-presets.js";
 import * as appState from "./app-state.js";
 import * as sceneModule from "./app-scene.js";
 import * as audioModule from "./app-audio.js";
+import { AuralizationEngine } from "./auralization-engine.mjs";
+import {
+  DRY_AUDIO_SOURCES,
+  DryAudioLoader,
+} from "./audio-samples.mjs";
 import {
   clamp,
   clampInt,
@@ -101,11 +106,15 @@ let urlSyncTimer = 0;
 let latestEncodedState = null;
 let audioContext = null;
 let currentIRBuffer = null;
-let currentAuralizationSource = null;
-let currentAuralizationNodes = null;
+let currentIRDecode = null;
+let currentIRVersion = 0;
+let auralizationEngine = null;
+let auralizationStarting = false;
 let currentAuralizationPlaying = false;
-let currentAuralizationStopTimer = 0;
+let auralizationStatusOverride = null;
+let audioTransitionTimer = 0;
 let lastAuralizedWav = null;
+const dryAudioLoader = new DryAudioLoader();
 let waveformZoom = 1;
 let dragState = null;
 let sceneRaycaster = null;
@@ -256,6 +265,7 @@ async function init() {
   initTheme();
   populatePresetSelects();
   populateMaterialSelects();
+  populateDrySources();
   loadStateFromUrl();
   bindEvents();
   syncFormFromState();
@@ -625,7 +635,17 @@ function bindEvents() {
   });
 
   refs.drySource.addEventListener("change", () => {
-    scheduleUrlSync();
+    if (audioContext) {
+      void dryAudioLoader
+        .load(audioContext, refs.drySource.value)
+        .catch((error) => {
+          auralizationStatusOverride = {
+            label: `Sample failed: ${error.message ?? error}`,
+            state: "error",
+          };
+          syncAuralizationControls();
+        });
+    }
   });
 
   refs.wetMix.addEventListener("input", () => {
@@ -686,6 +706,14 @@ function populateMaterialSelects() {
       )
       .join("");
   });
+}
+
+function populateDrySources() {
+  refs.drySource.innerHTML = Object.entries(DRY_AUDIO_SOURCES)
+    .map(
+      ([value, source]) => `<option value="${value}">${source.label}</option>`,
+    )
+    .join("");
 }
 
 function onRenderButtonClick() {
@@ -864,9 +892,15 @@ function updateAudio(wavBytes) {
   lastAuralizedWav = wavBytes.slice
     ? wavBytes.slice()
     : new Uint8Array(wavBytes);
+  currentIRVersion += 1;
   currentIRBuffer = null;
-  updateAuralizationStatus("IR ready", "ready");
+  currentIRDecode = null;
+  auralizationStatusOverride = null;
   syncAuralizationControls();
+
+  if (auralizationEngine?.isPlaying) {
+    void installLatestImpulseResponse(currentIRVersion);
+  }
 }
 
 function updateAuralizationStatus(label, stateName) {
@@ -881,9 +915,11 @@ function syncAuralizationControls() {
   refs.wetMixValue.textContent = `${Math.round(wetMix * 100)}%`;
   refs.audioGain.value = String(gainDb);
   refs.audioGainValue.textContent = `${gainDb.toFixed(1)} dB`;
-  refs.playAuralization.textContent = currentAuralizationPlaying
-    ? "Stop"
-    : "Play";
+  refs.playAuralization.textContent = auralizationStarting
+    ? "Loading…"
+    : currentAuralizationPlaying
+      ? "Stop"
+      : "Play";
   refs.playAuralization.classList.toggle(
     "is-playing",
     currentAuralizationPlaying,
@@ -893,9 +929,18 @@ function syncAuralizationControls() {
     String(currentAuralizationPlaying),
   );
   refs.playAuralization.disabled =
-    !lastAuralizedWav && !currentAuralizationPlaying;
+    auralizationStarting || (!lastAuralizedWav && !currentAuralizationPlaying);
   refs.exportAuralization.disabled = !lastAuralizedWav;
-  if (!lastAuralizedWav) {
+  if (auralizationEngine?.isPlaying) {
+    auralizationEngine.setMix(wetMix, dbToLinear(gainDb));
+  }
+
+  if (auralizationStatusOverride) {
+    updateAuralizationStatus(
+      auralizationStatusOverride.label,
+      auralizationStatusOverride.state,
+    );
+  } else if (!lastAuralizedWav) {
     updateAuralizationStatus("Waiting for IR", "loading");
   } else if (currentAuralizationPlaying) {
     updateAuralizationStatus("Playing", "busy");
@@ -907,6 +952,16 @@ function syncAuralizationControls() {
 async function ensureAudioContext() {
   if (!audioContext || audioContext.state === "closed") {
     audioContext = new AudioContext({ sampleRate: 48000 });
+    currentIRBuffer = null;
+    currentIRDecode = null;
+    auralizationEngine = new AuralizationEngine({
+      context: audioContext,
+      onPlaybackEnded: () => {
+        currentAuralizationPlaying = false;
+        auralizationStatusOverride = null;
+        syncAuralizationControls();
+      },
+    });
   }
 
   if (audioContext.state === "suspended") {
@@ -917,25 +972,68 @@ async function ensureAudioContext() {
 }
 
 async function ensureIrAudioBuffer() {
-  if (currentIRBuffer) {
-    return currentIRBuffer;
-  }
-
   if (!lastAuralizedWav) {
     throw new Error("No rendered IR available");
   }
 
   const context = await ensureAudioContext();
-  const arrayBuffer = lastAuralizedWav.buffer.slice(
-    lastAuralizedWav.byteOffset,
-    lastAuralizedWav.byteOffset + lastAuralizedWav.byteLength,
-  );
-  currentIRBuffer = await context.decodeAudioData(arrayBuffer);
+  while (!currentIRBuffer) {
+    const version = currentIRVersion;
+    if (!currentIRDecode || currentIRDecode.version !== version) {
+      const bytes = lastAuralizedWav;
+      const arrayBuffer = bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      );
+      currentIRDecode = {
+        version,
+        promise: context.decodeAudioData(arrayBuffer),
+      };
+    }
+
+    try {
+      const decoded = await currentIRDecode.promise;
+      if (version === currentIRVersion) {
+        currentIRBuffer = decoded;
+      }
+    } catch (error) {
+      if (version === currentIRVersion) {
+        currentIRDecode = null;
+        throw error;
+      }
+    }
+  }
   return currentIRBuffer;
 }
 
-function buildDrySourceBuffer(context, preset) {
-  return audioModule.buildDrySourceBuffer(context, preset);
+async function installLatestImpulseResponse(requestedVersion) {
+  auralizationStatusOverride = { label: "Updating IR", state: "busy" };
+  syncAuralizationControls();
+  try {
+    const irBuffer = await ensureIrAudioBuffer();
+    if (requestedVersion !== currentIRVersion) {
+      return;
+    }
+    const transitioned = auralizationEngine?.setImpulseResponse(irBuffer);
+    if (transitioned) {
+      if (audioTransitionTimer) {
+        window.clearTimeout(audioTransitionTimer);
+      }
+      audioTransitionTimer = window.setTimeout(() => {
+        audioTransitionTimer = 0;
+        auralizationStatusOverride = null;
+        syncAuralizationControls();
+      }, 120);
+      return;
+    }
+    auralizationStatusOverride = null;
+  } catch (error) {
+    auralizationStatusOverride = {
+      label: `IR update failed: ${error.message ?? error}`,
+      state: "error",
+    };
+  }
+  syncAuralizationControls();
 }
 
 async function startAuralizationPlayback() {
@@ -944,92 +1042,45 @@ async function startAuralizationPlayback() {
     return;
   }
 
-  const context = await ensureAudioContext();
-  const irBuffer = await ensureIrAudioBuffer();
-  stopAuralizationPlayback();
-
-  const drySource = context.createBufferSource();
-  drySource.buffer = buildDrySourceBuffer(context, refs.drySource.value);
-  drySource.loop = false;
-
-  const convolver = context.createConvolver();
-  convolver.buffer = irBuffer;
-
-  const dryGain = context.createGain();
-  const wetGain = context.createGain();
-  const outputGain = context.createGain();
-
-  const wetMix = clamp(Number(refs.wetMix.value || 0.72), 0, 1);
-  const gainDb = clamp(Number(refs.audioGain.value || -0.5), -12, 6);
-  dryGain.gain.value = Math.sqrt(1 - wetMix);
-  wetGain.gain.value = Math.sqrt(wetMix);
-  outputGain.gain.value = dbToLinear(gainDb);
-
-  drySource.connect(dryGain);
-  drySource.connect(convolver);
-  convolver.connect(wetGain);
-  dryGain.connect(outputGain);
-  wetGain.connect(outputGain);
-  outputGain.connect(context.destination);
-
-  currentAuralizationNodes = {
-    drySource,
-    convolver,
-    dryGain,
-    wetGain,
-    outputGain,
-  };
-  currentAuralizationPlaying = true;
+  auralizationStarting = true;
+  auralizationStatusOverride = { label: "Loading audio", state: "busy" };
   syncAuralizationControls();
-  updateAuralizationStatus("Playing", "busy");
-
-  drySource.start();
-  currentAuralizationStopTimer = window.setTimeout(
-    () => {
-      stopAuralizationPlayback();
-    },
-    Math.ceil(drySource.buffer.duration * 1000) + 1200,
-  );
-
-  drySource.onended = () => {
-    if (currentAuralizationPlaying) {
-      stopAuralizationPlayback();
-    }
-  };
+  try {
+    const context = await ensureAudioContext();
+    const [irBuffer, dryBuffer] = await Promise.all([
+      ensureIrAudioBuffer(),
+      dryAudioLoader.load(context, refs.drySource.value),
+    ]);
+    auralizationEngine.setImpulseResponse(irBuffer);
+    auralizationEngine.play(dryBuffer, {
+      wetMix: clamp(Number(refs.wetMix.value || 0.72), 0, 1),
+      gainLinear: dbToLinear(
+        clamp(Number(refs.audioGain.value || -0.5), -12, 6),
+      ),
+    });
+    currentAuralizationPlaying = true;
+    auralizationStatusOverride = null;
+  } catch (error) {
+    auralizationEngine?.stop(false);
+    currentAuralizationPlaying = false;
+    auralizationStatusOverride = {
+      label: `Audio failed: ${error.message ?? error}`,
+      state: "error",
+    };
+  } finally {
+    auralizationStarting = false;
+    syncAuralizationControls();
+  }
 }
 
 function stopAuralizationPlayback() {
-  if (currentAuralizationStopTimer) {
-    clearTimeout(currentAuralizationStopTimer);
-    currentAuralizationStopTimer = 0;
+  if (audioTransitionTimer) {
+    window.clearTimeout(audioTransitionTimer);
+    audioTransitionTimer = 0;
   }
-
-  if (currentAuralizationNodes?.drySource) {
-    try {
-      currentAuralizationNodes.drySource.stop();
-    } catch (error) {
-      void error;
-    }
-  }
-
-  if (currentAuralizationNodes) {
-    for (const node of [
-      currentAuralizationNodes.drySource,
-      currentAuralizationNodes.convolver,
-      currentAuralizationNodes.dryGain,
-      currentAuralizationNodes.wetGain,
-      currentAuralizationNodes.outputGain,
-    ]) {
-      try {
-        node?.disconnect?.();
-      } catch (error) {
-        void error;
-      }
-    }
-  }
-
-  currentAuralizationNodes = null;
+  auralizationEngine?.stop(false);
   currentAuralizationPlaying = false;
+  auralizationStatusOverride = null;
   syncAuralizationControls();
 }
 
@@ -1038,15 +1089,28 @@ async function exportAuralizedWav() {
     return;
   }
 
-  const rendered = await renderAuralizationOffline();
-  const wavBytes = encodeAudioBufferToWav(rendered);
-  downloadBytes(wavBytes, "algo-acoustics-auralization.wav", "audio/wav");
+  auralizationStatusOverride = { label: "Exporting audio", state: "busy" };
+  syncAuralizationControls();
+  try {
+    const rendered = await renderAuralizationOffline();
+    const wavBytes = encodeAudioBufferToWav(rendered);
+    downloadBytes(wavBytes, "algo-acoustics-auralization.wav", "audio/wav");
+    auralizationStatusOverride = null;
+  } catch (error) {
+    auralizationStatusOverride = {
+      label: `Export failed: ${error.message ?? error}`,
+      state: "error",
+    };
+  }
+  syncAuralizationControls();
 }
 
 async function renderAuralizationOffline() {
   const baseContext = await ensureAudioContext();
-  const irBuffer = await ensureIrAudioBuffer();
-  const dryBuffer = buildDrySourceBuffer(baseContext, refs.drySource.value);
+  const [irBuffer, dryBuffer] = await Promise.all([
+    ensureIrAudioBuffer(),
+    dryAudioLoader.load(baseContext, refs.drySource.value),
+  ]);
   const offline = new OfflineAudioContext(
     1,
     Math.ceil(

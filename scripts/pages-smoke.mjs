@@ -121,6 +121,8 @@ try {
   log("demo reported ready");
   await renderImpulseResponse(page);
   log("demo render completed");
+  await auditionAndUpdateImpulseResponse(page);
+  log("demo auralization and IR update completed");
 
   await collectDiagnostics(page);
 } finally {
@@ -164,6 +166,73 @@ async function renderImpulseResponse(page) {
     undefined,
     { timeout: 120000 },
   );
+}
+
+async function auditionAndUpdateImpulseResponse(page) {
+  const previousRequestID = await page.evaluate(
+    () => window.algoAcousticsDemoLastRender?.requestId ?? 0,
+  );
+  await page.evaluate(() => {
+    const drySource = document.getElementById("dry-source");
+    const playButton = document.getElementById("play-auralization");
+    if (!drySource || !playButton) {
+      throw new Error("missing auralization controls");
+    }
+
+    drySource.value = "music";
+    drySource.dispatchEvent(new Event("change", { bubbles: true }));
+    playButton.click();
+  });
+
+  await page.waitForFunction(
+    () =>
+      document.getElementById("audio-status")?.textContent?.trim() ===
+      "Playing",
+    undefined,
+    { timeout: 30000 },
+  );
+
+  await page.evaluate(() => {
+    const receiverX = document.getElementById("receiver-x");
+    const renderButton = document.getElementById("render-scene");
+    const audioStatus = document.getElementById("audio-status");
+    if (!receiverX || !renderButton || !audioStatus) {
+      throw new Error("missing render controls");
+    }
+    window.__pagesSmoke.sawIRTransition = false;
+    const observer = new MutationObserver(() => {
+      if (audioStatus.textContent?.trim() === "Updating IR") {
+        window.__pagesSmoke.sawIRTransition = true;
+        observer.disconnect();
+      }
+    });
+    observer.observe(audioStatus, { childList: true, subtree: true });
+    receiverX.value = String(Number(receiverX.value) - 0.1);
+    receiverX.dispatchEvent(new Event("input", { bubbles: true }));
+    renderButton.click();
+  });
+
+  await page.waitForFunction(
+    (requestID) =>
+      (window.algoAcousticsDemoLastRender?.requestId ?? 0) > requestID &&
+      document.getElementById("audio-status")?.textContent?.trim() ===
+        "Playing",
+    previousRequestID,
+    { timeout: 120000 },
+  );
+
+  const audioResult = await page.evaluate(() => ({
+    fetchedMusic: window.__pagesSmoke.fetches.some((entry) =>
+      entry.includes("audio/music.mp3"),
+    ),
+    sawIRTransition: window.__pagesSmoke.sawIRTransition,
+  }));
+  if (!audioResult.fetchedMusic) {
+    throw new Error("bundled music sample was not fetched");
+  }
+  if (!audioResult.sawIRTransition) {
+    throw new Error("active playback did not transition to the updated IR");
+  }
 }
 
 async function waitForDeployedPage(page) {
