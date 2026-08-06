@@ -59,8 +59,16 @@ func SynthesizeStatisticalTail(sc *scene.Scene, earlyBuf *ir.Buffer, cfg Statist
 		cfg.SampleRate = earlyBuf.SampleRate
 	}
 
+	if earlyBuf.SampleRate <= 0 {
+		return nil, errors.New("early buffer sample rate must be positive")
+	}
+
 	if cfg.SampleRate <= 0 {
 		return nil, errors.New("sample rate must be positive")
+	}
+
+	if cfg.SampleRate != earlyBuf.SampleRate {
+		return nil, fmt.Errorf("sample rate mismatch: output %d vs early buffer %d", cfg.SampleRate, earlyBuf.SampleRate)
 	}
 
 	if cfg.DurationSeconds <= 0 {
@@ -186,9 +194,9 @@ func buildStatisticalTailBuffer(earlyBuf *ir.Buffer, t60 float64, cfg Statistica
 
 	fadeSamples := int(math.Round(cfg.CrossfadeSeconds * float64(sampleRate)))
 	fadeStart := max(crossoverSample-fadeSamples/2, 0)
-	fadeEnd := min(fadeStart+fadeSamples, totalLen)
+	fadeEnd := min(crossoverSample+(fadeSamples-fadeSamples/2), totalLen)
 
-	for i := crossoverSample; i < totalLen; i++ {
+	for i := fadeStart; i < totalLen; i++ {
 		t := float64(i) / float64(sampleRate)
 		timeSinceCrossover := t - cfg.CrossoverSeconds
 		envelope := math.Exp(-gamma * timeSinceCrossover / 2)
@@ -211,17 +219,17 @@ func buildStatisticalTailBuffer(earlyBuf *ir.Buffer, t60 float64, cfg Statistica
 // level to scale the statistical tail to.
 func measureReferenceEnergy(samples []float64, end, sampleRate int) float64 {
 	if end <= 0 || len(samples) == 0 {
-		return 1
+		return 0
 	}
 
 	windowSeconds := 0.02
 	windowSamples := int(math.Round(windowSeconds * float64(sampleRate)))
 
-	start := max(end-windowSamples, 0)
 	end = min(end, len(samples))
+	start := max(end-windowSamples, 0)
 
 	if start >= end {
-		return 1
+		return 0
 	}
 
 	var sum float64
@@ -231,9 +239,6 @@ func measureReferenceEnergy(samples []float64, end, sampleRate int) float64 {
 	}
 
 	mean := sum / float64(end-start)
-	if mean <= 0 {
-		return 1
-	}
 
 	return mean
 }

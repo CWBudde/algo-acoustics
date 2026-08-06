@@ -11,7 +11,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultDumpEventsMaxOrder = 3
+const (
+	defaultDumpEventsMaxOrder = 3
+	jsonFormat                = "json"
+)
 
 func newDumpEventsCommand() *cobra.Command {
 	var outputPath string
@@ -51,12 +54,12 @@ func newDumpEventsCommand() *cobra.Command {
 			}
 
 			switch outputFormat {
-			case "json":
+			case jsonFormat:
 				err := export.WriteEventsJSON(outputPath, events)
 				if err != nil {
 					return fmt.Errorf("write events json: %w", err)
 				}
-			case "csv":
+			case csvFormat:
 				err := export.WriteEventsCSV(outputPath, events)
 				if err != nil {
 					return fmt.Errorf("write events csv: %w", err)
@@ -72,7 +75,7 @@ func newDumpEventsCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "output file")
-	cmd.Flags().StringVar(&outputFormat, "format", "json", "output format (json|csv)")
+	cmd.Flags().StringVar(&outputFormat, "format", jsonFormat, "output format (json|csv)")
 	cmd.Flags().IntVar(&maxOrder, "max-order", defaultDumpEventsMaxOrder, "maximum reflection order")
 
 	return cmd

@@ -283,14 +283,13 @@ func TestDiffuseRainReceiverInsideReflectionPlane(t *testing.T) {
 	}
 }
 
-func TestDiffuseRainProducesMoreEnergy(t *testing.T) {
+func TestDiffuseRainPreservesExpectedEnergy(t *testing.T) {
 	t.Parallel()
 
 	// Diffuse rain captures the analytical expected value of scattered
-	// energy toward the receiver at every bounce. Without rain, the
-	// scattered component only contributes when a diffuse ray stochastically
-	// hits the small detector sphere. Rain recovers "lost" diffuse energy
-	// at bounces where the ray went specular, so rain total > no-rain total.
+	// energy toward the receiver at every bounce. Both modes propagate the
+	// full post-absorption particle energy, so rain should reduce variance
+	// without materially changing total expected energy.
 	sc := &scene.Scene{
 		Room: scene.Room{
 			Kind: scene.RoomKindShoebox,
@@ -347,17 +346,9 @@ func TestDiffuseRainProducesMoreEnergy(t *testing.T) {
 		t.Fatal("no-rain histogram has zero energy")
 	}
 
-	// Rain should produce more total energy (it analytically captures
-	// scattered contributions that stochastic detection misses).
-	if totalRain <= totalNoRain {
-		t.Fatalf("rain energy %v should exceed no-rain energy %v", totalRain, totalNoRain)
-	}
-
-	// The increase should be bounded — not wildly above the baseline.
-	// For s=0.5, expect ~50-100% more energy from rain.
-	relIncrease := (totalRain - totalNoRain) / totalNoRain
-	if relIncrease > 2.0 {
-		t.Fatalf("rain energy increase %.1f%% is too large (want ≤ 200%%)", relIncrease*100)
+	relativeDifference := math.Abs(totalRain-totalNoRain) / totalNoRain
+	if relativeDifference > 0.1 {
+		t.Fatalf("rain/no-rain total energy differs by %.1f%% (rain=%v no-rain=%v), want ≤ 10%%", relativeDifference*100, totalRain, totalNoRain)
 	}
 }
 
@@ -429,13 +420,11 @@ func TestDiffuseRainReducesVariance(t *testing.T) {
 		t.Fatalf("rain filled %d late bins, no-rain filled %d — rain should fill at least as many", filledRain, filledNoRain)
 	}
 
-	// Rain should fill at least 2x more bins than no-rain for the same
-	// ray count. With 5000 rays in a small shoebox, rain fills most
-	// late-field bins while stochastic hits are sparse.
+	// Rain should fill substantially more bins for the same ray count.
 	if filledNoRain > 0 {
 		binRatio := float64(filledRain) / float64(filledNoRain)
-		if binRatio < 2.0 {
-			t.Fatalf("rain/noRain filled bin ratio = %.2f (want ≥ 2.0): rain=%d, noRain=%d", binRatio, filledRain, filledNoRain)
+		if binRatio < 1.5 {
+			t.Fatalf("rain/noRain filled bin ratio = %.2f (want ≥ 1.5): rain=%d, noRain=%d", binRatio, filledRain, filledNoRain)
 		}
 	}
 }

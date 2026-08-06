@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/cwbudde/algo-acoustics/export"
 	"github.com/cwbudde/algo-acoustics/hybrid"
@@ -24,8 +25,9 @@ func newRenderStereoCommand() *cobra.Command {
 		Short: "Render a scene to a stereo WAV file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if outputPath == "" {
-				return errors.New("output path must not be empty")
+			err := validateRenderStereoOptions(outputPath, maxOrder, durationSeconds, crossoverTimeSeconds, numRays)
+			if err != nil {
+				return err
 			}
 
 			scenePath := args[0]
@@ -70,7 +72,7 @@ func newRenderStereoCommand() *cobra.Command {
 				return fmt.Errorf("render binaural early IR: %w", err)
 			}
 
-			lateBuffer, err := pipeline.RenderLateBuffer(sc, lateCfg)
+			lateLeft, lateRight, err := pipeline.RenderLateBinaural(sc, receiver, lateCfg)
 			if err != nil {
 				return err
 			}
@@ -81,10 +83,8 @@ func newRenderStereoCommand() *cobra.Command {
 				SmoothenCrossover:    true,
 			}
 
-			lateBuffer = hybrid.AlignLateTail(lateBuffer, earlyEvents, hybridCfg)
-
-			lateLeft := cloneStereoBuffer(lateBuffer)
-			lateRight := cloneStereoBuffer(lateBuffer)
+			lateLeft = hybrid.AlignLateTail(lateLeft, earlyEvents, hybridCfg)
+			lateRight = hybrid.AlignLateTail(lateRight, earlyEvents, hybridCfg)
 
 			left := hybrid.CombineBuffers(earlyLeft, lateLeft, hybridCfg)
 
@@ -113,15 +113,28 @@ func newRenderStereoCommand() *cobra.Command {
 	return cmd
 }
 
-func cloneStereoBuffer(buf *ir.Buffer) *ir.Buffer {
-	if buf == nil {
-		return nil
+func validateRenderStereoOptions(outputPath string, maxOrder int, durationSeconds, crossoverTimeSeconds float64, numRays int) error {
+	if outputPath == "" {
+		return errors.New("output path must not be empty")
 	}
 
-	out := ir.NewBuffer(buf.SampleRate, float64(len(buf.Samples))/float64(buf.SampleRate))
-	copy(out.Samples, buf.Samples)
+	if maxOrder < 0 {
+		return errors.New("max order must not be negative")
+	}
 
-	return out
+	if durationSeconds <= 0 || math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) {
+		return errors.New("duration must be a finite positive number of seconds")
+	}
+
+	if crossoverTimeSeconds < 0 || math.IsNaN(crossoverTimeSeconds) || math.IsInf(crossoverTimeSeconds, 0) {
+		return errors.New("crossover time must be a finite non-negative number of seconds")
+	}
+
+	if numRays <= 0 {
+		return errors.New("number of rays must be positive")
+	}
+
+	return nil
 }
 
 func firstBinauralReceiver(sc *scene.Scene) (scene.Receiver, error) {

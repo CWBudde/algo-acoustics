@@ -10,6 +10,8 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
+const reflectiveMaterialName = "reflective"
+
 func main() {
 	err := run()
 	if err != nil {
@@ -27,11 +29,12 @@ func run() error {
 				Depth:  4.5,
 				Height: 2.8,
 				WallMaterials: [6]string{
-					"reflective", "reflective", "reflective", "reflective", "reflective", "reflective",
+					reflectiveMaterialName, reflectiveMaterialName, reflectiveMaterialName,
+					reflectiveMaterialName, reflectiveMaterialName, reflectiveMaterialName,
 				},
 			},
 		},
-		Materials:  map[string]scene.Material{"reflective": scene.MaterialFullyReflective()},
+		Materials:  map[string]scene.Material{reflectiveMaterialName: scene.MaterialFullyReflective()},
 		Sources:    []scene.Source{{Position: geometry.Vec3{X: 1.2, Y: 1.0, Z: 1.2}, GainDB: -12}},
 		Receivers:  []scene.Receiver{{Position: geometry.Vec3{X: 3.5, Y: 2.2, Z: 1.2}}},
 		BandSpec:   acoustics.Octave6,

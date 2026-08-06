@@ -40,6 +40,7 @@ type CachedISMSolver struct {
 	meshCache        [][]MeshImageSource
 	lastMesh         *geometry.Mesh
 	lastSourcePosMsh []geometry.Vec3
+	lastMeshMaxDist  float64
 
 	// Shared state.
 	lastRoomHash uint64
@@ -104,6 +105,7 @@ func (c *CachedISMSolver) Invalidate() {
 	c.meshCache = nil
 	c.lastMesh = nil
 	c.lastSourcePosMsh = nil
+	c.lastMeshMaxDist = 0
 	c.lastRoomHash = 0
 	c.lastMaxOrder = 0
 	c.lastRoomKind = ""
@@ -166,6 +168,7 @@ func (c *CachedISMSolver) solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event,
 	roomUnchanged := c.lastRoomKind == scene.RoomKindMesh &&
 		c.lastRoomHash == roomHash &&
 		c.lastMaxOrder == cfg.MaxOrder &&
+		c.lastMeshMaxDist == imgCfg.MaxDistance &&
 		c.meshCache != nil &&
 		len(c.meshCache) == len(sc.Sources)
 
@@ -189,6 +192,7 @@ func (c *CachedISMSolver) solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event,
 	c.lastRoomKind = scene.RoomKindMesh
 	c.lastMesh = sc.Room.Mesh
 	c.lastSourcePosMsh = sourcePositions
+	c.lastMeshMaxDist = imgCfg.MaxDistance
 	c.shoeboxCache = nil
 	c.lastShoeboxDims = nil
 	c.lastSourcePosSbx = nil

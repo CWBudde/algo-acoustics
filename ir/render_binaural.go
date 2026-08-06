@@ -26,11 +26,14 @@ func RenderBinaural(events []Event, hrtfDataset hrtf.Dataset, cfg RenderConfig) 
 
 	left = NewBuffer(cfg.SampleRate, cfg.DurationSeconds)
 	right = NewBuffer(cfg.SampleRate, cfg.DurationSeconds)
-	bandCount := cfg.BandSpec.BandCount()
 
 	for index, event := range events {
 		if event.TimeSeconds < 0 {
 			return nil, nil, fmt.Errorf("event %d has negative time %g", index, event.TimeSeconds)
+		}
+
+		if event.TimeSeconds >= cfg.DurationSeconds {
+			continue
 		}
 
 		headDir := eventDirectionForHRTF(event.Direction)
@@ -40,14 +43,13 @@ func RenderBinaural(events []Event, hrtfDataset hrtf.Dataset, cfg RenderConfig) 
 			return nil, nil, fmt.Errorf("event %d hrtf lookup: %w", index, lookupErr)
 		}
 
-		eventGain, gainErr := monoEventGain(event, bandCount)
-		if gainErr != nil {
-			return nil, nil, fmt.Errorf("event %d: %w", index, gainErr)
+		excitation, renderErr := RenderMono([]Event{event}, cfg)
+		if renderErr != nil {
+			return nil, nil, fmt.Errorf("event %d: %w", index, renderErr)
 		}
 
-		startIndex := int(math.Round((event.TimeSeconds + delaySeconds) * float64(cfg.SampleRate)))
-		left.Samples = convolveInto(left.Samples, startIndex, eventGain, leftHRIR)
-		right.Samples = convolveInto(right.Samples, startIndex, eventGain, rightHRIR)
+		convolveSignalInto(left.Samples, excitation.Samples, delaySeconds, cfg.SampleRate, leftHRIR)
+		convolveSignalInto(right.Samples, excitation.Samples, delaySeconds, cfg.SampleRate, rightHRIR)
 	}
 
 	return left, right, nil
@@ -61,51 +63,30 @@ func eventDirectionForHRTF(dir geometry.Vec3) geometry.Vec3 {
 	return dir.Normalize()
 }
 
-func convolveInto(samples []float64, startIndex int, amplitude float64, hrir []float64) []float64 {
-	if amplitude == 0 {
-		return samples
-	}
-
+func convolveSignalInto(samples, signal []float64, delaySeconds float64, sampleRate int, hrir []float64) {
 	if len(hrir) == 0 {
-		return addSample(samples, startIndex, amplitude)
+		hrir = []float64{1}
 	}
 
-	kernelStart := 0
-	if startIndex < 0 {
-		kernelStart = -startIndex
-		startIndex = 0
+	// Bound the delay before converting it to int. This both avoids undefinedly
+	// large timestamp allocations and keeps conversion safe for extreme values.
+	maxDelay := float64(len(samples)+len(signal)+len(hrir)) / float64(sampleRate)
+	if math.IsNaN(delaySeconds) || delaySeconds >= maxDelay || delaySeconds <= -maxDelay {
+		return
+	}
 
-		if kernelStart >= len(hrir) {
-			return samples
+	delaySamples := int(math.Round(delaySeconds * float64(sampleRate)))
+
+	for signalIndex, amplitude := range signal {
+		if amplitude == 0 {
+			continue
+		}
+
+		for hrirIndex, coefficient := range hrir {
+			outputIndex := signalIndex + delaySamples + hrirIndex
+			if outputIndex >= 0 && outputIndex < len(samples) {
+				samples[outputIndex] += amplitude * coefficient
+			}
 		}
 	}
-
-	needed := startIndex + len(hrir) - kernelStart
-	if needed > len(samples) {
-		extended := make([]float64, needed)
-		copy(extended, samples)
-		samples = extended
-	}
-
-	for i := kernelStart; i < len(hrir); i++ {
-		samples[startIndex+i-kernelStart] += amplitude * hrir[i]
-	}
-
-	return samples
-}
-
-func addSample(samples []float64, index int, value float64) []float64 {
-	if index < 0 {
-		return samples
-	}
-
-	if index >= len(samples) {
-		extended := make([]float64, index+1)
-		copy(extended, samples)
-		samples = extended
-	}
-
-	samples[index] += value
-
-	return samples
 }

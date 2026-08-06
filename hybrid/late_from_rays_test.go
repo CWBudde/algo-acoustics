@@ -1,6 +1,7 @@
 package hybrid
 
 import (
+	"math"
 	"math/rand"
 	"testing"
 
@@ -23,6 +24,22 @@ func TestHistogramToEventsAndBuffer(t *testing.T) {
 	buf := HistogramToBuffer(hist, 48000)
 	if buf.Len() == 0 {
 		t.Fatal("HistogramToBuffer() returned empty buffer")
+	}
+}
+
+func TestHistogramToEventsConvertsEnergyToPressureAmplitude(t *testing.T) {
+	t.Parallel()
+
+	hist := raytrace.NewEnergyHistogram(0.1, 0.05, 1)
+	hist.Add(0.01, []float64{9})
+
+	events := HistogramToEvents(hist, rand.New(rand.NewSource(1)))
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+
+	if got, want := events[0].Amplitude, 3.0; math.Abs(got-want) > 1e-12 {
+		t.Fatalf("event amplitude = %v, want sqrt(energy) = %v", got, want)
 	}
 }
 

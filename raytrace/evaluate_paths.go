@@ -8,7 +8,8 @@ import (
 
 // EvaluatePaths replays cached geometric paths with the current scene materials,
 // producing an EnergyHistogram without re-tracing geometry. The cache must have
-// been produced by TracePaths on a scene with matching geometry.
+// been produced by TracePaths on a scene with matching geometry and effective
+// receiver radius. Geometry or radius changes require tracing a new cache.
 func (r *RayTracer) EvaluatePaths(cache *PathCache) (*EnergyHistogram, error) {
 	if r == nil {
 		return nil, errors.New("raytracer is nil")
@@ -38,6 +39,11 @@ func (r *RayTracer) EvaluatePaths(cache *PathCache) (*EnergyHistogram, error) {
 		return nil, errors.New("MaxTimeSeconds must be positive")
 	}
 
+	receiverRadius := effectiveReceiverRadius(r.ReceiverRadius)
+	if !cache.ValidFor(r.Scene, receiverRadius) {
+		return nil, errors.New("path cache is stale for current scene geometry or receiver radius")
+	}
+
 	bandCount := r.Scene.BandSpec.BandCount()
 	if bandCount <= 0 {
 		bandCount = 1
@@ -58,11 +64,6 @@ func (r *RayTracer) EvaluatePaths(cache *PathCache) (*EnergyHistogram, error) {
 
 	source := r.Scene.Sources[0]
 	receiverData := r.Scene.Receivers[0]
-
-	receiverRadius := r.ReceiverRadius
-	if receiverRadius <= 0 {
-		receiverRadius = 0.25
-	}
 
 	receiver := SphereReceiver{Center: receiverData.Position, Radius: receiverRadius}
 
@@ -88,7 +89,7 @@ func (r *RayTracer) EvaluatePaths(cache *PathCache) (*EnergyHistogram, error) {
 			if tHit, hit := receiver.Intersects(ray, wallEpsilon, step.SegmentLength); hit {
 				arrivalTime := (pathLength + tHit) / r.Config.SpeedOfSound
 				if arrivalTime <= r.Config.MaxTimeSeconds {
-					hitEnergy := attenuateEnergyByAir(energy, centerFreqs, tHit, defaultAirTemperatureC, defaultRelativeHumidity)
+					hitEnergy := attenuateEnergyByAir(energy, centerFreqs, tHit)
 
 					capture := receiver.AngularWeight(rayDir)
 					for bi := range hitEnergy {
@@ -107,7 +108,7 @@ func (r *RayTracer) EvaluatePaths(cache *PathCache) (*EnergyHistogram, error) {
 
 			pathLength += step.SegmentLength
 
-			energy = attenuateEnergyByAir(energy, centerFreqs, step.SegmentLength, defaultAirTemperatureC, defaultRelativeHumidity)
+			energy = attenuateEnergyByAir(energy, centerFreqs, step.SegmentLength)
 
 			material := r.sceneMaterialForWall(step.WallIndex)
 

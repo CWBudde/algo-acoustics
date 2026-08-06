@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 
+	algoacoustics "github.com/cwbudde/algo-acoustics"
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
@@ -30,13 +31,18 @@ type LateConfig struct {
 
 // SolveEarly runs the image-source method solver and returns sparse early events.
 func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
-	solver := ism.ISMSolver{}
+	var bandSpec acoustics.BandSpec
+	if sc != nil {
+		bandSpec = sc.BandSpec
+	}
 
-	events, err := solver.Solve(sc, ism.ISMConfig{
+	engine := algoacoustics.NewISMEngine(ism.ISMConfig{
 		MaxOrder:     cfg.MaxOrder,
 		SpeedOfSound: acoustics.SpeedOfSound,
-		BandSpec:     sc.BandSpec,
+		BandSpec:     bandSpec,
 	})
+
+	events, err := engine.Generate(sc, renderConfig(sc, 0))
 	if err != nil {
 		return nil, fmt.Errorf("solve early reflections: %w", err)
 	}
@@ -46,27 +52,51 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 
 // RenderLateBuffer traces late-field energy via ray tracing and returns a dense buffer.
 func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
+	buffer, err := newLateEngine(cfg).RenderMono(sc, renderConfig(sc, cfg.DurationSeconds))
+	if err != nil {
+		return nil, err
+	}
+
+	return buffer, nil
+}
+
+// RenderLateBinaural traces directional late-field energy and spatializes it
+// through the receiver's HRTF using binaural Poisson synthesis.
+func RenderLateBinaural(sc *scene.Scene, receiver scene.Receiver, cfg LateConfig) (left, right *ir.Buffer, err error) {
+	left, right, err = newLateEngine(cfg).RenderBinaural(sc, receiver, renderConfig(sc, cfg.DurationSeconds))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return left, right, nil
+}
+
+func newLateEngine(cfg LateConfig) *algoacoustics.RaytraceEngine {
 	bounceEstimate := int(math.Ceil(cfg.DurationSeconds*acoustics.SpeedOfSound/8.0)) + 4
 	maxBounces := max(bounceEstimate, cfg.MaxOrder*2)
 
-	tracer := raytrace.RayTracer{
-		Config: raytrace.LaunchConfig{
+	return algoacoustics.NewRaytraceEngine(algoacoustics.RaytraceEngineConfig{
+		Launch: raytrace.LaunchConfig{
 			NumRays:        cfg.NumRays,
 			MaxBounces:     maxBounces,
 			MaxTimeSeconds: cfg.DurationSeconds,
 			SpeedOfSound:   acoustics.SpeedOfSound,
 		},
-		Scene:              sc,
 		ReceiverRadius:     cfg.ReceiverRadius,
 		BinDurationSeconds: cfg.BinDurationSeconds,
+	})
+}
+
+func renderConfig(sc *scene.Scene, durationSeconds float64) ir.RenderConfig {
+	if sc == nil {
+		return ir.RenderConfig{DurationSeconds: durationSeconds}
 	}
 
-	histogram, err := tracer.Trace()
-	if err != nil {
-		return nil, fmt.Errorf("trace late field: %w", err)
+	return ir.RenderConfig{
+		SampleRate:      sc.SampleRate,
+		DurationSeconds: durationSeconds,
+		BandSpec:        sc.BandSpec,
 	}
-
-	return hybrid.HistogramToBuffer(histogram, sc.SampleRate), nil
 }
 
 // RenderHybrid combines early and late buffers using a crossover blend.

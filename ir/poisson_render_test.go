@@ -116,8 +116,10 @@ func TestRenderMonoPoissonEmptyBins(t *testing.T) {
 	t.Parallel()
 
 	buf, err := RenderMonoPoisson(PoissonConfig{
-		BandSpec:   acoustics.Octave6,
-		SampleRate: 44100,
+		BinDuration: 0.01,
+		Volume:      100,
+		BandSpec:    acoustics.Octave6,
+		SampleRate:  44100,
 	}, rand.New(rand.NewSource(0)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -134,14 +136,88 @@ func TestRenderMonoPoissonInvalidInputs(t *testing.T) {
 	tests := []struct {
 		name string
 		cfg  PoissonConfig
+		rng  *rand.Rand
 	}{
 		{
 			name: "no bands",
-			cfg:  PoissonConfig{SampleRate: 44100},
+			cfg:  PoissonConfig{BinDuration: 0.01, Volume: 100, SampleRate: 44100},
+			rng:  rand.New(rand.NewSource(0)),
 		},
 		{
 			name: "zero sample rate",
-			cfg:  PoissonConfig{BandSpec: acoustics.Octave6},
+			cfg:  PoissonConfig{BinDuration: 0.01, Volume: 100, BandSpec: acoustics.Octave6},
+			rng:  rand.New(rand.NewSource(0)),
+		},
+		{
+			name: "zero volume",
+			cfg:  PoissonConfig{BinDuration: 0.01, BandSpec: acoustics.Octave6, SampleRate: 44100},
+			rng:  rand.New(rand.NewSource(0)),
+		},
+		{
+			name: "infinite bin duration",
+			cfg:  PoissonConfig{BinDuration: math.Inf(1), Volume: 100, BandSpec: acoustics.Octave6, SampleRate: 44100},
+			rng:  rand.New(rand.NewSource(0)),
+		},
+		{
+			name: "nil random source",
+			cfg:  PoissonConfig{BinDuration: 0.01, Volume: 100, BandSpec: acoustics.Octave6, SampleRate: 44100},
+		},
+		{
+			name: "unsorted bins",
+			cfg: PoissonConfig{
+				Bins:        []EnergyBin{{TimeSeconds: 0.02, BandEnergy: make([]float64, 6)}, {TimeSeconds: 0.01, BandEnergy: make([]float64, 6)}},
+				BinDuration: 0.01,
+				Volume:      100,
+				BandSpec:    acoustics.Octave6,
+				SampleRate:  44100,
+			},
+			rng: rand.New(rand.NewSource(0)),
+		},
+		{
+			name: "negative bin time",
+			cfg: PoissonConfig{
+				Bins:        []EnergyBin{{TimeSeconds: -0.01, BandEnergy: make([]float64, 6)}},
+				BinDuration: 0.01,
+				Volume:      100,
+				BandSpec:    acoustics.Octave6,
+				SampleRate:  44100,
+			},
+			rng: rand.New(rand.NewSource(0)),
+		},
+		{
+			name: "wrong band energy length",
+			cfg: PoissonConfig{
+				Bins:        []EnergyBin{{BandEnergy: make([]float64, 5)}},
+				BinDuration: 0.01,
+				Volume:      100,
+				BandSpec:    acoustics.Octave6,
+				SampleRate:  44100,
+			},
+			rng: rand.New(rand.NewSource(0)),
+		},
+		{
+			name: "negative band energy",
+			cfg: PoissonConfig{
+				Bins:        []EnergyBin{{BandEnergy: []float64{-1, 0, 0, 0, 0, 0}}},
+				BinDuration: 0.01,
+				Volume:      100,
+				BandSpec:    acoustics.Octave6,
+				SampleRate:  44100,
+			},
+			rng: rand.New(rand.NewSource(0)),
+		},
+		{
+			name: "band edge length mismatch",
+			cfg: PoissonConfig{
+				BinDuration: 0.01,
+				Volume:      100,
+				BandSpec: acoustics.BandSpec{
+					CenterFreqs: []float64{1000},
+					LowerEdges:  []float64{700},
+				},
+				SampleRate: 44100,
+			},
+			rng: rand.New(rand.NewSource(0)),
 		},
 	}
 
@@ -149,10 +225,32 @@ func TestRenderMonoPoissonInvalidInputs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := RenderMonoPoisson(tt.cfg, rand.New(rand.NewSource(0)))
+			_, err := RenderMonoPoisson(tt.cfg, tt.rng)
 			if err == nil {
 				t.Fatal("expected error for invalid config")
 			}
 		})
+	}
+}
+
+func TestApplyEnergyEnvelopeZerosGapsAndDeterministicallyOverwritesOverlaps(t *testing.T) {
+	t.Parallel()
+
+	sequence := make([]float64, 10)
+	for index := range sequence {
+		sequence[index] = 1
+	}
+
+	bins := []EnergyBin{
+		{TimeSeconds: 2, BandEnergy: []float64{4}},
+		{TimeSeconds: 4, BandEnergy: []float64{0}},
+	}
+	applyEnergyEnvelope(sequence, bins, 0, 4, 1)
+
+	want := []float64{0, 0, 1, 1, 0, 0, 0, 0, 0, 0}
+	for index := range sequence {
+		if sequence[index] != want[index] {
+			t.Fatalf("sequence = %v, want %v", sequence, want)
+		}
 	}
 }

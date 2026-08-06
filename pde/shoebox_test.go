@@ -64,6 +64,36 @@ func TestTransferFunctionToTimeDomainReturnsSignal(t *testing.T) {
 	}
 }
 
+func TestTransferFunctionToTimeDomainOddLengthHermitianSpectrum(t *testing.T) {
+	t.Parallel()
+
+	tf := &TransferFunction{
+		Freqs: []float64{0, 1, 2},
+		H:     []complex128{1, 2 + 3i, 4 + 5i},
+	}
+
+	got := tf.ToTimeDomain(5, 5)
+	if len(got) != 5 {
+		t.Fatalf("len(out) = %d, want 5", len(got))
+	}
+
+	spectrum := []complex128{1, 2 + 3i, 4 + 5i, 4 - 5i, 2 - 3i}
+
+	for n := range got {
+		var sum complex128
+
+		for k, value := range spectrum {
+			angle := 2 * math.Pi * float64(k*n) / 5
+			sum += value * complex(math.Cos(angle), math.Sin(angle))
+		}
+
+		want := real(sum) / 5
+		if math.Abs(got[n]-want) > 1e-12 {
+			t.Fatalf("out[%d] = %v, want %v", n, got[n], want)
+		}
+	}
+}
+
 func TestSweepShoeboxReturnsSamples(t *testing.T) {
 	t.Parallel()
 

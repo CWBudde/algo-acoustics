@@ -9,6 +9,8 @@ import (
 	"github.com/cwbudde/algo-acoustics/hrtf"
 )
 
+const binauralSpectralSampleRate = 8000
+
 type directionalDataset struct{}
 
 func (directionalDataset) SampleRate() int { return 100 }
@@ -19,6 +21,18 @@ func (directionalDataset) Lookup(dir geometry.Vec3) (left, right []float64, dela
 	}
 
 	return []float64{0.5}, []float64{1}, 0, nil
+}
+
+type longHRIRDataset struct {
+	lookups int
+}
+
+func (*longHRIRDataset) SampleRate() int { return 100 }
+
+func (d *longHRIRDataset) Lookup(_ geometry.Vec3) (left, right []float64, delaySeconds float64, err error) {
+	d.lookups++
+
+	return make([]float64, 32), make([]float64, 32), 0, nil
 }
 
 func TestRenderBinauralWithNoopDatasetMatchesMono(t *testing.T) {
@@ -66,4 +80,88 @@ func TestRenderBinauralUsesDirectionalHRTF(t *testing.T) {
 	if math.Abs(right.Samples[1]-0.5) > 1e-12 {
 		t.Fatalf("right sample = %v, want 0.5", right.Samples[1])
 	}
+}
+
+func TestRenderBinauralPreservesBandSpectrum(t *testing.T) {
+	t.Parallel()
+
+	const duration = 0.128
+
+	spec := acoustics.BandSpec{
+		CenterFreqs: []float64{125, 2000},
+		LowerEdges:  []float64{88, 1000},
+		UpperEdges:  []float64{500, 2828},
+	}
+	cfg := RenderConfig{SampleRate: binauralSpectralSampleRate, DurationSeconds: duration, BandSpec: spec}
+	event := Event{TimeSeconds: 0.02, Amplitude: 1, BandGain: []float64{1, 0}}
+
+	mono, err := RenderMono([]Event{event}, cfg)
+	if err != nil {
+		t.Fatalf("RenderMono() error = %v", err)
+	}
+
+	left, right, err := RenderBinaural([]Event{event}, hrtf.NoopDataset{SampleRateHz: binauralSpectralSampleRate}, cfg)
+	if err != nil {
+		t.Fatalf("RenderBinaural() error = %v", err)
+	}
+
+	for index := range mono.Samples {
+		if math.Abs(left.Samples[index]-mono.Samples[index]) > 1e-10 ||
+			math.Abs(right.Samples[index]-mono.Samples[index]) > 1e-10 {
+			t.Fatalf("sample %d: stereo = %g/%g, mono = %g", index, left.Samples[index], right.Samples[index], mono.Samples[index])
+		}
+	}
+
+	highBand, _, err := RenderBinaural([]Event{{
+		TimeSeconds: 0.02,
+		Amplitude:   1,
+		BandGain:    []float64{0, 1},
+	}}, hrtf.NoopDataset{SampleRateHz: binauralSpectralSampleRate}, cfg)
+	if err != nil {
+		t.Fatalf("RenderBinaural() high-band error = %v", err)
+	}
+
+	if spectralMagnitude(left.Samples, 125) <= spectralMagnitude(highBand.Samples, 125) {
+		t.Fatal("low-band event did not retain more 125 Hz energy than high-band event")
+	}
+
+	if spectralMagnitude(highBand.Samples, 2000) <= spectralMagnitude(left.Samples, 2000) {
+		t.Fatal("high-band event did not retain more 2000 Hz energy than low-band event")
+	}
+}
+
+func TestRenderBinauralHonorsConfiguredDuration(t *testing.T) {
+	t.Parallel()
+
+	dataset := &longHRIRDataset{}
+	events := []Event{
+		{TimeSeconds: 0.09, Amplitude: 1, Direction: geometry.Vec3{X: 1}},
+		{TimeSeconds: 1e6, Amplitude: 1, Direction: geometry.Vec3{X: 1}},
+	}
+
+	left, right, err := RenderBinaural(events, dataset, RenderConfig{SampleRate: 100, DurationSeconds: 0.1})
+	if err != nil {
+		t.Fatalf("RenderBinaural() error = %v", err)
+	}
+
+	if left.Len() != 10 || right.Len() != 10 {
+		t.Fatalf("stereo lengths = %d/%d, want configured length 10", left.Len(), right.Len())
+	}
+
+	if dataset.lookups != 1 {
+		t.Fatalf("HRTF lookup count = %d, want 1 (far-future event skipped)", dataset.lookups)
+	}
+}
+
+func spectralMagnitude(samples []float64, frequency float64) float64 {
+	var realPart float64
+	var imaginaryPart float64
+
+	for index, sample := range samples {
+		angle := -2 * math.Pi * frequency * float64(index) / binauralSpectralSampleRate
+		realPart += sample * math.Cos(angle)
+		imaginaryPart += sample * math.Sin(angle)
+	}
+
+	return math.Hypot(realPart, imaginaryPart)
 }

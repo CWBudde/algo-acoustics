@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
@@ -61,6 +62,82 @@ func TestMaterialScatteringRoundTrip(t *testing.T) {
 
 	if decoded.Scattering != original.Scattering {
 		t.Fatalf("Scattering = %#v, want %#v", decoded.Scattering, original.Scattering)
+	}
+}
+
+func TestMaterialMarshalOmitsAllZeroScattering(t *testing.T) {
+	material := scene.Material{
+		Name:             "alpha",
+		AbsorptionByBand: []float64{0.1, 0.1, 0.1, 0.1, 0.1, 0.1},
+		ScatteringByBand: make([]float64, scene.NumBands),
+	}
+
+	encoded, err := json.Marshal(material)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+
+	var payload map[string]json.RawMessage
+
+	err = json.Unmarshal(encoded, &payload)
+	if err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	if _, ok := payload["scattering"]; ok {
+		t.Fatalf("Marshal() emitted zero scattering: %s", encoded)
+	}
+
+	if _, ok := payload["scatteringByBand"]; ok {
+		t.Fatalf("Marshal() emitted zero scatteringByBand: %s", encoded)
+	}
+}
+
+func TestMaterialOctave8ScatteringRoundTripPrefersVariableBands(t *testing.T) {
+	original := scene.Material{
+		Name:             "octave8",
+		AbsorptionByBand: []float64{0.1, 0.1, 0.12, 0.14, 0.16, 0.18, 0.2, 0.22},
+		Scattering:       [scene.NumBands]float64{0.9, 0.8, 0.7, 0.6, 0.5, 0.4},
+		ScatteringByBand: []float64{0.01, 0.04, 0.09, 0.16, 0.25, 0.36, 0.49, 0.64},
+	}
+
+	encoded, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+
+	var payload map[string]json.RawMessage
+
+	err = json.Unmarshal(encoded, &payload)
+	if err != nil {
+		t.Fatalf("Unmarshal() payload failed: %v", err)
+	}
+
+	var encodedBands []float64
+
+	err = json.Unmarshal(payload["scatteringByBand"], &encodedBands)
+	if err != nil {
+		t.Fatalf("Unmarshal() scatteringByBand failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(encodedBands, original.ScatteringByBand) {
+		t.Fatalf("encoded ScatteringByBand = %#v, want %#v", encodedBands, original.ScatteringByBand)
+	}
+
+	var decoded scene.Material
+
+	err = json.Unmarshal(encoded, &decoded)
+	if err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(decoded.ScatteringByBand, original.ScatteringByBand) {
+		t.Fatalf("ScatteringByBand = %#v, want %#v", decoded.ScatteringByBand, original.ScatteringByBand)
+	}
+
+	wantLegacy := [scene.NumBands]float64{0.01, 0.04, 0.09, 0.16, 0.25, 0.36}
+	if decoded.Scattering != wantLegacy {
+		t.Fatalf("Scattering = %#v, want compatibility prefix %#v", decoded.Scattering, wantLegacy)
 	}
 }
 
@@ -149,5 +226,67 @@ func TestMaterialLibraryRetrievable(t *testing.T) {
 	_, ok := mat.FromLibrary("nonexistent_material")
 	if ok {
 		t.Errorf("FromLibrary(\"nonexistent_material\") returned true, want false")
+	}
+}
+
+func TestMaterialFromLibraryReturnsDeepCopy(t *testing.T) {
+	var materialName string
+	for name := range scene.MaterialLibrary {
+		materialName = name
+		break
+	}
+
+	if materialName == "" {
+		t.Fatal("MaterialLibrary is empty")
+	}
+
+	material := scene.Material{}
+
+	first, ok := material.FromLibrary(materialName)
+	if !ok {
+		t.Fatalf("FromLibrary(%q) returned false", materialName)
+	}
+
+	first.AbsorptionByBand[0] = 0.99
+	if len(first.ScatteringByBand) > 0 {
+		first.ScatteringByBand[0] = 0.99
+	}
+
+	second, ok := material.FromLibrary(materialName)
+	if !ok {
+		t.Fatalf("second FromLibrary(%q) returned false", materialName)
+	}
+
+	if second.AbsorptionByBand[0] == 0.99 {
+		t.Fatal("mutating returned absorption coefficients changed the material library")
+	}
+
+	if len(second.ScatteringByBand) > 0 && second.ScatteringByBand[0] == 0.99 {
+		t.Fatal("mutating returned scattering coefficients changed the material library")
+	}
+}
+
+func TestBandIndependentConvenienceMaterials(t *testing.T) {
+	tests := []struct {
+		name       string
+		material   scene.Material
+		absorption float64
+	}{
+		{name: "fully absorptive", material: scene.MaterialFullyAbsorptive(), absorption: 1},
+		{name: "fully reflective", material: scene.MaterialFullyReflective(), absorption: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for band := range acoustics.Octave8.BandCount() {
+				if got := test.material.AbsorptionAt(band); got != test.absorption {
+					t.Fatalf("AbsorptionAt(%d) = %v, want %v", band, got, test.absorption)
+				}
+			}
+
+			if got := test.material.ScatteringCoefficients(acoustics.Octave8.BandCount()); !reflect.DeepEqual(got, make([]float64, acoustics.Octave8.BandCount())) {
+				t.Fatalf("ScatteringCoefficients(8) = %#v, want all zero", got)
+			}
+		})
 	}
 }

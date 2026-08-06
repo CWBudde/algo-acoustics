@@ -4,8 +4,9 @@ let wasmReady = false;
 let currentRequestId = 0;
 let goRuntime = null;
 
-self.algoAcousticsDemoCancelRequested = false;
-
+// Rendering is synchronous inside Go/WASM. The page cancels it by terminating
+// this worker and creating a fresh one, because a cancel message cannot run
+// until the render has already returned.
 self.addEventListener("message", async (event) => {
   const message = event.data ?? {};
 
@@ -16,11 +17,6 @@ self.addEventListener("message", async (event) => {
     } catch (error) {
       postMessage({ type: "error", message: String(error) });
     }
-    return;
-  }
-
-  if (message.type === "cancel") {
-    self.algoAcousticsDemoCancelRequested = true;
     return;
   }
 
@@ -35,7 +31,6 @@ self.addEventListener("message", async (event) => {
     }
 
     currentRequestId = message.requestId;
-    self.algoAcousticsDemoCancelRequested = false;
     self.algoAcousticsDemoProgress = (stage, percent, detail) => {
       postMessage({
         type: "progress",
@@ -48,11 +43,6 @@ self.addEventListener("message", async (event) => {
 
     try {
       const result = self.algoAcousticsDemo.renderScene(message.payload ?? {});
-      if (self.algoAcousticsDemoCancelRequested) {
-        postMessage({ type: "cancelled", requestId: currentRequestId });
-        return;
-      }
-
       if (result?.error) {
         postMessage({
           type: "error",

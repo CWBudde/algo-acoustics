@@ -1,6 +1,7 @@
 package raytrace
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
@@ -49,6 +50,54 @@ func newEvaluatePathsRayTracer(absorptionCoeff float64) *RayTracer {
 		},
 		Scene:          sc,
 		ReceiverRadius: 0.25,
+	}
+}
+
+func TestEvaluatePathsRejectsStaleCache(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*RayTracer)
+	}{
+		{
+			name: "geometry",
+			mutate: func(rt *RayTracer) {
+				rt.Scene.Room.Shoebox.Width++
+			},
+		},
+		{
+			name: "effective receiver radius",
+			mutate: func(rt *RayTracer) {
+				rt.ReceiverRadius = 0.5
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			rt := newEvaluatePathsRayTracer(0.1)
+			rt.ReceiverRadius = 0 // TracePaths records the effective default, 0.25.
+
+			cache, err := rt.TracePaths()
+			if err != nil {
+				t.Fatalf("TracePaths() error = %v", err)
+			}
+
+			_, err = rt.EvaluatePaths(cache)
+			if err != nil {
+				t.Fatalf("EvaluatePaths() with effective default radius error = %v", err)
+			}
+
+			test.mutate(rt)
+
+			_, err = rt.EvaluatePaths(cache)
+			if err == nil || !strings.Contains(err.Error(), "path cache is stale") {
+				t.Fatalf("EvaluatePaths() error = %v, want stale-cache error", err)
+			}
+		})
 	}
 }
 

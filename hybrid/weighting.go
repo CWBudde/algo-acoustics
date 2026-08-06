@@ -9,13 +9,18 @@ import (
 	window "github.com/cwbudde/algo-dsp/dsp/window"
 )
 
-const defaultFadeWindowName = "hann"
+const (
+	defaultFadeWindowName = "hann"
+	fadeWindowLinear      = "linear"
+	fadeWindowBlackman    = "blackman"
+	fadeWindowTukey       = "tukey"
+)
 
 var supportedFadeWindowNames = []string{
-	"linear",
-	"hann",
+	fadeWindowLinear,
+	defaultFadeWindowName,
 	"hamming",
-	"blackman",
+	fadeWindowBlackman,
 	"exact-blackman",
 	"blackman-harris",
 	"blackman-harris-3t",
@@ -24,7 +29,7 @@ var supportedFadeWindowNames = []string{
 	"nuttall-cfd",
 	"flat-top",
 	"kaiser",
-	"tukey",
+	fadeWindowTukey,
 	"triangle",
 	"cosine",
 	"welch",
@@ -46,6 +51,44 @@ var supportedFadeWindowNames = []string{
 	"albrecht-11t",
 }
 
+var fadeWindowTypes = map[string]window.Type{
+	defaultFadeWindowName: window.TypeHann,
+	"hamming":             window.TypeHamming,
+	fadeWindowBlackman:    window.TypeBlackman,
+	"exact-blackman":      window.TypeExactBlackman,
+	"blackman-harris":     window.TypeBlackmanHarris4Term,
+	"blackmanharris":      window.TypeBlackmanHarris4Term,
+	"blackman-harris-4t":  window.TypeBlackmanHarris4Term,
+	"blackman-harris-3t":  window.TypeBlackmanHarris3Term,
+	"blackman-nuttall":    window.TypeBlackmanNuttall,
+	"nuttall-ctd":         window.TypeNuttallCTD,
+	"nuttall-cfd":         window.TypeNuttallCFD,
+	"flat-top":            window.TypeFlatTop,
+	"flattop":             window.TypeFlatTop,
+	"kaiser":              window.TypeKaiser,
+	fadeWindowTukey:       window.TypeTukey,
+	"triangle":            window.TypeTriangle,
+	"cosine":              window.TypeCosine,
+	"welch":               window.TypeWelch,
+	"lanczos":             window.TypeLanczos,
+	"gauss":               window.TypeGauss,
+	"gaussian":            window.TypeGauss,
+	"lawrey-5t":           window.TypeLawrey5Term,
+	"lawrey-6t":           window.TypeLawrey6Term,
+	"burgess-59db":        window.TypeBurgessOptimized59dB,
+	"burgess-71db":        window.TypeBurgessOptimized71dB,
+	"albrecht-2t":         window.TypeAlbrecht2Term,
+	"albrecht-3t":         window.TypeAlbrecht3Term,
+	"albrecht-4t":         window.TypeAlbrecht4Term,
+	"albrecht-5t":         window.TypeAlbrecht5Term,
+	"albrecht-6t":         window.TypeAlbrecht6Term,
+	"albrecht-7t":         window.TypeAlbrecht7Term,
+	"albrecht-8t":         window.TypeAlbrecht8Term,
+	"albrecht-9t":         window.TypeAlbrecht9Term,
+	"albrecht-10t":        window.TypeAlbrecht10Term,
+	"albrecht-11t":        window.TypeAlbrecht11Term,
+}
+
 // FadeWindowConfig selects the fade law used across the crossover window.
 type FadeWindowConfig struct {
 	// Name selects the window family. Empty defaults to "hann".
@@ -64,7 +107,7 @@ func SupportedFadeWindows() []string {
 // ValidateFadeWindowConfig reports whether a fade window config is supported.
 func ValidateFadeWindowConfig(cfg FadeWindowConfig) error {
 	name := normalizedFadeWindowName(cfg.Name)
-	if name == "linear" {
+	if name == fadeWindowLinear {
 		return nil
 	}
 
@@ -164,7 +207,7 @@ func fadeWeights(n int, fadeIn bool, cfg FadeWindowConfig) []float64 {
 func increasingFadeWeights(n int, cfg FadeWindowConfig) []float64 {
 	name := normalizedFadeWindowName(cfg.Name)
 
-	if name == "linear" {
+	if name == fadeWindowLinear {
 		return LinearFade(0, n-1, n)
 	}
 
@@ -205,70 +248,7 @@ func normalizedFadeWindowName(name string) string {
 }
 
 func resolveFadeWindowType(name string) (window.Type, bool) {
-	switch name {
-	case "hann":
-		return window.TypeHann, true
-	case "hamming":
-		return window.TypeHamming, true
-	case "blackman":
-		return window.TypeBlackman, true
-	case "exact-blackman":
-		return window.TypeExactBlackman, true
-	case "blackman-harris", "blackmanharris", "blackman-harris-4t":
-		return window.TypeBlackmanHarris4Term, true
-	case "blackman-harris-3t":
-		return window.TypeBlackmanHarris3Term, true
-	case "blackman-nuttall":
-		return window.TypeBlackmanNuttall, true
-	case "nuttall-ctd":
-		return window.TypeNuttallCTD, true
-	case "nuttall-cfd":
-		return window.TypeNuttallCFD, true
-	case "flat-top", "flattop":
-		return window.TypeFlatTop, true
-	case "kaiser":
-		return window.TypeKaiser, true
-	case "tukey":
-		return window.TypeTukey, true
-	case "triangle":
-		return window.TypeTriangle, true
-	case "cosine":
-		return window.TypeCosine, true
-	case "welch":
-		return window.TypeWelch, true
-	case "lanczos":
-		return window.TypeLanczos, true
-	case "gauss", "gaussian":
-		return window.TypeGauss, true
-	case "lawrey-5t":
-		return window.TypeLawrey5Term, true
-	case "lawrey-6t":
-		return window.TypeLawrey6Term, true
-	case "burgess-59db":
-		return window.TypeBurgessOptimized59dB, true
-	case "burgess-71db":
-		return window.TypeBurgessOptimized71dB, true
-	case "albrecht-2t":
-		return window.TypeAlbrecht2Term, true
-	case "albrecht-3t":
-		return window.TypeAlbrecht3Term, true
-	case "albrecht-4t":
-		return window.TypeAlbrecht4Term, true
-	case "albrecht-5t":
-		return window.TypeAlbrecht5Term, true
-	case "albrecht-6t":
-		return window.TypeAlbrecht6Term, true
-	case "albrecht-7t":
-		return window.TypeAlbrecht7Term, true
-	case "albrecht-8t":
-		return window.TypeAlbrecht8Term, true
-	case "albrecht-9t":
-		return window.TypeAlbrecht9Term, true
-	case "albrecht-10t":
-		return window.TypeAlbrecht10Term, true
-	case "albrecht-11t":
-		return window.TypeAlbrecht11Term, true
-	default:
-		return 0, false
-	}
+	windowType, ok := fadeWindowTypes[name]
+
+	return windowType, ok
 }

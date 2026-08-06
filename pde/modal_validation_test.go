@@ -1,6 +1,7 @@
 package pde
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -131,7 +132,7 @@ func localSweepPeak(room *scene.Shoebox, src, rcv geometry.Vec3, centerFreq floa
 	bestDistance := math.Inf(1)
 
 	for index := 1; index < len(magnitudes)-1; index++ {
-		if magnitudes[index] < magnitudes[index-1] || magnitudes[index] < magnitudes[index+1] {
+		if magnitudes[index] <= magnitudes[index-1] || magnitudes[index] <= magnitudes[index+1] {
 			continue
 		}
 
@@ -146,16 +147,5 @@ func localSweepPeak(room *scene.Shoebox, src, rcv geometry.Vec3, centerFreq floa
 		return tf.Freqs[bestLocalIndex], nil
 	}
 
-	closestIndex := 0
-
-	closestDistance := math.Abs(tf.Freqs[0] - centerFreq)
-	for index := 1; index < len(tf.Freqs); index++ {
-		distance := math.Abs(tf.Freqs[index] - centerFreq)
-		if distance < closestDistance {
-			closestDistance = distance
-			closestIndex = index
-		}
-	}
-
-	return tf.Freqs[closestIndex], nil
+	return 0, fmt.Errorf("no local sweep peak found near %.3f Hz", centerFreq)
 }

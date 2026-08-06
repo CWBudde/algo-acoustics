@@ -88,3 +88,45 @@ func TestBlendLowFreqZeroLowPassesGeoIR(t *testing.T) {
 		t.Fatalf("Samples[0] = %v, want non-zero (highpass of geo-IR impulse)", out.Samples[0])
 	}
 }
+
+func TestBlendLowFreqLowOnlySinusoidPreservesAmplitudeAndSymmetry(t *testing.T) {
+	t.Parallel()
+
+	const (
+		n          = 1024
+		sampleRate = 4096
+		frequency  = 64
+		crossover  = 1024
+	)
+
+	lowIR := make([]float64, n)
+	for i := range lowIR {
+		lowIR[i] = math.Sin(2 * math.Pi * frequency * float64(i) / sampleRate)
+	}
+
+	geoIR := &ir.Buffer{SampleRate: sampleRate, Samples: make([]float64, n)}
+
+	out := BlendLowFreq(lowIR, geoIR, crossover, sampleRate)
+	if out == nil {
+		t.Fatal("BlendLowFreq() returned nil")
+	}
+
+	var inputPower, outputPower, errorPower float64
+
+	for i, input := range lowIR {
+		output := out.Samples[i]
+		inputPower += input * input
+		outputPower += output * output
+		difference := output - input
+		errorPower += difference * difference
+	}
+
+	amplitudeRatio := math.Sqrt(outputPower / inputPower)
+	if math.Abs(amplitudeRatio-1) > 1e-3 {
+		t.Fatalf("output/input RMS amplitude ratio = %v, want 1", amplitudeRatio)
+	}
+
+	if relativeError := math.Sqrt(errorPower / inputPower); relativeError > 1e-3 {
+		t.Fatalf("relative waveform error = %v, want <= 0.001; conjugate bins were not weighted symmetrically", relativeError)
+	}
+}

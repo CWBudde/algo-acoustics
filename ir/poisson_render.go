@@ -36,19 +36,16 @@ type PoissonConfig struct {
 //     s_i = v_i * sqrt(E_n(k) / sum(v_i^2 in slot k))
 //  4. Sum all weighted bands to produce the monaural RIR.
 func RenderMonoPoisson(cfg PoissonConfig, rng *rand.Rand) (*Buffer, error) {
-	bandCount := cfg.BandSpec.BandCount()
-	if bandCount == 0 {
-		return nil, errors.New("band spec has no bands")
-	}
-
-	if cfg.SampleRate <= 0 {
-		return nil, errors.New("sample rate must be positive")
+	err := validatePoissonInputs(cfg.Bins, cfg.BinDuration, cfg.Volume, cfg.BandSpec, cfg.SampleRate, rng)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(cfg.Bins) == 0 {
 		return NewBuffer(cfg.SampleRate, 0), nil
 	}
 
+	bandCount := cfg.BandSpec.BandCount()
 	duration := cfg.Bins[len(cfg.Bins)-1].TimeSeconds + cfg.BinDuration
 	bufLen := int(math.Ceil(duration * float64(cfg.SampleRate)))
 	fftSize := nextPow2(2 * bufLen)
@@ -88,6 +85,104 @@ func RenderMonoPoisson(cfg PoissonConfig, rng *rand.Rand) (*Buffer, error) {
 	}
 
 	return &Buffer{SampleRate: cfg.SampleRate, Samples: output}, nil
+}
+
+func validatePoissonInputs(
+	bins []EnergyBin,
+	binDuration, volume float64,
+	bandSpec acoustics.BandSpec,
+	sampleRate int,
+	rng *rand.Rand,
+) error {
+	err := validatePoissonScalars(binDuration, volume, bandSpec, sampleRate, rng)
+	if err != nil {
+		return err
+	}
+
+	return validateEnergyBins(bins, binDuration, bandSpec.BandCount())
+}
+
+func validatePoissonScalars(
+	binDuration, volume float64,
+	bandSpec acoustics.BandSpec,
+	sampleRate int,
+	rng *rand.Rand,
+) error {
+	bandCount := bandSpec.BandCount()
+	if bandCount == 0 {
+		return errors.New("band spec has no bands")
+	}
+
+	if len(bandSpec.LowerEdges) != bandCount || len(bandSpec.UpperEdges) != bandCount {
+		return errors.New("band spec center and edge lengths must match")
+	}
+
+	if sampleRate <= 0 {
+		return errors.New("sample rate must be positive")
+	}
+
+	if !finitePositive(volume) {
+		return errors.New("volume must be positive and finite")
+	}
+
+	if !finitePositive(binDuration) {
+		return errors.New("bin duration must be positive and finite")
+	}
+
+	if rng == nil {
+		return errors.New("random source must not be nil")
+	}
+
+	return nil
+}
+
+func validateEnergyBins(bins []EnergyBin, binDuration float64, bandCount int) error {
+	previousTime := 0.0
+
+	for index, bin := range bins {
+		err := validateEnergyBin(bin, index, previousTime, bandCount)
+		if err != nil {
+			return err
+		}
+
+		previousTime = bin.TimeSeconds
+	}
+
+	if len(bins) > 0 && math.IsInf(bins[len(bins)-1].TimeSeconds+binDuration, 0) {
+		return errors.New("render duration must be finite")
+	}
+
+	return nil
+}
+
+func validateEnergyBin(bin EnergyBin, index int, previousTime float64, bandCount int) error {
+	if !finiteNonnegative(bin.TimeSeconds) {
+		return fmt.Errorf("bin %d time must be nonnegative and finite", index)
+	}
+
+	if index > 0 && bin.TimeSeconds < previousTime {
+		return fmt.Errorf("bins must be sorted by time: bin %d precedes bin %d", index, index-1)
+	}
+
+	if len(bin.BandEnergy) != bandCount {
+		return fmt.Errorf("bin %d has %d band energies, want %d", index, len(bin.BandEnergy), bandCount)
+	}
+
+	for band, energy := range bin.BandEnergy {
+		if !finiteNonnegative(energy) {
+			return fmt.Errorf("bin %d band %d energy must be nonnegative and finite", index, band)
+		}
+	}
+
+	return nil
+}
+
+func finitePositive(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func finiteNonnegative(value float64) bool {
+	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 // poissonFFT generates a Poisson sequence and returns its FFT plan and spectrum.
@@ -191,42 +286,48 @@ func buildStrictBandWeights(spec acoustics.BandSpec, fftSize, sampleRate int) []
 // histogram's energy for that band. No additional bandwidth scaling is needed
 // because the input is already band-filtered.
 func applyEnergyEnvelope(bandSeq []float64, bins []EnergyBin, band int, binDuration float64, sampleRate int) {
+	input := append([]float64(nil), bandSeq...)
+	clear(bandSeq)
+
 	for _, bin := range bins {
 		if band >= len(bin.BandEnergy) {
 			continue
 		}
 
+		start := max(int(math.Round(bin.TimeSeconds*float64(sampleRate))), 0)
+
+		end := min(int(math.Round((bin.TimeSeconds+binDuration)*float64(sampleRate))), len(bandSeq))
+		if start >= end {
+			continue
+		}
+
 		energy := bin.BandEnergy[band]
 		if energy <= 0 {
-			// Zero energy → silence this slot.
-			start := int(math.Round(bin.TimeSeconds * float64(sampleRate)))
-			end := int(math.Round((bin.TimeSeconds + binDuration) * float64(sampleRate)))
-			end = min(end, len(bandSeq))
-
-			for i := max(start, 0); i < end; i++ {
+			// Later bins deterministically overwrite earlier bins in overlaps.
+			for i := start; i < end; i++ {
 				bandSeq[i] = 0
 			}
 
 			continue
 		}
 
-		start := int(math.Round(bin.TimeSeconds * float64(sampleRate)))
-		end := int(math.Round((bin.TimeSeconds + binDuration) * float64(sampleRate)))
-		end = min(end, len(bandSeq))
-
 		// Compute sum of v_i^2 in this slot.
 		var sumSq float64
-		for i := max(start, 0); i < end; i++ {
-			sumSq += bandSeq[i] * bandSeq[i]
+		for i := start; i < end; i++ {
+			sumSq += input[i] * input[i]
 		}
 
 		if sumSq <= 0 {
+			for i := start; i < end; i++ {
+				bandSeq[i] = 0
+			}
+
 			continue
 		}
 
 		scale := math.Sqrt(energy / sumSq)
-		for i := max(start, 0); i < end; i++ {
-			bandSeq[i] *= scale
+		for i := start; i < end; i++ {
+			bandSeq[i] = input[i] * scale
 		}
 	}
 }

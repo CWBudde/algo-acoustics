@@ -30,7 +30,7 @@ const maxMu = 10000.0 // maximum event rate in s⁻¹ to prevent rattling artifa
 // determined by the event's position within the sample: first half positive,
 // second half negative.
 func PoissonSequence(volume float64, sampleRate int, duration float64, rng *rand.Rand) []float64 {
-	if volume <= 0 || sampleRate <= 0 || duration <= 0 {
+	if !finitePositive(volume) || sampleRate <= 0 || !finitePositive(duration) || rng == nil {
 		return nil
 	}
 

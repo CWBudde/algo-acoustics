@@ -48,7 +48,8 @@ func shoeboxMesh(w, d, h float64) (*geometry.Mesh, []BVHNode, []Triangle) {
 
 	tris := make([]geometry.Triangle, 0, 12)
 	for _, f := range faces {
-		tris = append(tris,
+		tris = append(
+			tris,
 			geometry.Triangle{V0: v[f[0]], V1: v[f[1]], V2: v[f[2]]},
 			geometry.Triangle{V0: v[f[0]], V1: v[f[2]], V2: v[f[3]]},
 		)

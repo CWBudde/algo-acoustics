@@ -157,9 +157,8 @@ func TestRenderBinauralPoissonITD(t *testing.T) {
 	}
 
 	// Find the first significant sample in each channel.
-	threshold := 1e-6
-	leftFirst := findFirstSignificant(left.Samples, threshold)
-	rightFirst := findFirstSignificant(right.Samples, threshold)
+	leftFirst := findFirstSignificant(left.Samples)
+	rightFirst := findFirstSignificant(right.Samples)
 
 	if leftFirst < 0 || rightFirst < 0 {
 		t.Fatalf("no significant samples found (left=%d, right=%d)", leftFirst, rightFirst)
@@ -182,23 +181,31 @@ func TestRenderBinauralPoissonITD(t *testing.T) {
 func TestRenderBinauralPoissonInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	rng := rand.New(rand.NewSource(0))
-
 	tests := []struct {
 		name string
 		cfg  BinauralPoissonConfig
 	}{
 		{
 			name: "no bands",
-			cfg:  BinauralPoissonConfig{SampleRate: 44100, HRTF: hrtf.NoopDataset{SampleRateHz: 44100}},
+			cfg:  BinauralPoissonConfig{BinDuration: 0.01, Volume: 100, SampleRate: 44100, HRTF: hrtf.NoopDataset{SampleRateHz: 44100}},
 		},
 		{
 			name: "zero sample rate",
-			cfg:  BinauralPoissonConfig{BandSpec: acoustics.Octave6, HRTF: hrtf.NoopDataset{}},
+			cfg:  BinauralPoissonConfig{BinDuration: 0.01, Volume: 100, BandSpec: acoustics.Octave6, HRTF: hrtf.NoopDataset{}},
 		},
 		{
 			name: "nil HRTF",
-			cfg:  BinauralPoissonConfig{BandSpec: acoustics.Octave6, SampleRate: 44100},
+			cfg:  BinauralPoissonConfig{BinDuration: 0.01, Volume: 100, BandSpec: acoustics.Octave6, SampleRate: 44100},
+		},
+		{
+			name: "HRTF sample rate mismatch",
+			cfg: BinauralPoissonConfig{
+				BinDuration: 0.01,
+				Volume:      100,
+				BandSpec:    acoustics.Octave6,
+				SampleRate:  44100,
+				HRTF:        hrtf.NoopDataset{SampleRateHz: 48000},
+			},
 		},
 	}
 
@@ -206,7 +213,7 @@ func TestRenderBinauralPoissonInvalidInputs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, _, err := RenderBinauralPoisson(tt.cfg, rng)
+			_, _, err := RenderBinauralPoisson(tt.cfg, rand.New(rand.NewSource(0)))
 			if err == nil {
 				t.Fatal("expected error for invalid config")
 			}
@@ -218,9 +225,11 @@ func TestRenderBinauralPoissonEmptyBins(t *testing.T) {
 	t.Parallel()
 
 	cfg := BinauralPoissonConfig{
-		BandSpec:   acoustics.Octave6,
-		SampleRate: 44100,
-		HRTF:       hrtf.NoopDataset{SampleRateHz: 44100},
+		BinDuration: 0.01,
+		Volume:      100,
+		BandSpec:    acoustics.Octave6,
+		SampleRate:  44100,
+		HRTF:        hrtf.NoopDataset{SampleRateHz: 44100},
 	}
 
 	rng := rand.New(rand.NewSource(0))
@@ -235,7 +244,60 @@ func TestRenderBinauralPoissonEmptyBins(t *testing.T) {
 	}
 }
 
-func findFirstSignificant(samples []float64, threshold float64) int {
+func TestRenderBinauralPoissonIdentityHRIRPreservesEnvelope(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sampleRate  = 8000
+		binDuration = 0.01
+	)
+
+	spec := acoustics.BandSpec{
+		CenterFreqs: []float64{1000},
+		LowerEdges:  []float64{700},
+		UpperEdges:  []float64{1400},
+	}
+	bins := []EnergyBin{
+		{TimeSeconds: 0, BandEnergy: []float64{0.2}},
+		{TimeSeconds: binDuration, BandEnergy: []float64{0.4}},
+		{TimeSeconds: 3 * binDuration, BandEnergy: []float64{0.1}},
+	}
+	monoConfig := PoissonConfig{
+		Bins:        bins,
+		BinDuration: binDuration,
+		Volume:      50,
+		BandSpec:    spec,
+		SampleRate:  sampleRate,
+	}
+	binauralConfig := BinauralPoissonConfig{
+		Bins:        bins,
+		BinDuration: binDuration,
+		Volume:      50,
+		BandSpec:    spec,
+		SampleRate:  sampleRate,
+		HRTF:        hrtf.NoopDataset{SampleRateHz: sampleRate},
+	}
+
+	mono, err := RenderMonoPoisson(monoConfig, rand.New(rand.NewSource(123)))
+	if err != nil {
+		t.Fatalf("RenderMonoPoisson() error = %v", err)
+	}
+
+	left, right, err := RenderBinauralPoisson(binauralConfig, rand.New(rand.NewSource(123)))
+	if err != nil {
+		t.Fatalf("RenderBinauralPoisson() error = %v", err)
+	}
+
+	for index, want := range mono.Samples {
+		if math.Abs(left.Samples[index]-want) > 1e-12 || math.Abs(right.Samples[index]-want) > 1e-12 {
+			t.Fatalf("sample %d = %g/%g, want identity output %g", index, left.Samples[index], right.Samples[index], want)
+		}
+	}
+}
+
+func findFirstSignificant(samples []float64) int {
+	const threshold = 1e-6
+
 	for i, s := range samples {
 		if math.Abs(s) > threshold {
 			return i

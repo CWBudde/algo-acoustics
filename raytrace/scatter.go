@@ -19,6 +19,17 @@ func SpecularReflect(dir, normal geometry.Vec3) geometry.Vec3 {
 	return dir.Sub(n.Scale(2 * dir.Dot(n)))
 }
 
+// faceIncidentSide orients a surface normal toward the side from which dir
+// arrived. Diffuse reflection must sample this hemisphere so rays in a closed
+// room continue into the interior regardless of mesh winding or wall normals.
+func faceIncidentSide(dir, normal geometry.Vec3) geometry.Vec3 {
+	if dir.Dot(normal) > 0 {
+		return normal.Scale(-1)
+	}
+
+	return normal
+}
+
 // LambertDirection returns a cosine-weighted hemisphere sample around normal.
 // Uses the standard Lambert sampling: theta = arccos(sqrt(r1)), phi = 2*pi*r2.
 // This ensures the pdf is proportional to cos(theta), the standard diffuse reflection model.

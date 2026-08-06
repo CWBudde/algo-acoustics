@@ -105,10 +105,7 @@ func (r *RayTracer) TracePaths() (*PathCache, error) {
 		paths[i] = tp
 	}
 
-	receiverRadius := r.ReceiverRadius
-	if receiverRadius <= 0 {
-		receiverRadius = 0.25
-	}
+	receiverRadius := effectiveReceiverRadius(r.ReceiverRadius)
 
 	return &PathCache{
 		Paths:          paths,

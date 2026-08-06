@@ -138,6 +138,8 @@ func computeDiffuseRain(
 // the connection vector.
 //
 // If the detector is not visible (occluded or backfacing), nil is returned.
+//
+//nolint:unparam // These physical inputs vary when surface rain is used by production tracing.
 func computeSurfaceRain(
 	reflectionPoint, surfaceNormal geometry.Vec3,
 	energy, scattering []float64,

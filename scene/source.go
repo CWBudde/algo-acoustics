@@ -8,9 +8,14 @@ import (
 	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
+const (
+	directivityTypeOmni     = "omni"
+	directivityTypeCardioid = "cardioid"
+)
+
 // Source is an emitting point in the scene.
 //
-//nolint:recvcheck // UnmarshalJSON must mutate the receiver while query/marshal methods are value-based.
+//nolint:recvcheck,tagliatelle // Mutable JSON receiver; camel-case tags preserve the public scene schema.
 type Source struct {
 	Position    geometry.Vec3       `json:"position"`
 	Orientation geometry.Quaternion `json:"orientation"`
@@ -18,6 +23,7 @@ type Source struct {
 	Directivity directivity.Model   `json:"-"`
 }
 
+//nolint:tagliatelle // This compatibility payload mirrors the public scene schema.
 type sourceJSON struct {
 	Position    geometry.Vec3       `json:"position"`
 	Orientation geometry.Quaternion `json:"orientation"`
@@ -25,22 +31,23 @@ type sourceJSON struct {
 	Directivity *directivityJSON    `json:"directivity,omitempty"`
 }
 
+//nolint:tagliatelle // orderN is part of the established public scene schema.
 type directivityJSON struct {
 	Type   string        `json:"type"`
-	Axis   geometry.Vec3 `json:"axis,omitempty"`
+	Axis   geometry.Vec3 `json:"axis"`
 	OrderN float64       `json:"orderN,omitempty"`
 }
 
 func directivityJSONFromModel(model directivity.Model) (*directivityJSON, error) {
 	switch typed := model.(type) {
 	case directivity.OmniModel:
-		return &directivityJSON{Type: "omni"}, nil
+		return &directivityJSON{Type: directivityTypeOmni}, nil
 	case *directivity.OmniModel:
-		return &directivityJSON{Type: "omni"}, nil
+		return &directivityJSON{Type: directivityTypeOmni}, nil
 	case directivity.CardioidModel:
-		return &directivityJSON{Type: "cardioid", Axis: typed.Axis, OrderN: typed.OrderN}, nil
+		return &directivityJSON{Type: directivityTypeCardioid, Axis: typed.Axis, OrderN: typed.OrderN}, nil
 	case *directivity.CardioidModel:
-		return &directivityJSON{Type: "cardioid", Axis: typed.Axis, OrderN: typed.OrderN}, nil
+		return &directivityJSON{Type: directivityTypeCardioid, Axis: typed.Axis, OrderN: typed.OrderN}, nil
 	default:
 		return nil, fmt.Errorf("unsupported directivity model %T", model)
 	}
@@ -48,9 +55,9 @@ func directivityJSONFromModel(model directivity.Model) (*directivityJSON, error)
 
 func (d directivityJSON) toModel() (directivity.Model, error) {
 	switch d.Type {
-	case "omni":
+	case directivityTypeOmni:
 		return directivity.OmniModel{}, nil
-	case "cardioid":
+	case directivityTypeCardioid:
 		return directivity.CardioidModel{Axis: d.Axis, OrderN: d.OrderN}, nil
 	default:
 		return nil, fmt.Errorf("unsupported directivity type %q", d.Type)

@@ -86,6 +86,20 @@ func chooseBlendDirection(specularDir, diffuseDir geometry.Vec3, scatter float64
 	return dir.Normalize()
 }
 
+func sampleProbabilisticReflection(
+	specularDir, diffuseDir geometry.Vec3,
+	remainingEnergy []float64,
+	scatter float64,
+	rng *rand.Rand,
+) (geometry.Vec3, []float64, bool) {
+	scatter = clamp01(scatter)
+	if scatter >= 1 || (scatter > 0 && rng.Float64() < scatter) {
+		return diffuseDir, remainingEnergy, true
+	}
+
+	return specularDir, remainingEnergy, false
+}
+
 func russianRouletteEnergy(energy []float64, threshold float64, rng *rand.Rand) ([]float64, bool) {
 	if len(energy) == 0 {
 		return nil, false

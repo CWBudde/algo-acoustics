@@ -110,6 +110,48 @@ func TestIACCEmptyBuffers(t *testing.T) {
 	}
 }
 
+func TestIACCRejectsIncompatibleBuffers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		left  *ir.Buffer
+		right *ir.Buffer
+	}{
+		{
+			name:  "non-positive left sample rate",
+			left:  &ir.Buffer{SampleRate: 0, Samples: []float64{1}},
+			right: &ir.Buffer{SampleRate: 48000, Samples: []float64{1}},
+		},
+		{
+			name:  "non-positive right sample rate",
+			left:  &ir.Buffer{SampleRate: 48000, Samples: []float64{1}},
+			right: &ir.Buffer{SampleRate: 0, Samples: []float64{1}},
+		},
+		{
+			name:  "different sample rates",
+			left:  &ir.Buffer{SampleRate: 44100, Samples: []float64{1}},
+			right: &ir.Buffer{SampleRate: 48000, Samples: []float64{1}},
+		},
+		{
+			name:  "different lengths",
+			left:  &ir.Buffer{SampleRate: 48000, Samples: []float64{1}},
+			right: &ir.Buffer{SampleRate: 48000, Samples: []float64{1, 0}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := IACC(test.left, test.right)
+			if err == nil {
+				t.Fatal("IACC() error = nil, want error")
+			}
+		})
+	}
+}
+
 func TestIACCRange(t *testing.T) {
 	t.Parallel()
 

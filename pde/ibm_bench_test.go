@@ -30,7 +30,8 @@ func benchDiamondRoom(size, spacing float64) (*IBMGrid, *IBMStencil) {
 	}
 
 	walls := make([]geometry.Plane, 0, 6)
-	walls = append(walls,
+	walls = append(
+		walls,
 		geometry.Plane{Normal: geometry.Vec3{Z: 1}, Distance: 0},
 		geometry.Plane{Normal: geometry.Vec3{Z: -1}, Distance: -size},
 	)

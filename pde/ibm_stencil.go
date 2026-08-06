@@ -1,6 +1,8 @@
 package pde
 
 import (
+	"errors"
+	"fmt"
 	"math"
 )
 
@@ -61,6 +63,28 @@ type IBMStencil struct {
 
 // NewIBMStencil creates a stencil operator for the given grid and wall BC.
 func NewIBMStencil(g *IBMGrid, bc WallBC) *IBMStencil {
+	s, err := NewIBMStencilChecked(g, bc)
+	if err != nil && g != nil {
+		// Preserve the legacy no-error API while keeping malformed ADE
+		// configurations inert and non-panicking. Callers that need the
+		// validation error should use NewIBMStencilChecked.
+		return &IBMStencil{Grid: g, BC: bc}
+	}
+
+	return s
+}
+
+// NewIBMStencilChecked creates a stencil and reports invalid grid or ADE
+// configuration instead of deferring failures until a time step.
+func NewIBMStencilChecked(g *IBMGrid, bc WallBC) (*IBMStencil, error) {
+	if g == nil {
+		return nil, errors.New("IBM grid is nil")
+	}
+
+	if bc.Type == WallADE && len(bc.ADEPoles) != len(bc.ADEResidues) {
+		return nil, fmt.Errorf("WallADE pole count %d does not match residue count %d", len(bc.ADEPoles), len(bc.ADEResidues))
+	}
+
 	s := &IBMStencil{Grid: g, BC: bc}
 
 	if bc.Type == WallADE && len(bc.ADEPoles) > 0 {
@@ -73,7 +97,7 @@ func NewIBMStencil(g *IBMGrid, bc WallBC) *IBMStencil {
 		}
 	}
 
-	return s
+	return s, nil
 }
 
 // ApplyLaplacian computes dst = −∇²(src) on the IBM grid.
@@ -121,8 +145,37 @@ func (s *IBMStencil) ApplyLaplacian(dst, src []float64) {
 // Must be called once per FDTD time step, after ApplyLaplacian.
 // For each boundary node, updates ψ_k using the pressure gradient.
 func (s *IBMStencil) UpdateADE(src []float64, dt float64) {
-	if s.BC.Type != WallADE || s.adeStates == nil {
-		return
+	_ = s.UpdateADEChecked(src, dt)
+}
+
+// UpdateADEChecked advances ADE state and reports malformed configurations.
+func (s *IBMStencil) UpdateADEChecked(src []float64, dt float64) error {
+	if s == nil || s.Grid == nil {
+		return errors.New("IBM stencil or grid is nil")
+	}
+
+	if s.BC.Type != WallADE {
+		return nil
+	}
+
+	if len(s.BC.ADEPoles) != len(s.BC.ADEResidues) {
+		return fmt.Errorf("WallADE pole count %d does not match residue count %d", len(s.BC.ADEPoles), len(s.BC.ADEResidues))
+	}
+
+	if s.adeStates == nil {
+		return nil
+	}
+
+	if len(src) < s.Grid.FieldSize() {
+		return fmt.Errorf("ADE source field length %d is smaller than grid field size %d", len(src), s.Grid.FieldSize())
+	}
+
+	if dt < 0 || math.IsNaN(dt) || math.IsInf(dt, 0) {
+		return errors.New("ADE time step must be finite and non-negative")
+	}
+
+	if len(s.BC.ADEPoles) == 0 {
+		return nil
 	}
 
 	g := s.Grid
@@ -166,6 +219,8 @@ func (s *IBMStencil) UpdateADE(src []float64, dt float64) {
 			st.Phi[k] = st.Phi[k]*decay + s.BC.ADEResidues[k]*dpdn*dt
 		}
 	}
+
+	return nil
 }
 
 // CFLLimit returns the maximum stable time step for the FDTD scheme

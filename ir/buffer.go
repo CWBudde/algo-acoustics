@@ -3,6 +3,8 @@ package ir
 import "math"
 
 // Buffer holds a dense impulse response sample buffer.
+//
+//nolint:tagliatelle // sampleRate is part of the established exported IR JSON schema.
 type Buffer struct {
 	SampleRate int       `json:"sampleRate"`
 	Samples    []float64 `json:"samples"`

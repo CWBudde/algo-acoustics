@@ -2,6 +2,7 @@ package geometry_test
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,6 +96,38 @@ func TestMeshValidateDegenerateTriangle(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "triangle[0] is degenerate") {
 		t.Fatalf("Validate() = %q, want degenerate triangle message", err)
+	}
+}
+
+func TestMeshValidateRejectsNonFiniteVertices(t *testing.T) {
+	tests := []struct {
+		name  string
+		value float64
+	}{
+		{name: "NaN", value: math.NaN()},
+		{name: "positive infinity", value: math.Inf(1)},
+		{name: "negative infinity", value: math.Inf(-1)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mesh := geometry.Mesh{Triangles: []geometry.Triangle{{
+				V0: geometry.Vec3{X: test.value},
+				V1: geometry.Vec3{X: 1},
+				V2: geometry.Vec3{Y: 1},
+			}}}
+
+			err := mesh.Validate()
+
+			var issues *geometry.MeshValidationIssues
+			if !errors.As(err, &issues) || !issues.HasProblems() {
+				t.Fatalf("Validate() error = %v, want hard mesh validation issue", err)
+			}
+
+			if !strings.Contains(err.Error(), "non-finite vertex") {
+				t.Fatalf("Validate() error = %v, want non-finite vertex message", err)
+			}
+		})
 	}
 }
 

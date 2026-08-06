@@ -10,7 +10,7 @@ type CrossoverConfig struct {
 
 // SplitTF separates a transfer function into low and high components.
 func SplitTF(tf *TransferFunction, cfg CrossoverConfig) (low, high *TransferFunction) {
-	if tf == nil {
+	if !validTF(tf) {
 		return nil, nil
 	}
 
@@ -28,6 +28,14 @@ func SplitTF(tf *TransferFunction, cfg CrossoverConfig) (low, high *TransferFunc
 
 // BlendTF crossfades low and high transfer functions around the crossover band.
 func BlendTF(low, high *TransferFunction, cfg CrossoverConfig) *TransferFunction {
+	if low != nil && !validTF(low) {
+		return nil
+	}
+
+	if high != nil && !validTF(high) {
+		return nil
+	}
+
 	if low == nil {
 		return cloneTF(high)
 	}
@@ -87,4 +95,8 @@ func cloneTF(tf *TransferFunction) *TransferFunction {
 	copy(out.H, tf.H)
 
 	return out
+}
+
+func validTF(tf *TransferFunction) bool {
+	return tf != nil && len(tf.Freqs) == len(tf.H)
 }

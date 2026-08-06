@@ -19,6 +19,8 @@ type Mesh struct {
 
 // MeshValidationIssues reports hard validation failures and softer warnings.
 // Warnings still produce a non-nil error so callers can surface them.
+//
+//nolint:errname // The value intentionally groups both errors and non-fatal warnings.
 type MeshValidationIssues struct {
 	Problems []string
 	Warnings []string
@@ -145,6 +147,11 @@ func (m *Mesh) Validate() error {
 
 	edgeCounts := make(map[meshEdgeKey]int, len(m.Triangles)*3)
 	for index, tri := range m.Triangles {
+		if !isFiniteMeshVertex(tri.V0) || !isFiniteMeshVertex(tri.V1) || !isFiniteMeshVertex(tri.V2) {
+			issues.Problems = append(issues.Problems, fmt.Sprintf("triangle[%d] contains a non-finite vertex", index))
+			continue
+		}
+
 		if tri.Area() <= meshDegenerateAreaEpsilon {
 			issues.Problems = append(issues.Problems, fmt.Sprintf("triangle[%d] is degenerate", index))
 			continue
@@ -174,6 +181,12 @@ func (m *Mesh) Validate() error {
 	return issues
 }
 
+func isFiniteMeshVertex(v Vec3) bool {
+	return !math.IsNaN(v.X) && !math.IsInf(v.X, 0) &&
+		!math.IsNaN(v.Y) && !math.IsInf(v.Y, 0) &&
+		!math.IsNaN(v.Z) && !math.IsInf(v.Z, 0)
+}
+
 // LoadOBJ loads a minimal triangle mesh from an OBJ file. Only vertex and face
 // records are used; common metadata records are ignored.
 func LoadOBJ(path string) (*Mesh, error) {
@@ -198,25 +211,9 @@ func LoadOBJ(path string) (*Mesh, error) {
 			continue
 		}
 
-		switch fields[0] {
-		case "v":
-			vertex, parseErr := parseOBJVertex(fields)
-			if parseErr != nil {
-				return nil, fmt.Errorf("line %d: %w", lineNumber, parseErr)
-			}
-
-			vertices = append(vertices, vertex)
-		case "f":
-			faceTriangles, parseErr := parseOBJFace(fields, vertices)
-			if parseErr != nil {
-				return nil, fmt.Errorf("line %d: %w", lineNumber, parseErr)
-			}
-
-			triangles = append(triangles, faceTriangles...)
-		case "vt", "vn", "o", "g", "s", "usemtl", "mtllib":
-			continue
-		default:
-			return nil, fmt.Errorf("line %d: unsupported OBJ record %q", lineNumber, fields[0])
+		parseErr := appendOBJRecord(fields, &vertices, &triangles)
+		if parseErr != nil {
+			return nil, fmt.Errorf("line %d: %w", lineNumber, parseErr)
 		}
 	}
 
@@ -238,6 +235,31 @@ func LoadOBJ(path string) (*Mesh, error) {
 	}
 
 	return mesh, nil
+}
+
+func appendOBJRecord(fields []string, vertices *[]Vec3, triangles *[]Triangle) error {
+	switch fields[0] {
+	case "v":
+		vertex, err := parseOBJVertex(fields)
+		if err != nil {
+			return err
+		}
+
+		*vertices = append(*vertices, vertex)
+	case "f":
+		faceTriangles, err := parseOBJFace(fields, *vertices)
+		if err != nil {
+			return err
+		}
+
+		*triangles = append(*triangles, faceTriangles...)
+	case "vt", "vn", "o", "g", "s", "usemtl", "mtllib":
+		return nil
+	default:
+		return fmt.Errorf("unsupported OBJ record %q", fields[0])
+	}
+
+	return nil
 }
 
 type meshVertexKey struct {

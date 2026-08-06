@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/cwbudde/algo-acoustics/ir"
 )
@@ -82,12 +83,15 @@ func estimateDecayTime(buf *ir.Buffer, upperDB, lowerDB float64) (float64, error
 		return 0, fmt.Errorf("not enough decay samples in range %g to %g dB", upperDB, lowerDB)
 	}
 
-	slope, intercept := linearRegression(filtered)
+	slope, _ := linearRegression(filtered)
 	if slope >= 0 {
 		return 0, errors.New("decay slope must be negative")
 	}
 
-	return (decayTimeTargetDB - intercept) / slope, nil
+	// Reverberation times are elapsed 60 dB decay durations extrapolated from
+	// the fitted slope. Using the fitted -60 dB crossing itself would include
+	// any propagation delay before the impulse response begins.
+	return decayTimeTargetDB / slope, nil
 }
 
 func decayPoints(buf *ir.Buffer) ([]decayPoint, error) {
@@ -112,12 +116,22 @@ func decayPoints(buf *ir.Buffer) ([]decayPoint, error) {
 		return nil, errors.New("buffer contains no energy")
 	}
 
-	points := make([]decayPoint, len(buf.Samples))
+	firstEnergyIndex := 0
+	for firstEnergyIndex < len(buf.Samples) && buf.Samples[firstEnergyIndex] == 0 {
+		firstEnergyIndex++
+	}
+
+	points := make([]decayPoint, len(buf.Samples)-firstEnergyIndex)
 
 	remaining := 0.0
-	for index := len(buf.Samples) - 1; index >= 0; index-- {
-		remaining += buf.Samples[index] * buf.Samples[index]
-		points[index] = decayPoint{
+	for index, sample := range slices.Backward(buf.Samples) {
+		remaining += sample * sample
+
+		if index < firstEnergyIndex {
+			continue
+		}
+
+		points[index-firstEnergyIndex] = decayPoint{
 			timeSeconds: float64(index) / float64(buf.SampleRate),
 			decayDB:     10 * math.Log10(remaining/totalEnergy),
 		}
@@ -189,7 +203,7 @@ func splitEnergy(buf *ir.Buffer, earlySeconds float64) (early, late float64, err
 	threshold := int(math.Round(earlySeconds * float64(buf.SampleRate)))
 	for index, sample := range buf.Samples {
 		energy := sample * sample
-		if index <= threshold {
+		if index < threshold {
 			early += energy
 			continue
 		}

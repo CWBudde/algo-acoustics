@@ -153,7 +153,8 @@ func shoeboxEigenfreqs(lx, ly, lz, c, maxFreq float64) []float64 {
 				f := c / 2.0 * math.Sqrt(
 					float64(nx*nx)/(lx*lx)+
 						float64(ny*ny)/(ly*ly)+
-						float64(nz*nz)/(lz*lz))
+						float64(nz*nz)/(lz*lz),
+				)
 				if f <= maxFreq {
 					freqs = append(freqs, f)
 				}
@@ -310,7 +311,8 @@ func equilateralTriangleRoom(sideLength, cx, cy, zHeight float64) *ConvexRoom {
 	}
 
 	// Floor and ceiling.
-	walls = append(walls,
+	walls = append(
+		walls,
 		geometry.Plane{Normal: geometry.Vec3{Z: 1}, Distance: 0},
 		geometry.Plane{Normal: geometry.Vec3{Z: -1}, Distance: -zHeight},
 	)
@@ -459,7 +461,8 @@ func regularPolygonRoom(nSides int, cx, cy, radius, zHeight float64) *ConvexRoom
 	}
 
 	// Floor and ceiling.
-	walls = append(walls,
+	walls = append(
+		walls,
 		geometry.Plane{Normal: geometry.Vec3{Z: 1}, Distance: 0},
 		geometry.Plane{Normal: geometry.Vec3{Z: -1}, Distance: -zHeight},
 	)

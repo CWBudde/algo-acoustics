@@ -16,6 +16,7 @@ linters:
     - exhaustruct # don't require all struct fields populated
     - gochecknoglobals # constants and singletons are fine
     - godox # allow TODO/FIXME comments
+    - gomodguard # deprecated; gomodguard_v2 is enabled below
     - ireturn # allow returning interfaces
     - lll # long lines acceptable in math-heavy code
     - mnd # magic numbers acceptable in acoustics/DSP code
@@ -28,6 +29,7 @@ linters:
     - varnamelen # short names idiomatic in math/signal-processing code
     - wsl # use wsl_v5 instead
   enable:
+    - gomodguard_v2
     - wsl_v5
 
     - revive
@@ -66,7 +68,21 @@ linters:
         path: cmd/
 
       # test files are more relaxed
-      - linters: [funlen, cyclop, gocognit, maintidx, wrapcheck, dupl, noctx, forcetypeassert, gosec, thelper, usetesting, goconst]
+      - linters:
+          [
+            funlen,
+            cyclop,
+            gocognit,
+            maintidx,
+            wrapcheck,
+            dupl,
+            noctx,
+            forcetypeassert,
+            gosec,
+            thelper,
+            usetesting,
+            goconst,
+          ]
         path: _test\.go
 
       # wrapcheck too noisy in internal packages

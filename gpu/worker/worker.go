@@ -50,8 +50,10 @@ func Start(ctx context.Context, serverBin string) (*Worker, error) {
 		fmt.Sprintf("algo_gpu_%d.sock", os.Getpid()))
 	os.Remove(sockPath)
 
-	cmd := exec.CommandContext(ctx, serverBin, "--socket", sockPath)
-	cmd.Stdout = os.Stderr // server log → caller's stderr
+	// serverBin is an executable path resolved by Probe/StartIfAvailable or
+	// explicitly supplied by the caller; no shell interpolation is involved.
+	cmd := exec.CommandContext(ctx, serverBin, "--socket", sockPath) // #nosec G702
+	cmd.Stdout = os.Stderr                                           // server log → caller's stderr
 	cmd.Stderr = os.Stderr
 
 	err := cmd.Start()

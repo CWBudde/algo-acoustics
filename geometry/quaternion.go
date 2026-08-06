@@ -14,6 +14,10 @@ func QuatIdentity() Quaternion { return Quaternion{W: 1} }
 // QuatFromAxisAngle returns a quaternion representing a rotation of angleRad
 // radians around axis (which need not be normalised).
 func QuatFromAxisAngle(axis Vec3, angleRad float64) Quaternion {
+	if axis == Vec3Zero {
+		return QuatIdentity()
+	}
+
 	a := axis.Normalize()
 	s := math.Sin(angleRad / 2)
 

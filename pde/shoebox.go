@@ -58,12 +58,16 @@ func (tf *TransferFunction) ToTimeDomain(sampleRate int, nFFT int) []float64 {
 	}
 
 	spectrum[0] = complex(real(spectrum[0]), 0)
-	if half < len(spectrum) {
+	if nFFT%2 == 0 {
 		spectrum[half] = complex(real(spectrum[half]), 0)
-	}
 
-	for k := 1; k < half; k++ {
-		spectrum[nFFT-k] = complex(real(spectrum[k]), -imag(spectrum[k]))
+		for k := 1; k < half; k++ {
+			spectrum[nFFT-k] = complex(real(spectrum[k]), -imag(spectrum[k]))
+		}
+	} else {
+		for k := 1; k <= half; k++ {
+			spectrum[nFFT-k] = complex(real(spectrum[k]), -imag(spectrum[k]))
+		}
 	}
 
 	plan, err := algofft.NewPlan64(nFFT)
@@ -200,7 +204,7 @@ func (e PDELowFreqEngine) Transfer(sc *scene.Scene, _ ir.RenderConfig) (*Transfe
 	}
 
 	if sweep.BoundaryCondition == "" {
-		sweep.BoundaryCondition = "neumann"
+		sweep.BoundaryCondition = boundaryNeumann
 	}
 
 	tf, err := SweepShoebox(sc.Room.Shoebox, sc.Sources[0].Position, sc.Receivers[0].Position, sweep)

@@ -45,11 +45,15 @@ try {
     window.Worker = new Proxy(originalWorker, {
       construct(target, args, newTarget) {
         const [scriptUrl, options] = args;
-        const text = `${stamp()} [worker.construct] ${String(scriptUrl)} ${options ? JSON.stringify(options) : ""}`.trim();
+        const text =
+          `${stamp()} [worker.construct] ${String(scriptUrl)} ${options ? JSON.stringify(options) : ""}`.trim();
         console.log(text);
         const worker = Reflect.construct(target, args, newTarget);
         worker.addEventListener("message", (event) => {
-          const payload = typeof event.data === "string" ? event.data : JSON.stringify(event.data);
+          const payload =
+            typeof event.data === "string"
+              ? event.data
+              : JSON.stringify(event.data);
           const message = `${stamp()} [worker.message] ${payload}`;
           console.log(message);
           window.__pagesSmoke.workerEvents.push(message);
@@ -66,7 +70,8 @@ try {
     const originalFetch = window.fetch.bind(window);
     window.fetch = async (...args) => {
       const [input] = args;
-      const url = typeof input === "string" ? input : input?.url ?? String(input);
+      const url =
+        typeof input === "string" ? input : (input?.url ?? String(input));
       const text = `${stamp()} [fetch] ${url}`;
       console.log(text);
       window.__pagesSmoke.fetches.push(text);
@@ -75,7 +80,9 @@ try {
         console.log(`${stamp()} [fetch.response] ${response.status} ${url}`);
         return response;
       } catch (error) {
-        console.log(`${stamp()} [fetch.error] ${url} ${error?.stack || error?.message || String(error)}`);
+        console.log(
+          `${stamp()} [fetch.error] ${url} ${error?.stack || error?.message || String(error)}`,
+        );
         throw error;
       }
     };
@@ -99,7 +106,9 @@ try {
   page.on("response", (response) => {
     const status = response.status();
     if (status >= 400) {
-      console.log(`[response:${status}] ${response.request().method()} ${response.url()}`);
+      console.log(
+        `[response:${status}] ${response.request().method()} ${response.url()}`,
+      );
     }
   });
 
@@ -110,13 +119,51 @@ try {
 
   await waitForDeployedPage(page);
   log("demo reported ready");
-  await page.waitForTimeout(2000);
-  log("post-ready quiet period complete");
+  await renderImpulseResponse(page);
+  log("demo render completed");
 
   await collectDiagnostics(page);
 } finally {
   log(`finished after ${elapsedMs()}ms`);
   await browser.close();
+}
+
+async function renderImpulseResponse(page) {
+  await page.evaluate(() => {
+    const setRange = (id, value) => {
+      const input = document.getElementById(id);
+      if (!input) {
+        throw new Error(`missing range input #${id}`);
+      }
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    setRange("render-rays", 128);
+    setRange("render-order", 1);
+    setRange("render-duration", 0.25);
+    const earlyMode = document.querySelector('[data-mode="early"]');
+    const renderButton = document.getElementById("render-scene");
+    if (!earlyMode || !renderButton) {
+      throw new Error("missing render controls");
+    }
+    earlyMode.click();
+    renderButton.click();
+  });
+
+  await page.waitForFunction(
+    () => {
+      const result = window.algoAcousticsDemoLastRender;
+      return (
+        document.getElementById("render-badge")?.textContent?.trim() ===
+          "Render complete" &&
+        result?.sampleCount > 0 &&
+        result?.wavByteLength > 44
+      );
+    },
+    undefined,
+    { timeout: 120000 },
+  );
 }
 
 async function waitForDeployedPage(page) {
@@ -134,25 +181,35 @@ async function waitForDeployedPage(page) {
       );
 
       if (!response || response.status() >= 400) {
-        throw new Error(`unexpected HTTP status ${response?.status() ?? "unknown"}`);
+        throw new Error(
+          `unexpected HTTP status ${response?.status() ?? "unknown"}`,
+        );
       }
 
       log("waiting for window.algoAcousticsDemoReady");
-      await page.waitForFunction(() => window.algoAcousticsDemoReady === true, undefined, {
-        timeout: 120000,
-      });
+      await page.waitForFunction(
+        () => window.algoAcousticsDemoReady === true,
+        undefined,
+        {
+          timeout: 120000,
+        },
+      );
       log("window.algoAcousticsDemoReady observed");
 
       log("waiting for engine badge to show WASM ready");
       await page.waitForFunction(
-        () => document.getElementById("engine-status")?.textContent?.trim() === "WASM ready",
+        () =>
+          document.getElementById("engine-status")?.textContent?.trim() ===
+          "WASM ready",
         undefined,
         { timeout: 120000 },
       );
       log("engine badge ready");
       return;
     } catch (error) {
-      console.log(`[attempt ${attempt}] failed: ${error?.stack || error?.message || String(error)}`);
+      console.log(
+        `[attempt ${attempt}] failed: ${error?.stack || error?.message || String(error)}`,
+      );
       if (attempt === maxAttempts) {
         throw error;
       }
@@ -169,12 +226,17 @@ async function collectDiagnostics(page) {
   const ready = await page
     .evaluate(() => ({
       ready: window.algoAcousticsDemoReady === true,
-      engineStatus: document.getElementById("engine-status")?.textContent?.trim() ?? null,
-      renderBadge: document.getElementById("render-badge")?.textContent?.trim() ?? null,
+      engineStatus:
+        document.getElementById("engine-status")?.textContent?.trim() ?? null,
+      renderBadge:
+        document.getElementById("render-badge")?.textContent?.trim() ?? null,
+      lastRender: window.algoAcousticsDemoLastRender ?? null,
       hasCanvas: Boolean(document.getElementById("scene-canvas")),
       smoke: window.__pagesSmoke ?? null,
     }))
-    .catch((error) => ({ error: error?.stack || error?.message || String(error) }));
+    .catch((error) => ({
+      error: error?.stack || error?.message || String(error),
+    }));
 
   log(`page title: ${title || "(empty)"}`);
   log(`final url: ${url}`);

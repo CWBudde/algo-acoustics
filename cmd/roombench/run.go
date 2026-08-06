@@ -27,22 +27,23 @@ func newRunCommand() *cobra.Command {
 		Use:   "run",
 		Short: "Run regression fixtures and compare them against baselines.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fixtures, err := filepath.Glob(filepath.Join(fixtureDir, "shoebox_*.json"))
+			baselines, err := filepath.Glob(filepath.Join(baselineDir, "shoebox_*.json"))
 			if err != nil {
-				return fmt.Errorf("list fixtures: %w", err)
+				return fmt.Errorf("list baselines: %w", err)
 			}
 
-			sort.Strings(fixtures)
+			sort.Strings(baselines)
 
-			if len(fixtures) == 0 {
-				return fmt.Errorf("no fixtures found in %s", fixtureDir)
+			if len(baselines) == 0 {
+				return fmt.Errorf("no baselines found in %s", baselineDir)
 			}
 
 			passed := 0
+			failed := make([]string, 0)
 
-			for _, fixturePath := range fixtures {
-				fixtureName := filepath.Base(fixturePath)
-				baselinePath := filepath.Join(baselineDir, fixtureName)
+			for _, baselinePath := range baselines {
+				fixtureName := filepath.Base(baselinePath)
+				fixturePath := filepath.Join(fixtureDir, fixtureName)
 
 				sc, err := scene.LoadSceneFile(fixturePath)
 				if err != nil {
@@ -73,17 +74,20 @@ func newRunCommand() *cobra.Command {
 				}
 
 				fmt.Fprintf(cmd.OutOrStdout(), "FAIL %s\n", fixtureName)
-
-				return nil
+				failed = append(failed, fixtureName)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%d/%d regression fixtures passed\n", passed, len(fixtures))
+			fmt.Fprintf(cmd.OutOrStdout(), "%d/%d regression fixtures passed\n", passed, len(baselines))
+
+			if len(failed) > 0 {
+				return fmt.Errorf("%d regression fixture(s) failed: %v", len(failed), failed)
+			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().IntVar(&maxOrder, "max-order", 3, "maximum reflection order")
+	cmd.Flags().IntVar(&maxOrder, "max-order", 2, "maximum reflection order")
 	cmd.Flags().StringVar(&fixtureDir, "fixtures", defaultFixtureDir, "fixture directory")
 	cmd.Flags().StringVar(&baselineDir, "baselines", filepath.Join("testdata", "regression"), "baseline directory")
 

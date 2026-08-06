@@ -13,6 +13,8 @@ const (
 )
 
 // Shoebox stores axis-aligned room dimensions and wall-material references.
+//
+//nolint:tagliatelle // wallMaterials is part of the established public scene schema.
 type Shoebox struct {
 	Width         float64   `json:"width"`
 	Depth         float64   `json:"depth"`
@@ -26,6 +28,8 @@ func (s Shoebox) Bounds() geometry.Box {
 }
 
 // Room is the top-level geometry container for a scene.
+//
+//nolint:tagliatelle // Camel-case tags are part of the established public scene schema.
 type Room struct {
 	Kind         RoomKind       `json:"kind"`
 	Shoebox      *Shoebox       `json:"shoebox,omitempty"`

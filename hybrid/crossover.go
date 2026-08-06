@@ -51,18 +51,7 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 		return nil
 	}
 
-	for k := range lowFreq {
-		freq := float64(k) * float64(sampleRate) / float64(fftSize)
-		wLow := lowPassWeight(freq, crossoverHz)
-		wHigh := 1 - wLow
-		lowFreq[k] *= complex(wLow, 0)
-		geoFreq[k] *= complex(wHigh, 0)
-	}
-
-	combinedFreq := make([]complex128, fftSize)
-	for i := range combinedFreq {
-		combinedFreq[i] = lowFreq[i] + geoFreq[i]
-	}
+	combinedFreq := blendFrequencySpectra(lowFreq, geoFreq, crossoverHz, sampleRate)
 
 	combinedTime := make([]complex128, fftSize)
 
@@ -80,6 +69,20 @@ func BlendLowFreq(lowIR []float64, geoIR *ir.Buffer, crossoverHz float64, sample
 	}
 
 	return out
+}
+
+func blendFrequencySpectra(lowFreq, geoFreq []complex128, crossoverHz float64, sampleRate int) []complex128 {
+	fftSize := len(lowFreq)
+	combined := make([]complex128, fftSize)
+
+	for k := range combined {
+		// Fold negative-frequency bins onto their positive-frequency partners.
+		freq := float64(min(k, fftSize-k)) * float64(sampleRate) / float64(fftSize)
+		wLow := lowPassWeight(freq, crossoverHz)
+		combined[k] = lowFreq[k]*complex(wLow, 0) + geoFreq[k]*complex(1-wLow, 0)
+	}
+
+	return combined
 }
 
 func lowPassWeight(freq, crossoverHz float64) float64 {

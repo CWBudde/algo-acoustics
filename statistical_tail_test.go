@@ -2,6 +2,8 @@ package algoacoustics
 
 import (
 	"math"
+	"math/rand"
+	"strings"
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/ir"
@@ -20,9 +22,9 @@ func makeEarlyBuffer(sampleRate int) *ir.Buffer {
 		samples[0] = 1.0
 	}
 
-	// Add a second "early reflection" at 10 ms to give the reference-energy
+	// Add a second "early reflection" at 40 ms to give the reference-energy
 	// window something to measure.
-	if reflectSample := int(0.01 * float64(sampleRate)); reflectSample < length {
+	if reflectSample := int(0.04 * float64(sampleRate)); reflectSample < length {
 		samples[reflectSample] = 0.5
 	}
 
@@ -199,6 +201,93 @@ func TestSynthesizeStatisticalTail_NilBuffer(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for nil buffer")
+	}
+}
+
+func TestSynthesizeStatisticalTail_RejectsSampleRateMismatch(t *testing.T) {
+	t.Parallel()
+
+	sc := progressiveTestScene()
+	early := makeEarlyBuffer(48000)
+
+	_, err := SynthesizeStatisticalTail(sc, early, StatisticalTailConfig{
+		SampleRate:      44100,
+		DurationSeconds: 0.5,
+	})
+	if err == nil || !strings.Contains(err.Error(), "sample rate mismatch") {
+		t.Fatalf("SynthesizeStatisticalTail() error = %v, want sample rate mismatch", err)
+	}
+}
+
+func TestBuildStatisticalTail_CrossfadeIncludesPreCrossoverHalf(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sampleRate = 100
+		t60        = 1.0
+		seed       = 17
+	)
+
+	earlySamples := make([]float64, sampleRate)
+	for i := range earlySamples {
+		earlySamples[i] = 1
+	}
+
+	cfg := StatisticalTailConfig{
+		SampleRate:       sampleRate,
+		DurationSeconds:  1,
+		CrossoverSeconds: 0.5,
+		CrossfadeSeconds: 0.2,
+		Seed:             seed,
+	}
+
+	buf, err := buildStatisticalTailBuffer(&ir.Buffer{SampleRate: sampleRate, Samples: earlySamples}, t60, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The fade begins at sample 40. Reproduce the first six deterministic
+	// Gaussian samples to assert the exact mix at sample 45, before crossover.
+	rng := rand.New(rand.NewSource(seed))
+
+	var gaussian float64
+	for range 6 {
+		gaussian = rng.NormFloat64()
+	}
+
+	i := 45
+	timeSinceCrossover := float64(i)/sampleRate - cfg.CrossoverSeconds
+	envelope := math.Exp(-(logDecay60dB / t60) * timeSinceCrossover / 2)
+	weight := crossfadeWeight(i-40, 20)
+	want := 1*(1-weight) + gaussian*envelope*weight
+
+	if math.Abs(buf.Samples[i]-want) > 1e-14 {
+		t.Fatalf("pre-crossover fade sample = %.17g, want %.17g", buf.Samples[i], want)
+	}
+}
+
+func TestSynthesizeStatisticalTail_SilentEarlyStaysSilent(t *testing.T) {
+	t.Parallel()
+
+	sc := progressiveTestScene()
+	early := &ir.Buffer{SampleRate: sc.SampleRate, Samples: make([]float64, sc.SampleRate/10)}
+
+	buf, err := SynthesizeStatisticalTail(sc, early, StatisticalTailConfig{
+		SampleRate:       sc.SampleRate,
+		DurationSeconds:  0.5,
+		CrossoverSeconds: 0.05,
+		CrossfadeSeconds: 0.02,
+		BandIndex:        2,
+		Seed:             99,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, sample := range buf.Samples {
+		if sample != 0 {
+			t.Fatalf("silent input produced sample[%d] = %g, want 0", i, sample)
+		}
 	}
 }
 

@@ -46,12 +46,12 @@ func TestExtractDiffractionEdgesLShapedRoomClassification(t *testing.T) {
 }
 
 func isReentrantVerticalEdge(edge geometry.DiffractionEdge) bool {
-	return nearlyEqual(edge.Start.X, 1) && nearlyEqual(edge.Start.Y, 1) &&
-		nearlyEqual(edge.End.X, 1) && nearlyEqual(edge.End.Y, 1)
+	return nearlyEqualOne(edge.Start.X) && nearlyEqualOne(edge.Start.Y) &&
+		nearlyEqualOne(edge.End.X) && nearlyEqualOne(edge.End.Y)
 }
 
-func nearlyEqual(a, b float64) bool {
-	return math.Abs(a-b) < 1e-9
+func nearlyEqualOne(value float64) bool {
+	return math.Abs(value-1) < 1e-9
 }
 
 func cubeMesh(minCorner, maxCorner geometry.Vec3) *geometry.Mesh {
@@ -182,7 +182,8 @@ func lShapedPrismMesh() *geometry.Mesh {
 			}
 
 			quad := face.quad(cell.X, cell.Y, cell.Z)
-			triangles = append(triangles,
+			triangles = append(
+				triangles,
 				makeTri(quad[0], quad[1], quad[2], face.normal),
 				makeTri(quad[0], quad[2], quad[3], face.normal),
 			)

@@ -112,24 +112,7 @@ func (n *BVHNode) intersectNearest(r Ray, maxT float64) (t float64, triIdx int, 
 	}
 
 	if len(n.Triangles) > 0 || (n.Left == nil && n.Right == nil) {
-		bestT := maxT
-		bestIdx := -1
-
-		for _, candidate := range n.Triangles {
-			candidateT, candidateHit := RayTriangle(r, n.mesh.Triangles[candidate])
-			if !candidateHit || candidateT >= bestT {
-				continue
-			}
-
-			bestT = candidateT
-			bestIdx = candidate
-		}
-
-		if bestIdx < 0 {
-			return 0, 0, false
-		}
-
-		return bestT, bestIdx, true
+		return n.intersectLeaf(r, maxT)
 	}
 
 	children := [2]bvhTraversalCandidate{
@@ -140,6 +123,25 @@ func (n *BVHNode) intersectNearest(r Ray, maxT float64) (t float64, triIdx int, 
 		children[0], children[1] = children[1], children[0]
 	}
 
+	return intersectBVHChildren(children, r, maxT)
+}
+
+func (n *BVHNode) intersectLeaf(r Ray, maxT float64) (float64, int, bool) {
+	bestT := maxT
+	bestIdx := -1
+
+	for _, candidate := range n.Triangles {
+		candidateT, candidateHit := RayTriangle(r, n.mesh.Triangles[candidate])
+		if candidateHit && candidateT < bestT {
+			bestT = candidateT
+			bestIdx = candidate
+		}
+	}
+
+	return bvhHitResult(bestT, bestIdx)
+}
+
+func intersectBVHChildren(children [2]bvhTraversalCandidate, r Ray, maxT float64) (float64, int, bool) {
 	bestT := maxT
 	bestIdx := -1
 
@@ -149,19 +151,21 @@ func (n *BVHNode) intersectNearest(r Ray, maxT float64) (t float64, triIdx int, 
 		}
 
 		candidateT, candidateIdx, candidateHit := child.node.intersectNearest(r, bestT)
-		if !candidateHit || candidateT >= bestT {
-			continue
+		if candidateHit && candidateT < bestT {
+			bestT = candidateT
+			bestIdx = candidateIdx
 		}
-
-		bestT = candidateT
-		bestIdx = candidateIdx
 	}
 
-	if bestIdx < 0 {
+	return bvhHitResult(bestT, bestIdx)
+}
+
+func bvhHitResult(t float64, triangleIndex int) (float64, int, bool) {
+	if triangleIndex < 0 {
 		return 0, 0, false
 	}
 
-	return bestT, bestIdx, true
+	return t, triangleIndex, true
 }
 
 type bvhTraversalCandidate struct {

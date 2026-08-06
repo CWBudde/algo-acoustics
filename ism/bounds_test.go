@@ -150,7 +150,7 @@ func TestISMHighAbsorptionSpecularContributionIsNegligible(t *testing.T) {
 		t.Fatalf("Solve() error = %v", err)
 	}
 
-	directEvent := firstEventOfKind(events, ir.EventDirect)
+	directEvent := firstDirectEvent(events)
 	if directEvent == nil {
 		t.Fatal("expected a direct event")
 	}
