@@ -67,7 +67,7 @@ func newRenderStereoCommand() *cobra.Command {
 				return err
 			}
 
-			earlyLeft, earlyRight, err := ir.RenderBinaural(earlyEvents, receiver.HRTF, renderCfg)
+			earlyLeft, earlyRight, err := renderEarlyBinaural(earlyEvents, receiver, renderCfg)
 			if err != nil {
 				return fmt.Errorf("render binaural early IR: %w", err)
 			}
@@ -111,6 +111,17 @@ func newRenderStereoCommand() *cobra.Command {
 	cmd.Flags().IntVar(&numRays, "num-rays", defaultRenderNumRays, "number of rays for late-field rendering")
 
 	return cmd
+}
+
+func renderEarlyBinaural(events []ir.Event, receiver scene.Receiver, cfg ir.RenderConfig) (left, right *ir.Buffer, err error) {
+	headEvents := make([]ir.Event, len(events))
+	copy(headEvents, events)
+
+	for index := range headEvents {
+		headEvents[index].Direction = receiver.WorldToHeadDir(headEvents[index].Direction)
+	}
+
+	return ir.RenderBinaural(headEvents, receiver.HRTF, cfg)
 }
 
 func validateRenderStereoOptions(outputPath string, maxOrder int, durationSeconds, crossoverTimeSeconds float64, numRays int) error {

@@ -1,6 +1,7 @@
 package algoacoustics_test
 
 import (
+	"strings"
 	"testing"
 
 	algoacoustics "github.com/cwbudde/algo-acoustics"
@@ -70,6 +71,26 @@ func TestRaytraceEngineRejectsUnsupportedCardinality(t *testing.T) {
 	_, err := engine.RenderMono(sc, rendererEngineRenderConfig(sc))
 	if err == nil {
 		t.Fatal("RenderMono() error = nil, want source-cardinality error")
+	}
+}
+
+func TestRaytraceEngineRejectsMeshWithoutEnclosedVolume(t *testing.T) {
+	t.Parallel()
+
+	sc := rendererEngineScene(true)
+	sc.Room = scene.Room{
+		Kind: scene.RoomKindMesh,
+		Mesh: &geometry.Mesh{Triangles: []geometry.Triangle{
+			{V0: geometry.Vec3{}, V1: geometry.Vec3{Y: 1}, V2: geometry.Vec3{X: 1}},
+			{V0: geometry.Vec3{}, V1: geometry.Vec3{X: 1}, V2: geometry.Vec3{Z: 1}},
+			{V0: geometry.Vec3{}, V1: geometry.Vec3{Z: 1}, V2: geometry.Vec3{Y: 1}},
+		}},
+	}
+	engine := algoacoustics.NewRaytraceEngine(algoacoustics.RaytraceEngineConfig{})
+
+	_, _, err := engine.RenderBinaural(sc, sc.Receivers[0], rendererEngineRenderConfig(sc))
+	if err == nil || !strings.Contains(err.Error(), "enclosed room volume") {
+		t.Fatalf("RenderBinaural() error = %v, want enclosed-volume error", err)
 	}
 }
 

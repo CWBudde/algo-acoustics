@@ -1,6 +1,10 @@
 package scene
 
-import "github.com/cwbudde/algo-acoustics/geometry"
+import (
+	"math"
+
+	"github.com/cwbudde/algo-acoustics/geometry"
+)
 
 // RoomKind describes the supported room representations.
 type RoomKind string
@@ -78,4 +82,40 @@ func (r Room) Bounds() (geometry.Box, bool) {
 	default:
 		return geometry.Box{}, false
 	}
+}
+
+// Volume returns the room's physical enclosed volume when it can be derived
+// without approximating arbitrary geometry by its axis-aligned bounds.
+func (r Room) Volume() (float64, bool) {
+	switch r.Kind {
+	case RoomKindShoebox:
+		if r.Shoebox == nil {
+			return 0, false
+		}
+
+		if !positiveFiniteDimension(r.Shoebox.Width) ||
+			!positiveFiniteDimension(r.Shoebox.Depth) ||
+			!positiveFiniteDimension(r.Shoebox.Height) {
+			return 0, false
+		}
+
+		volume := r.Shoebox.Width * r.Shoebox.Depth * r.Shoebox.Height
+		if !positiveFiniteDimension(volume) {
+			return 0, false
+		}
+
+		return volume, true
+	case RoomKindMesh:
+		if r.Mesh == nil {
+			return 0, false
+		}
+
+		return r.Mesh.EnclosedVolume()
+	default:
+		return 0, false
+	}
+}
+
+func positiveFiniteDimension(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }

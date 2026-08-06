@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
+	"github.com/cwbudde/algo-acoustics/hrtf"
+	"github.com/cwbudde/algo-acoustics/scene"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -92,6 +94,43 @@ func TestSceneSchemaAcceptsInlineMesh(t *testing.T) {
 	err = compileSceneSchema(t).Validate(instance)
 	if err != nil {
 		t.Fatalf("inline mesh scene does not validate: %v", err)
+	}
+}
+
+func TestSceneSchemaAcceptsMarshaledNearestNeighborMeasurementGrid(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join("..", "testdata", "rooms", "shoebox_simple.json")
+
+	sc, err := scene.LoadSceneFile(path)
+	if err != nil {
+		t.Fatalf("scene.LoadSceneFile(%q) error = %v", path, err)
+	}
+
+	sc.Receivers[0].HRTF = hrtf.NearestNeighborDataset{
+		SampleRateHz: 48000,
+		Grid: &hrtf.MeasurementGrid{
+			Directions: []geometry.Vec3{{X: 1}, {Y: 1}, {Z: 1}},
+			LeftHRIRs:  [][]float64{{1, 0}, {0.8, 0.1}, {0.6, 0.2}},
+			RightHRIRs: [][]float64{{1, 0}, {0.6, 0.2}, {0.8, 0.1}},
+			Delays:     []float64{0, 0.0001, 0.0002},
+			Triangles:  [][3]int{{0, 1, 2}},
+		},
+	}
+
+	data, err := json.Marshal(sc)
+	if err != nil {
+		t.Fatalf("json.Marshal(scene) error = %v", err)
+	}
+
+	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("jsonschema.UnmarshalJSON(scene) error = %v", err)
+	}
+
+	err = compileSceneSchema(t).Validate(instance)
+	if err != nil {
+		t.Fatalf("marshaled scene with nearest-neighbor measurement grid does not validate: %v", err)
 	}
 }
 

@@ -113,7 +113,8 @@
             "required": ["type"],
             "properties": {
               "type": { "type": "string", "enum": ["noop", "nearestNeighbor"] },
-              "sampleRate": { "type": "integer", "minimum": 1 }
+              "sampleRate": { "type": "integer", "minimum": 1 },
+              "grid": { "$ref": "#/$defs/measurementGrid" }
             },
             "additionalProperties": false
           }
@@ -167,6 +168,43 @@
         "X": { "type": "number" },
         "Y": { "type": "number" },
         "Z": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "measurementGrid": {
+      "type": "object",
+      "properties": {
+        "directions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/vec3" }
+        },
+        "leftHrir": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" }
+          }
+        },
+        "rightHrir": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" }
+          }
+        },
+        "delays": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "triangles": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": { "type": "integer", "minimum": 0 }
+          }
+        }
       },
       "additionalProperties": false
     },

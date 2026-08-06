@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,9 +11,56 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/hrtf"
+	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/scene"
 	"github.com/cwbudde/wav"
 )
+
+type directionRecordingHRTF struct {
+	direction geometry.Vec3
+}
+
+func (d *directionRecordingHRTF) SampleRate() int {
+	return 100
+}
+
+func (d *directionRecordingHRTF) Lookup(direction geometry.Vec3) (left, right []float64, delaySeconds float64, err error) {
+	d.direction = direction
+
+	return []float64{1}, []float64{1}, 0, nil
+}
+
+func TestRenderEarlyBinauralUsesHeadFrameWithoutMutatingEvents(t *testing.T) {
+	t.Parallel()
+
+	dataset := &directionRecordingHRTF{}
+	receiver := scene.Receiver{
+		Orientation: geometry.QuatFromAxisAngle(geometry.Vec3{Z: 1}, math.Pi/2),
+		HRTF:        dataset,
+	}
+	events := []ir.Event{{
+		TimeSeconds: 0.01,
+		Amplitude:   1,
+		Direction:   geometry.Vec3{X: 1},
+	}}
+
+	_, _, err := renderEarlyBinaural(events, receiver, ir.RenderConfig{
+		SampleRate:      100,
+		DurationSeconds: 0.1,
+	})
+	if err != nil {
+		t.Fatalf("renderEarlyBinaural() error = %v", err)
+	}
+
+	wantDirection := geometry.Vec3{Y: -1}
+	if dataset.direction.Distance(wantDirection) > 1e-9 {
+		t.Fatalf("HRTF lookup direction = %#v, want %#v", dataset.direction, wantDirection)
+	}
+
+	if got, want := events[0].Direction, (geometry.Vec3{X: 1}); got != want {
+		t.Fatalf("input event direction = %#v after render, want unchanged %#v", got, want)
+	}
+}
 
 func TestRenderStereoCommandWritesStereoWAV(t *testing.T) {
 	t.Parallel()

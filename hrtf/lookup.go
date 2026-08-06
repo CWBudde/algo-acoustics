@@ -28,8 +28,10 @@ type NearestNeighborDataset struct {
 // InterpolatingDataset uses the explicit triangle topology in Grid to blend
 // measurements. Lookup falls back to the nearest measurement when no
 // containing valid triangle is available.
+//
+//nolint:tagliatelle // sampleRate is part of the established browser/external JSON schema.
 type InterpolatingDataset struct {
-	SampleRateHz int              `json:"sample_rate"`
+	SampleRateHz int              `json:"sampleRate"`
 	Grid         *MeasurementGrid `json:"grid,omitempty"`
 }
 

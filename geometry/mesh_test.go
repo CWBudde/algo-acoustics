@@ -59,6 +59,52 @@ func TestMeshBoundingBox(t *testing.T) {
 	}
 }
 
+func TestMeshEnclosedVolume(t *testing.T) {
+	t.Parallel()
+
+	mesh := geometry.MeshFromBox(
+		geometry.Vec3{X: -4, Y: 2, Z: 10},
+		geometry.Vec3{X: -2, Y: 5, Z: 14},
+	)
+
+	got, ok := mesh.EnclosedVolume()
+	if !ok {
+		t.Fatal("EnclosedVolume() reported a closed box as unsupported")
+	}
+
+	if math.Abs(got-24) > 1e-12 {
+		t.Fatalf("EnclosedVolume() = %v, want 24", got)
+	}
+}
+
+func TestMeshEnclosedVolumeRejectsUnsupportedMeshes(t *testing.T) {
+	t.Parallel()
+
+	open := &geometry.Mesh{Triangles: []geometry.Triangle{{
+		V0: geometry.Vec3{X: 0, Y: 0, Z: 0},
+		V1: geometry.Vec3{X: 1, Y: 0, Z: 0},
+		V2: geometry.Vec3{X: 0, Y: 1, Z: 0},
+	}}}
+	if _, ok := open.EnclosedVolume(); ok {
+		t.Fatal("EnclosedVolume() accepted an open mesh")
+	}
+
+	inconsistent := geometry.MeshFromBox(geometry.Vec3Zero, geometry.Vec3{X: 1, Y: 1, Z: 1})
+
+	inconsistent.Triangles[0].V1, inconsistent.Triangles[0].V2 =
+		inconsistent.Triangles[0].V2, inconsistent.Triangles[0].V1
+	if _, ok := inconsistent.EnclosedVolume(); ok {
+		t.Fatal("EnclosedVolume() accepted inconsistent triangle winding")
+	}
+
+	first := geometry.MeshFromBox(geometry.Vec3Zero, geometry.Vec3{X: 1, Y: 1, Z: 1})
+	second := geometry.MeshFromBox(geometry.Vec3{X: 2}, geometry.Vec3{X: 3, Y: 1, Z: 1})
+	disconnected := &geometry.Mesh{Triangles: append(first.Triangles, second.Triangles...)}
+	if _, ok := disconnected.EnclosedVolume(); ok {
+		t.Fatal("EnclosedVolume() accepted disconnected closed shells")
+	}
+}
+
 func TestMeshValidateClosedMesh(t *testing.T) {
 	mesh := geometry.Mesh{Triangles: []geometry.Triangle{
 		{V0: geometry.Vec3{0, 0, 0}, V1: geometry.Vec3{1, 0, 0}, V2: geometry.Vec3{0, 1, 0}},

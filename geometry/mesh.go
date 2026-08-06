@@ -273,6 +273,113 @@ type meshEdgeKey struct {
 	B meshVertexKey
 }
 
+type meshEdgeUse struct {
+	count       int
+	orientation int
+	first       int
+	second      int
+}
+
+// EnclosedVolume returns the signed-volume estimate for a single, consistently
+// oriented, topologically watertight mesh. Open, non-manifold, disconnected, or
+// inconsistently wound meshes do not have an unambiguous room volume and return
+// false. As with the standard tetrahedral-volume formula, the surface is assumed
+// not to self-intersect.
+func (m *Mesh) EnclosedVolume() (float64, bool) {
+	if m == nil || len(m.Triangles) == 0 {
+		return 0, false
+	}
+
+	edges := make(map[meshEdgeKey]meshEdgeUse, len(m.Triangles)*3)
+	origin := m.Triangles[0].V0
+	signedSixVolume := 0.0
+
+	for triangleIndex, triangle := range m.Triangles {
+		if !isFiniteMeshVertex(triangle.V0) ||
+			!isFiniteMeshVertex(triangle.V1) ||
+			!isFiniteMeshVertex(triangle.V2) ||
+			triangle.Area() <= meshDegenerateAreaEpsilon {
+			return 0, false
+		}
+
+		signedSixVolume += triangle.V0.Sub(origin).Dot(
+			triangle.V1.Sub(origin).Cross(triangle.V2.Sub(origin)),
+		)
+		addMeshEdgeUse(edges, triangle.V0, triangle.V1, triangleIndex)
+		addMeshEdgeUse(edges, triangle.V1, triangle.V2, triangleIndex)
+		addMeshEdgeUse(edges, triangle.V2, triangle.V0, triangleIndex)
+	}
+
+	adjacency := make([][]int, len(m.Triangles))
+
+	for _, edge := range edges {
+		if edge.count != 2 || edge.orientation != 0 {
+			return 0, false
+		}
+
+		adjacency[edge.first] = append(adjacency[edge.first], edge.second)
+		adjacency[edge.second] = append(adjacency[edge.second], edge.first)
+	}
+
+	if !meshTrianglesConnected(adjacency) {
+		return 0, false
+	}
+
+	volume := math.Abs(signedSixVolume) / 6
+	if math.IsNaN(volume) || math.IsInf(volume, 0) || volume <= 0 {
+		return 0, false
+	}
+
+	return volume, true
+}
+
+func addMeshEdgeUse(edges map[meshEdgeKey]meshEdgeUse, a, b Vec3, triangleIndex int) {
+	key := newMeshEdgeKey(a, b)
+
+	use := edges[key]
+	switch use.count {
+	case 0:
+		use.first = triangleIndex
+	case 1:
+		use.second = triangleIndex
+	}
+
+	use.count++
+	if newMeshVertexKey(a) == key.A {
+		use.orientation++
+	} else {
+		use.orientation--
+	}
+
+	edges[key] = use
+}
+
+func meshTrianglesConnected(adjacency [][]int) bool {
+	visited := make([]bool, len(adjacency))
+	stack := []int{0}
+	visited[0] = true
+	visitedCount := 1
+
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		triangleIndex := stack[last]
+		stack = stack[:last]
+
+		for _, neighbor := range adjacency[triangleIndex] {
+			if visited[neighbor] {
+				continue
+			}
+
+			visited[neighbor] = true
+			visitedCount++
+
+			stack = append(stack, neighbor)
+		}
+	}
+
+	return visitedCount == len(adjacency)
+}
+
 func newMeshEdgeKey(a, b Vec3) meshEdgeKey {
 	keyA := newMeshVertexKey(a)
 

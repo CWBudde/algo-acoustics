@@ -103,14 +103,14 @@ func (e *RaytraceEngine) RenderBinaural(
 		return nil, nil, err
 	}
 
+	roomVolume, ok := sc.Room.Volume()
+	if !ok {
+		return nil, nil, errors.New("derive enclosed room volume for binaural late field")
+	}
+
 	histogram, err := tracer.Trace()
 	if err != nil {
 		return nil, nil, fmt.Errorf("trace directional late field: %w", err)
-	}
-
-	bounds, ok := sc.Room.Bounds()
-	if !ok {
-		return nil, nil, errors.New("derive room volume for binaural late field")
 	}
 
 	bins := make([]ir.EnergyBin, len(histogram.Bins))
@@ -129,7 +129,7 @@ func (e *RaytraceEngine) RenderBinaural(
 	left, right, err = ir.RenderBinauralPoisson(ir.BinauralPoissonConfig{
 		Bins:            bins,
 		BinDuration:     histogram.BinDuration,
-		Volume:          bounds.Volume(),
+		Volume:          roomVolume,
 		BandSpec:        sc.BandSpec,
 		SampleRate:      cfg.SampleRate,
 		HRTF:            receiver.HRTF,
