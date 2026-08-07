@@ -105,7 +105,7 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 19.4 Three.js visualization — remaining
 
-- [ ] Optional: SPL heatmap texture on surfaces from simulation results
+- [x] Optional: SPL heatmap texture on surfaces from simulation results
 
 #### 19.5 Web Audio API — remaining
 
