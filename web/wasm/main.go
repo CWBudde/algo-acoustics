@@ -66,8 +66,29 @@ func demoResultToJS(result demoResult) js.Value {
 	output.Set("rmsAmplitude", result.RMSAmplitude)
 	output.Set("firstArrivalMs", result.FirstArrivalMs)
 	output.Set("renderMs", result.RenderMS)
+	output.Set("splHeatmap", demoSPLHeatmapToJS(result.SPLHeatmap))
 	output.Set("samples", samples)
 	output.Set("wavBytes", wavBytes)
+
+	return output
+}
+
+func demoSPLHeatmapToJS(heatmap demoSPLHeatmap) js.Value {
+	output := js.Global().Get("Object").New()
+	output.Set("minimumDb", heatmap.MinimumDB)
+	output.Set("maximumDb", heatmap.MaximumDB)
+
+	samples := js.Global().Get("Array").New(len(heatmap.Samples))
+	for index, sample := range heatmap.Samples {
+		item := js.Global().Get("Object").New()
+		item.Set("surfaceId", sample.SurfaceID)
+		item.Set("x", sample.X)
+		item.Set("y", sample.Y)
+		item.Set("z", sample.Z)
+		item.Set("levelDb", sample.LevelDB)
+		samples.SetIndex(index, item)
+	}
+	output.Set("samples", samples)
 
 	return output
 }

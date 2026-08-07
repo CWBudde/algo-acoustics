@@ -160,7 +160,11 @@ async function renderImpulseResponse(page) {
         document.getElementById("render-badge")?.textContent?.trim() ===
           "Render complete" &&
         result?.sampleCount > 0 &&
-        result?.wavByteLength > 44
+        result?.wavByteLength > 44 &&
+        document.getElementById("spl-heatmap")?.getAttribute("aria-pressed") ===
+          "true" &&
+        document.getElementById("spl-heatmap")?.disabled === false &&
+        document.getElementById("spl-heatmap-legend")?.hidden === false
       );
     },
     undefined,

@@ -369,6 +369,30 @@ audio {
   text-align: center;
 }
 
+.heatmap-toggle {
+  align-self: end;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.heatmap-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-strong));
+  color: var(--ink);
+}
+
+.heatmap-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .ghost-button,
 .primary-button,
 .mode-button {
@@ -674,6 +698,49 @@ audio {
 
 .legend-receiver {
   background: var(--accent-2);
+}
+
+.heatmap-legend {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  grid-template-columns: auto minmax(92px, 150px) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--overlay-bg);
+  color: var(--overlay-ink);
+  font-size: 0.74rem;
+  font-weight: 800;
+  backdrop-filter: blur(10px);
+}
+
+.heatmap-legend[hidden] {
+  display: none;
+}
+
+.heatmap-legend small {
+  grid-column: 1 / -1;
+  color: var(--overlay-ink);
+  font-size: 0.68rem;
+  font-weight: 700;
+  opacity: 0.76;
+  text-align: center;
+}
+
+.heatmap-gradient {
+  height: 9px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #17296b,
+    #00b0c7 32%,
+    #f5d133 62%,
+    #f55c1f 82%,
+    #ad0829
+  );
 }
 
 .audio-card {

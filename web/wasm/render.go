@@ -154,6 +154,7 @@ type demoResult struct {
 	RMSAmplitude    float64
 	FirstArrivalMs  float64
 	RenderMS        float64
+	SPLHeatmap      demoSPLHeatmap
 	Samples         []float32
 	WAVBytes        []byte
 }
@@ -315,7 +316,13 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	}
 	currentDemoAPIState.storeResult(demoResult{}, buffer)
 
-	reportDemoProgress("encode", 95, "Encoding WAV")
+	reportDemoProgress("heatmap", 91, "Sampling surface SPL")
+	splHeatmap, err := buildDemoSPLHeatmap(sc)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("build surface SPL heatmap: %w", err)
+	}
+
+	reportDemoProgress("encode", 96, "Encoding WAV")
 	wavBytes, err := export.EncodeMonoWAVBytes(buffer)
 	if err != nil {
 		return demoResult{}, err
@@ -345,6 +352,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		RMSAmplitude:    stats.RMSAmplitude,
 		FirstArrivalMs:  stats.FirstArrivalMs,
 		RenderMS:        float64(time.Since(started).Milliseconds()),
+		SPLHeatmap:      splHeatmap,
 		Samples:         floatSamples,
 		WAVBytes:        wavBytes,
 	}

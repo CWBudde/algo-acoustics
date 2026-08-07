@@ -423,6 +423,16 @@
                 </p>
               </div>
               <div class="viewport-controls">
+                <button
+                  id="spl-heatmap"
+                  class="heatmap-toggle"
+                  type="button"
+                  aria-pressed="false"
+                  title="Render the room before enabling the broadband SPL map"
+                  disabled
+                >
+                  SPL heatmap
+                </button>
                 <label class="field compact-field viewport-reflections">
                   <span>Reflection order</span>
                   <select id="scene-reflections">
@@ -440,6 +450,12 @@
                 <span>Source</span>
                 <span class="legend-dot legend-receiver"></span>
                 <span>Receiver</span>
+              </div>
+              <div id="spl-heatmap-legend" class="heatmap-legend" hidden>
+                <span id="spl-heatmap-min">−30 dB</span>
+                <span class="heatmap-gradient" aria-hidden="true"></span>
+                <span id="spl-heatmap-max">0 dB rel.</span>
+                <small>Broadband early field</small>
               </div>
             </div>
           </section>

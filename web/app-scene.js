@@ -10,6 +10,12 @@ import {
   isWithin,
 } from "./app-utils.js";
 import { getReflectionPreviewConfig } from "./reflection-preview.mjs";
+import {
+  interpolateSPL,
+  normalizeSPLHeatmap,
+  samplesForSurface,
+  splHeatmapColor,
+} from "./spl-heatmap.mjs";
 
 let sceneState = null;
 let sceneView = null;
@@ -18,6 +24,8 @@ let sceneRaycaster = null;
 let scenePointer = null;
 let sceneDragPlane = null;
 let dragState = null;
+let splHeatmap = null;
+let splHeatmapEnabled = false;
 
 export function setSceneContext(state, view = null) {
   sceneState = state;
@@ -32,6 +40,14 @@ export function setSceneView(view) {
 
 export function setSceneChangeHandler(handler) {
   sceneChangeHandler = handler;
+}
+
+export function setSPLHeatmap(heatmap) {
+  splHeatmap = normalizeSPLHeatmap(heatmap);
+}
+
+export function setSPLHeatmapEnabled(enabled) {
+  splHeatmapEnabled = Boolean(enabled);
 }
 
 export function scenePalette() {
@@ -371,19 +387,22 @@ function canvasForScene() {
 function createWallMesh(name, width, height, materialKey, configure) {
   const material = MATERIALS[materialKey];
   const averageAbsorption = average(material.absorption);
+  const heatmapSamples = activeHeatmapSamples(name);
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, height),
+    new THREE.PlaneGeometry(width, height, 6, 4),
     new THREE.MeshPhysicalMaterial({
-      color: material.color,
+      color: heatmapSamples.length ? 0xffffff : material.color,
       transparent: true,
-      opacity: 0.16 + averageAbsorption * 0.26,
+      opacity: heatmapSamples.length ? 0.74 : 0.16 + averageAbsorption * 0.26,
       roughness: 0.42,
       metalness: 0.05,
       side: THREE.DoubleSide,
       transmission: name === "east" ? 0.15 : 0,
+      vertexColors: heatmapSamples.length > 0,
     }),
   );
   configure(mesh);
+  applySPLVertexColors(mesh, heatmapSamples);
   return mesh;
 }
 
@@ -401,16 +420,19 @@ function createMeshRoomPreview(meshSpec, palette) {
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
 
+  const heatmapSamples = activeHeatmapSamples("mesh");
   const material = new THREE.MeshPhysicalMaterial({
-    color: MATERIALS.perforatedWood.color,
+    color: heatmapSamples.length ? 0xffffff : MATERIALS.perforatedWood.color,
     transparent: true,
-    opacity: 0.22,
+    opacity: heatmapSamples.length ? 0.78 : 0.22,
     roughness: 0.5,
     metalness: 0.02,
     side: THREE.DoubleSide,
+    vertexColors: heatmapSamples.length > 0,
   });
 
   const mesh = new THREE.Mesh(geometry, material);
+  applySPLVertexColors(mesh, heatmapSamples);
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(geometry),
     new THREE.LineBasicMaterial({
@@ -421,6 +443,41 @@ function createMeshRoomPreview(meshSpec, palette) {
   );
 
   return { mesh, edges };
+}
+
+function activeHeatmapSamples(surfaceID) {
+  if (!splHeatmapEnabled || !splHeatmap) {
+    return [];
+  }
+
+  return samplesForSurface(splHeatmap, surfaceID);
+}
+
+function applySPLVertexColors(mesh, samples) {
+  const positions = mesh.geometry?.attributes?.position;
+  if (!positions || !samples.length || !splHeatmap) {
+    return;
+  }
+
+  mesh.updateMatrixWorld(true);
+  const colors = new Float32Array(positions.count * 3);
+  const local = new THREE.Vector3();
+  for (let index = 0; index < positions.count; index += 1) {
+    local.fromBufferAttribute(positions, index);
+    const world = mesh.localToWorld(local.clone());
+    const levelDB = interpolateSPL(samples, {
+      x: world.x,
+      y: world.z,
+      z: world.y,
+    });
+    const color = splHeatmapColor(
+      levelDB ?? splHeatmap.minimumDb,
+      splHeatmap.minimumDb,
+      splHeatmap.maximumDb,
+    );
+    colors.set(color, index * 3);
+  }
+  mesh.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 }
 
 function createMarkerSphere(position, color, radius, target) {

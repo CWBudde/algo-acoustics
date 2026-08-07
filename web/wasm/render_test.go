@@ -48,6 +48,16 @@ func TestRunDemoRenderProducesWaveformAndMetrics(t *testing.T) {
 	if result.RenderMS < 0 {
 		t.Fatalf("RenderMS = %v, want >= 0", result.RenderMS)
 	}
+
+	if got, want := len(result.SPLHeatmap.Samples), 6*heatmapColumns*heatmapRows; got != want {
+		t.Fatalf("SPL heatmap sample count = %d, want %d", got, want)
+	}
+	if result.SPLHeatmap.MaximumDB != 0 {
+		t.Fatalf("SPL heatmap maximum = %v, want 0 dB relative", result.SPLHeatmap.MaximumDB)
+	}
+	if result.SPLHeatmap.MinimumDB < heatmapFloorDB || result.SPLHeatmap.MinimumDB > 0 {
+		t.Fatalf("SPL heatmap minimum = %v, want within [%v, 0]", result.SPLHeatmap.MinimumDB, heatmapFloorDB)
+	}
 }
 
 func TestRunDemoRenderRejectsUnsupportedMode(t *testing.T) {

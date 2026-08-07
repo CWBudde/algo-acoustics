@@ -161,6 +161,10 @@ const refs = {
   renderCrossoverValue: document.getElementById("render-crossover-value"),
   renderWindow: document.getElementById("render-window"),
   sceneReflections: document.getElementById("scene-reflections"),
+  splHeatmap: document.getElementById("spl-heatmap"),
+  splHeatmapLegend: document.getElementById("spl-heatmap-legend"),
+  splHeatmapMin: document.getElementById("spl-heatmap-min"),
+  splHeatmapMax: document.getElementById("spl-heatmap-max"),
   renderModeButtons: Array.from(
     document.querySelectorAll("#render-mode-switch .mode-button"),
   ),
@@ -402,6 +406,7 @@ function handleWorkerMessage(event) {
     }
     setRenderBadge("Render complete", "ready");
     updateMetrics(lastRender);
+    installSPLHeatmap(lastRender.splHeatmap);
     updateAudio(lastRender.wavBytes);
     updateRenderLog(lastRender);
     redrawWaveform(samples);
@@ -414,6 +419,12 @@ function handleWorkerMessage(event) {
 
 function bindEvents() {
   refs.themeToggle?.addEventListener("click", cycleTheme);
+
+  refs.splHeatmap?.addEventListener("click", () => {
+    const enabled = refs.splHeatmap.getAttribute("aria-pressed") !== "true";
+    setSPLHeatmapVisibility(enabled);
+    sceneModule.updateSceneView();
+  });
 
   refs.resetScene.addEventListener("click", () => {
     if (isRenderActive()) {
@@ -1179,7 +1190,45 @@ function bindSceneInteractions(canvas) {
 }
 
 function updateSceneView() {
+  clearSPLHeatmap();
   sceneModule.updateSceneView();
+}
+
+function installSPLHeatmap(heatmap) {
+  const hasSamples = Array.isArray(heatmap?.samples) && heatmap.samples.length > 0;
+  sceneModule.setSPLHeatmap(hasSamples ? heatmap : null);
+  refs.splHeatmap.disabled = !hasSamples;
+  refs.splHeatmap.title = hasSamples
+    ? "Toggle the simulated broadband surface SPL map"
+    : "Render the room before enabling the broadband SPL map";
+
+  if (!hasSamples) {
+    setSPLHeatmapVisibility(false);
+    return;
+  }
+
+  refs.splHeatmapMin.textContent = `${Math.round(heatmap.minimumDb)} dB`;
+  refs.splHeatmapMax.textContent = `${Math.round(heatmap.maximumDb)} dB rel.`;
+  setSPLHeatmapVisibility(true);
+  sceneModule.updateSceneView();
+}
+
+function clearSPLHeatmap() {
+  sceneModule.setSPLHeatmap(null);
+  if (!refs.splHeatmap) {
+    return;
+  }
+  refs.splHeatmap.disabled = true;
+  refs.splHeatmap.title =
+    "Render the room before enabling the broadband SPL map";
+  setSPLHeatmapVisibility(false);
+}
+
+function setSPLHeatmapVisibility(enabled) {
+  const active = Boolean(enabled) && !refs.splHeatmap.disabled;
+  refs.splHeatmap.setAttribute("aria-pressed", String(active));
+  refs.splHeatmapLegend.hidden = !active;
+  sceneModule.setSPLHeatmapEnabled(active);
 }
 
 function drawWaveform(canvas, samples = null, state = {}) {
