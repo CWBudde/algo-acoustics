@@ -26,7 +26,23 @@ paths are implemented; [PLAN.md](PLAN.md) records completed and future phases.
 
 ## Web Demo
 
-A small browser demo lives in [web/README.md](web/README.md). It uses Go/WASM for the actual render path and a static HTML/CSS/JS shell for the UI, similar to the lightweight browser stacks used in the sibling `algo-dsp` and `gll-tools` repositories.
+A browser demo lives in [`web/`](web/README.md). It runs the real early, late,
+and hybrid render paths through Go/WASM in a dedicated worker, with a static
+HTML/CSS/ES-module shell for the UI — similar to the lightweight browser stacks
+used in the sibling `algo-dsp` and `gll-tools` repositories.
+
+It covers a shoebox room with editable wall materials, source and receiver
+placement, a 3D preview, an optional SPL heatmap on the room boundary, and
+auralization of sample audio with the rendered impulse response.
+
+Build and serve it locally:
+
+```bash
+just web-demo      # builds the WASM bundle, then serves web/ on :8080
+```
+
+Then open <http://localhost:8080>. See [web/README.md](web/README.md) for
+details.
 
 ## Dependencies
 

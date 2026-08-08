@@ -326,17 +326,21 @@ export function makeMeshPreset(label, room, mesh, source, receiver, options = {}
   };
 }
 
+// Room meshes are wound so that every triangle normal (v1-v0)×(v2-v0) points
+// *into* the room. The Go mesh image-source solver depends on this: it only
+// mirrors the source across planes it lies in front of (ism/mesh_image.go),
+// so an outward-facing face contributes no specular reflections at all.
 export function makeTriangularPrismMesh(width, depth, height) {
   return {
     triangles: [
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: 0 }, v2: { x: width, y: 0, z: 0 } },
-      { v0: { x: 0, y: 0, z: height }, v1: { x: width, y: 0, z: height }, v2: { x: width / 2, y: depth, z: height } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: 0, z: height } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: height }, v2: { x: 0, y: 0, z: height } },
-      { v0: { x: width, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: 0 }, v2: { x: width / 2, y: depth, z: height } },
-      { v0: { x: width, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: height }, v2: { x: width, y: 0, z: height } },
-      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: 0, y: 0, z: 0 }, v2: { x: 0, y: 0, z: height } },
-      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: 0, y: 0, z: height }, v2: { x: width / 2, y: depth, z: height } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width / 2, y: depth, z: 0 } },
+      { v0: { x: 0, y: 0, z: height }, v1: { x: width / 2, y: depth, z: height }, v2: { x: width, y: 0, z: height } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: height }, v2: { x: width, y: 0, z: 0 } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: 0, y: 0, z: height }, v2: { x: width, y: 0, z: height } },
+      { v0: { x: width, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: height }, v2: { x: width / 2, y: depth, z: 0 } },
+      { v0: { x: width, y: 0, z: 0 }, v1: { x: width, y: 0, z: height }, v2: { x: width / 2, y: depth, z: height } },
+      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: 0, y: 0, z: height }, v2: { x: 0, y: 0, z: 0 } },
+      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: width / 2, y: depth, z: height }, v2: { x: 0, y: 0, z: height } },
     ],
   };
 }
@@ -346,14 +350,14 @@ export function makeSlopedRoofMesh(width, depth, lowHeight, highHeight) {
     triangles: [
       { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: depth, z: 0 } },
       { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: depth, z: 0 }, v2: { x: 0, y: depth, z: 0 } },
-      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: width, y: depth, z: highHeight } },
-      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: width, y: depth, z: highHeight }, v2: { x: 0, y: depth, z: highHeight } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: 0, z: lowHeight } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: 0, y: 0, z: lowHeight } },
+      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: width, y: depth, z: highHeight }, v2: { x: width, y: 0, z: lowHeight } },
+      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: 0, y: depth, z: highHeight }, v2: { x: width, y: depth, z: highHeight } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: width, y: 0, z: 0 } },
+      { v0: { x: 0, y: 0, z: 0 }, v1: { x: 0, y: 0, z: lowHeight }, v2: { x: width, y: 0, z: lowHeight } },
       { v0: { x: width, y: depth, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: 0, z: lowHeight } },
       { v0: { x: width, y: depth, z: 0 }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: width, y: depth, z: highHeight } },
-      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: 0, z: 0 }, v2: { x: 0, y: 0, z: lowHeight } },
-      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: 0, z: lowHeight }, v2: { x: 0, y: depth, z: highHeight } },
+      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: 0, z: lowHeight }, v2: { x: 0, y: 0, z: 0 } },
+      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: depth, z: highHeight }, v2: { x: 0, y: 0, z: lowHeight } },
       { v0: { x: 0, y: depth, z: 0 }, v1: { x: width, y: depth, z: 0 }, v2: { x: width, y: depth, z: highHeight } },
       { v0: { x: 0, y: depth, z: 0 }, v1: { x: width, y: depth, z: highHeight }, v2: { x: 0, y: depth, z: highHeight } },
     ],
