@@ -29,6 +29,7 @@ func RayOpenFiniteCylinder(
 	}
 
 	edge := edgeEnd.Sub(edgeStart)
+
 	edgeLengthSquared := edge.Dot(edge)
 	if edgeLengthSquared <= rayCylinderEpsilon {
 		return RayCylinderHit{}, false
@@ -39,12 +40,14 @@ func RayOpenFiniteCylinder(
 	b := dir.Dot(edge)
 	d := dir.Dot(w)
 	e := edge.Dot(w)
+
 	denominator := edgeLengthSquared - b*b
 	if math.Abs(denominator) <= rayCylinderEpsilon*edgeLengthSquared {
 		return RayCylinderHit{}, false
 	}
 
 	rayDistance := (b*e - edgeLengthSquared*d) / denominator
+
 	edgeFraction := (e - b*d) / denominator
 	if rayDistance < tMin || rayDistance > tMax || edgeFraction <= 0 || edgeFraction >= 1 {
 		return RayCylinderHit{}, false
@@ -52,6 +55,7 @@ func RayOpenFiniteCylinder(
 
 	rayPoint := ray.Origin.Add(dir.Scale(rayDistance))
 	edgePoint := edgeStart.Add(edge.Scale(edgeFraction))
+
 	flyByDistance := rayPoint.Distance(edgePoint)
 	if flyByDistance > radius+rayCylinderEpsilon {
 		return RayCylinderHit{}, false

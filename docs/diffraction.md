@@ -1,0 +1,111 @@
+# Diffraction
+
+Diffraction is opt-in. The deterministic image-source path uses the finite-edge
+Biot-Tolstoy-Medwin expression (BTME), while the stochastic late field can use
+deflection cylinders and diffracted rain based on the Deflection Angle
+Probability Density Function (DAPDF). Mesh edges are required; shoebox rooms do
+not acquire synthetic diffraction edges.
+
+## Deterministic BTME Paths
+
+Enable diffraction in `ism.ISMConfig` and choose a maximum diffraction order:
+
+```go
+cfg := ism.ISMConfig{
+	MaxOrder:            2,
+	EnableDiffraction:   true,
+	MaxDiffractionOrder: 2,
+}
+```
+
+`MaxDiffractionOrder` accepts 0, 1, or 2. When diffraction is enabled, zero uses
+the first-order default. `SolveWithDiffraction` is the explicit convenience
+entry point and enables diffraction regardless of `EnableDiffraction`.
+
+For each audible finite edge, the solver finds the interior Fermat point and
+evaluates `geometry.BTMETransfer` at every configured band center. A path emits
+one event per band with a one-hot `BandGain`, retaining the complex BTME
+magnitude and phase. Diffraction sources are active only when their corresponding
+undiffracted source or image-source path is occluded, which avoids counting the
+geometrical and diffracted fields twice at a view boundary.
+
+At order 2 the solver enumerates ordered, distinct edge pairs and minimizes the
+three-segment source-to-edge, edge-to-edge, and edge-to-receiver path. It also
+includes the two mixed paths whose total order is 2: reflection then diffraction,
+and diffraction then reflection. Physical reflection and diffraction points are
+used for angles; virtual image positions are path-construction aids only.
+
+The second-order transfer follows RAVEN's midpoint approximation. The first edge
+is evaluated with the midpoint of the two diffraction points as receiver, the
+second edge with that midpoint as source, and the two complex transfers are
+multiplied. This is not the exact double integral over both finite edges.
+
+## Stochastic DAPDF Rain
+
+Select DAPDF rain in `raytrace.LaunchConfig`:
+
+```go
+cfg := raytrace.LaunchConfig{
+	DiffractionMode:     raytrace.DiffractionDAPDFRain,
+	MaxDiffractionDepth: 2,
+}
+```
+
+The zero mode disables stochastic diffraction. `DiffractionKellerCone` preserves
+the legacy sampled model for compatibility and comparison. Nonzero deprecated
+`DiffractionAngularThreshold` or `DiffractionConeSamples` values still select
+Keller-cone behavior when `DiffractionMode` is otherwise disabled. A non-positive
+`MaxDiffractionDepth` uses the default depth of 2.
+
+For wavelength $\lambda$, an edge has an open finite deflection cylinder of
+radius $7\lambda$. A ray fly-by at distance $a$ uses the dimensionless apparent
+slit width $b=6a/\lambda$ and $v=2b\epsilon$. RAVEN Eq. 5.28 is:
+
+$$
+D(v)=D_0\begin{cases}
+1-v^2,&|v|\le v_0,\\
+\dfrac{1/2}{\sqrt{2}-1+v^2},&|v|>v_0,
+\end{cases}
+\qquad
+v_0=\sqrt{1-\dfrac{1}{\sqrt{2}}}.
+$$
+
+In particular, the outer denominator is not
+$\sqrt{2-1+v^2}$. Define $q=\sqrt{\sqrt{2}-1}$ and the odd, continuous,
+unnormalized antiderivative
+
+$$
+F(v)=\operatorname{sgn}(v)\begin{cases}
+x-x^3/3,&x\le v_0,\\
+v_0-v_0^3/3+\dfrac{1}{2q}
+\left[\tan^{-1}(x/q)-\tan^{-1}(v_0/q)\right],&x>v_0,
+\end{cases}
+$$
+
+where $x=|v|$. `DAPDFIntegral` computes the six possible interval arrangements
+by subtracting this primitive and normalizing by
+$F(+\infty)-F(-\infty)$. The $v=2b\epsilon$ substitution supplies the angular
+Jacobian, so integrating over all deflection angles yields one.
+
+Diffracted rain deposits energy toward visible receiver spheres and portals, and
+can forward energy to other visible deflection cylinders until the configured
+depth. Each chain suppresses revisiting an edge, contributions below -60 dB are
+culled, and overlapping downstream-cylinder weights are normalized so forwarded
+energy cannot exceed incoming energy. Because this detector recursion is
+frequency dependent, `TracePaths` returns an unsupported error in DAPDF mode;
+use the detector-aware tracing entry points instead.
+
+## Reference Validation
+
+The checked-in validation manifest and the current external-reference limitation
+are documented in [`testdata/diffraction`](../testdata/diffraction/README.md).
+No Svensson/RAVEN golden values are claimed until an official-tool run has been
+captured with its generator and provenance.
+
+Primary references:
+
+- Dirk Schröder, [_Physically Based Real-Time Auralization of Interactive
+  Virtual Environments_](https://publications.rwth-aachen.de/record/50580/files/3875.pdf),
+  Sections 5.2.3, 5.3.3, and 10.3.
+- Peter Svensson's official
+  [Edge Diffraction Toolbox](https://ulfps.folk.ntnu.no/software/index.html).

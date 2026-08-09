@@ -199,49 +199,49 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 ### Phase 22 — Higher-Order Diffraction and DAPDF
 
-> Extend diffraction beyond first-order UTD: second-order via edge-to-edge paths (BTME) and replace Keller-cone sampling with DAPDF. See `docs/raven2.md` Sections 2.5 and 3.3.
+> Extend diffraction beyond first-order UTD: second-order via edge-to-edge paths (BTME) and replace Keller-cone sampling with DAPDF. See `docs/raven.md` Sections 2.5 and 3.3.
 
 #### 22.1 Second-order edge diffraction (`ism/`, `geometry/`)
 
-- [ ] Enumerate edge-to-edge diffraction paths with mutual visibility checks
-- [ ] Implement `SecondOrderDiffractionPaths`: Fermat-principle points on both edges, intermediate receiver, cascaded diffraction coefficients
-- [ ] `MaxDiffractionOrder int` config (default: 1; set to 2 to enable)
-- [ ] Contribution culling: skip pairs below -60 dB
-- [ ] Unit tests: L-shaped corridor (two corners), double-doorway
+- [x] Enumerate edge-to-edge diffraction paths with mutual visibility checks
+- [x] Implement `SecondOrderDiffractionPaths`: Fermat-principle points on both edges, intermediate receiver, cascaded diffraction coefficients
+- [x] `MaxDiffractionOrder int` config (default: 1; set to 2 to enable)
+- [x] Contribution culling: skip pairs below -60 dB
+- [x] Unit tests: L-shaped corridor (two corners), double-doorway
 - [ ] Validation against RAVEN BTME reference
 
 #### 22.2 Combined reflection-diffraction paths (`ism/`)
 
-- [ ] Enumerate source->reflect->diffract->receiver and source->diffract->reflect->receiver up to second total order
-- [ ] Reuse IS tree for reflection segments; diffraction via `FindDiffractionPoint`
-- [ ] Path construction using subpath descriptors: S2D, D2D, D2R
+- [x] Enumerate source->reflect->diffract->receiver and source->diffract->reflect->receiver up to second total order
+- [x] Reuse IS tree for reflection segments; diffraction via `FindDiffractionPoint`
+- [x] Path construction using subpath descriptors: S2D, D2D, D2R
 
 #### 22.3 DAPDF implementation (`raytrace/`)
 
-- [ ] Implement `DAPDF(v, v0, D0 float64) float64` with piecewise definition
-- [ ] Implement the six closed-form energy integrals (Eqs. 5.29-5.34 in raven.md)
-- [ ] Unit tests: integral = 1.0 for any b > 0; shape matches published plots
+- [x] Implement `DAPDF(v, v0, D0 float64) float64` with piecewise definition
+- [x] Implement the six closed-form energy integrals (Eqs. 5.29-5.34 in raven.md)
+- [x] Unit tests: integral = 1.0 for any b > 0; shape matches published plots
 
 #### 22.4 Deflection cylinders (`raytrace/`, `geometry/`)
 
-- [ ] `DeflectionCylinder` struct: edge, frequency-dependent radius (r = 7\*lambda)
-- [ ] Ray-cylinder collision test
-- [ ] DAPDF energy integration for outgoing energy distribution
-- [ ] Forward diffracted energy to visible detectors ("diffracted rain"), recursive up to configurable depth (default: 2)
-- [ ] Unit test and benchmark vs Keller-cone approach
+- [x] `DeflectionCylinder` struct: edge, frequency-dependent radius (r = 7\*lambda)
+- [x] Ray-cylinder collision test
+- [x] DAPDF energy integration for outgoing energy distribution
+- [x] Forward diffracted energy to visible detectors ("diffracted rain"), recursive up to configurable depth (default: 2)
+- [x] Unit test and benchmark vs Keller-cone approach
 
 #### 22.5 Validation
 
 - [ ] Single finite wedge: compare against Svensson Edge Diffraction Toolbox at 50 Hz, 500 Hz, 5 kHz, 10 kHz
 - [ ] View/shadow zone transition smoothness for both IS (BTME) and RT (DAPDF)
 - [ ] L-shaped room: second-order improves shadow-zone by 1-3 dB
-- [ ] Regression: existing first-order tests still pass at `MaxDiffractionOrder = 1`
+- [x] Regression: existing first-order tests still pass at `MaxDiffractionOrder = 1`
 
 ---
 
 ### Phase 23 — Plane-Polygon Map and ISM Optimizations
 
-> For rooms with many coplanar polygons, mirror across distinct planes instead of individual triangles: IS count drops from `n(n-1)^(i-1)` to `p(p-1)^(i-1)` where `p << n`. See `docs/raven2.md` Sections 2.4 and 4.2.
+> For rooms with many coplanar polygons, mirror across distinct planes instead of individual triangles: IS count drops from `n(n-1)^(i-1)` to `p(p-1)^(i-1)` where `p << n`. See `docs/raven.md` Sections 2.4 and 4.2.
 
 #### 23.1 Plane-Polygon Map (`ism/`, `geometry/`)
 
@@ -263,7 +263,7 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 ### Phase 24 — Extended Source Directivity and SOFA Loading
 
-> Frequency-dependent source directivity and complete SOFA file loading for professional-grade auralization. See `docs/raven2.md` Section 12.3.
+> Frequency-dependent source directivity and complete SOFA file loading for professional-grade auralization. See `docs/raven.md` Section 12.3.
 
 #### 24.1 Frequency-dependent directivity models (`directivity/`)
 
@@ -286,7 +286,7 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 ### Phase 25 — Multi-Room Acoustic Scene Graph
 
-> Full ASG/PST/PPG infrastructure for complex multi-room environments. Builds on Phase 21's basic portal support. See `docs/raven2.md` Section 5 and Section 10.
+> Full ASG/PST/PPG infrastructure for complex multi-room environments. Builds on Phase 21's basic portal support. See `docs/raven.md` Section 5 and Section 10.
 
 #### 25.1 Acoustic Scene Graph (`scene/`)
 

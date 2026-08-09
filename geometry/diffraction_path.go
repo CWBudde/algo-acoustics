@@ -22,6 +22,24 @@ type DiffractionPath struct {
 	TotalDistance    float64
 }
 
+// DiffractionSubpathType identifies one segment of a multi-edge diffraction
+// path using the RAVEN S2D, D2D, and D2R decomposition.
+type DiffractionSubpathType int
+
+const (
+	DiffractionSubpathS2D DiffractionSubpathType = iota
+	DiffractionSubpathD2D
+	DiffractionSubpathD2R
+)
+
+// DiffractionSubpath describes one physical segment of a multi-edge path.
+type DiffractionSubpath struct {
+	Type     DiffractionSubpathType
+	Start    Vec3
+	End      Vec3
+	Distance float64
+}
+
 // SecondOrderDiffractionPath describes a path that bends successively around
 // two distinct finite edges. Point1 and Point2 are the joint Fermat minimum of
 // the three-segment path over the two edge intervals.
@@ -36,6 +54,7 @@ type SecondOrderDiffractionPath struct {
 	EdgeDistance     float64
 	ReceiverDistance float64
 	TotalDistance    float64
+	Subpaths         [3]DiffractionSubpath
 }
 
 // FindDiffractionPoint returns the point on a finite edge that minimizes the
@@ -90,6 +109,12 @@ func PathVisible(mesh *Mesh, source, point, receiver Vec3) bool {
 	return segmentVisible(bvh, source, point) && segmentVisible(bvh, point, receiver)
 }
 
+// SegmentVisible reports whether a finite line segment is unobstructed by the
+// mesh. Intersections at the segment endpoint are permitted.
+func SegmentVisible(mesh *Mesh, start, end Vec3) bool {
+	return segmentVisible(BuildBVH(mesh), start, end)
+}
+
 // EnumerateDiffractionPaths returns the first-order diffraction paths that are
 // valid for the given mesh and edge set.
 func EnumerateDiffractionPaths(source, receiver Vec3, edges []DiffractionEdge, mesh *Mesh) []DiffractionPath {
@@ -142,6 +167,8 @@ func EnumerateDiffractionPaths(source, receiver Vec3, edges []DiffractionEdge, m
 // pairs of distinct finite edges. The edge coordinates are found by bounded
 // coordinate minimization of the convex broken-path length. Minima on edge
 // endpoints are rejected because endpoints are not valid diffraction sources.
+//
+//nolint:cyclop // Ordered-pair validation is clearer as one deterministic enumeration loop.
 func EnumerateSecondOrderDiffractionPaths(source, receiver Vec3, edges []DiffractionEdge, mesh *Mesh) []SecondOrderDiffractionPath {
 	if len(edges) < 2 {
 		return nil
@@ -156,7 +183,10 @@ func EnumerateSecondOrderDiffractionPaths(source, receiver Vec3, edges []Diffrac
 				continue
 			}
 
-			first, second := edges[firstIndex], edges[secondIndex]
+			// #nosec G602 -- both indices are produced by range over edges.
+			first := edges[firstIndex]
+			second := edges[secondIndex]
+
 			point1, point2, t1, t2, ok := findSecondOrderDiffractionPoints(source, receiver, first, second)
 			if !ok || t1 <= diffractionPathEpsilon || t1 >= 1-diffractionPathEpsilon ||
 				t2 <= diffractionPathEpsilon || t2 >= 1-diffractionPathEpsilon {
@@ -171,7 +201,7 @@ func EnumerateSecondOrderDiffractionPaths(source, receiver Vec3, edges []Diffrac
 			sourceDistance := source.Distance(point1)
 			edgeDistance := point1.Distance(point2)
 			receiverDistance := point2.Distance(receiver)
-		paths = append(paths, SecondOrderDiffractionPath{
+			paths = append(paths, SecondOrderDiffractionPath{
 				Source:           source,
 				Receiver:         receiver,
 				Point1:           point1,
@@ -182,6 +212,11 @@ func EnumerateSecondOrderDiffractionPaths(source, receiver Vec3, edges []Diffrac
 				EdgeDistance:     edgeDistance,
 				ReceiverDistance: receiverDistance,
 				TotalDistance:    sourceDistance + edgeDistance + receiverDistance,
+				Subpaths: [3]DiffractionSubpath{
+					{Type: DiffractionSubpathS2D, Start: source, End: point1, Distance: sourceDistance},
+					{Type: DiffractionSubpathD2D, Start: point1, End: point2, Distance: edgeDistance},
+					{Type: DiffractionSubpathD2R, Start: point2, End: receiver, Distance: receiverDistance},
+				},
 			})
 		}
 	}
@@ -190,12 +225,15 @@ func EnumerateSecondOrderDiffractionPaths(source, receiver Vec3, edges []Diffrac
 		if paths[i].TotalDistance != paths[j].TotalDistance {
 			return paths[i].TotalDistance < paths[j].TotalDistance
 		}
+
 		if comparison := compareVec3Lex(paths[i].Edge1.Start, paths[j].Edge1.Start); comparison != 0 {
 			return comparison < 0
 		}
+
 		if comparison := compareVec3Lex(paths[i].Edge2.Start, paths[j].Edge2.Start); comparison != 0 {
 			return comparison < 0
 		}
+
 		if comparison := compareVec3Lex(paths[i].Point1, paths[j].Point1); comparison != 0 {
 			return comparison < 0
 		}
@@ -213,6 +251,7 @@ func findSecondOrderDiffractionPoints(source, receiver Vec3, first, second Diffr
 
 	direction1 := first.Direction.Normalize()
 	direction2 := second.Direction.Normalize()
+
 	if direction1 == Vec3Zero || direction2 == Vec3Zero {
 		return Vec3{}, Vec3{}, 0, 0, false
 	}

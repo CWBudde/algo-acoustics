@@ -133,9 +133,17 @@ func (r *RayTracer) TraceSurfaces(detectors []SurfaceReceiver) ([]*EnergyHistogr
 				}
 			}
 
-			if diffractionIndex != nil && r.Config.DiffractionAngularThreshold > 0 {
-				branches := spawnDiffractionBranches(state, currentRay, hitPoint, segmentLength, diffractionIndex.edges, diffractionIndex, r.Config, rng, launchEnergy, r.Scene.BandSpec.CenterFreqs)
+			switch r.Config.effectiveDiffractionMode() {
+			case DiffractionKellerCone:
+				branches := spawnDiffractionBranches(state, currentRay, hitPoint, segmentLength, nil, diffractionIndex, r.Config, rng, launchEnergy, r.Scene.BandSpec.CenterFreqs)
 				states = append(states, branches...)
+			case DiffractionDAPDFRain:
+				deposits := dapdfRainForSegment(state, currentRay, segmentLength, diffractionIndex, tracer, nil, detectors, r.Config, r.Scene.BandSpec.CenterFreqs, launchEnergy)
+				for _, deposit := range deposits {
+					if deposit.SurfaceIndex >= 0 && deposit.SurfaceIndex < len(histograms) {
+						histograms[deposit.SurfaceIndex].Add(deposit.ArrivalTime, oneBandEnergy(bandCount, deposit.BandIndex, deposit.Energy))
+					}
+				}
 			}
 
 			pathLength += segmentLength

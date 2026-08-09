@@ -54,6 +54,10 @@ func TestDiffractionEventsForPathEvaluatesEachBand(t *testing.T) {
 		if math.IsNaN(event.PhaseRadians) || math.IsInf(event.PhaseRadians, 0) {
 			t.Fatalf("event[%d].PhaseRadians = %v, want finite", index, event.PhaseRadians)
 		}
+
+		if len(event.BandGain) != 2 || event.BandGain[index] != 1 || event.BandGain[1-index] != 0 {
+			t.Fatalf("event[%d].BandGain = %v, want one-hot band %d", index, event.BandGain, index)
+		}
 	}
 
 	if math.Abs(events[0].TimeSeconds-events[1].TimeSeconds) > 1e-12 {
@@ -119,6 +123,101 @@ func TestDiffractionEventsEnumeratesBarrierPath(t *testing.T) {
 		if event.Kind != ir.EventDiffraction {
 			t.Fatalf("event[%d].Kind = %v, want diffraction", index, event.Kind)
 		}
+	}
+}
+
+func TestSolveWithDiffractionDoesNotDoubleCountVisibleSource(t *testing.T) {
+	sc := testMeshScene()
+
+	events, err := (ISMSolver{}).SolveWithDiffraction(sc, ISMConfig{
+		MaxOrder:     0,
+		SpeedOfSound: acoustics.SpeedOfSound,
+		BandSpec:     sc.BandSpec,
+	})
+	if err != nil {
+		t.Fatalf("SolveWithDiffraction() error = %v", err)
+	}
+
+	for _, event := range events {
+		if event.Kind == ir.EventDiffraction {
+			t.Fatalf("SolveWithDiffraction() emitted diffraction for visible direct source: %#v", event)
+		}
+	}
+}
+
+func TestSolveRejectsUnsupportedDiffractionOrder(t *testing.T) {
+	_, err := (ISMSolver{}).Solve(testMeshScene(), ISMConfig{MaxDiffractionOrder: 3})
+	if err == nil {
+		t.Fatal("Solve() error = nil, want unsupported diffraction-order error")
+	}
+}
+
+func TestSecondOrderDiffractionSceneFixtures(t *testing.T) {
+	bandSpec := acoustics.BandSpec{
+		CenterFreqs: []float64{500},
+		LowerEdges:  []float64{354},
+		UpperEdges:  []float64{707},
+	}
+	tests := []struct {
+		name     string
+		source   geometry.Vec3
+		receiver geometry.Vec3
+		edges    []geometry.DiffractionEdge
+	}{
+		{
+			name:     "L-shaped corridor corners",
+			source:   geometry.Vec3{X: -2, Y: -1, Z: 1},
+			receiver: geometry.Vec3{X: 4, Y: 3, Z: 3},
+			edges: []geometry.DiffractionEdge{
+				testVerticalDiffractionEdge(geometry.Vec3{}),
+				testVerticalDiffractionEdge(geometry.Vec3{X: 2, Y: 2}),
+			},
+		},
+		{
+			name:     "successive doorway jambs",
+			source:   geometry.Vec3{X: -2, Y: 1, Z: 1},
+			receiver: geometry.Vec3{X: 5, Y: -1, Z: 3},
+			edges: []geometry.DiffractionEdge{
+				testVerticalDiffractionEdge(geometry.Vec3{}),
+				testVerticalDiffractionEdge(geometry.Vec3{X: 3}),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			paths := geometry.EnumerateSecondOrderDiffractionPaths(test.source, test.receiver, test.edges, nil)
+			if len(paths) == 0 {
+				t.Fatal("second-order enumeration returned no visible edge-to-edge path")
+			}
+
+			source := scene.Source{Position: test.source, GainDB: 0}
+			receiver := scene.Receiver{Position: test.receiver, Type: scene.ReceiverOmni}
+
+			events := secondOrderDiffractionEvents(source, receiver, paths, bandSpec, acoustics.SpeedOfSound)
+			if len(events) == 0 {
+				t.Fatal("second-order diffraction returned no finite band event")
+			}
+
+			for _, event := range events {
+				if event.Kind != ir.EventDiffraction || event.Amplitude <= 0 || math.IsNaN(event.Amplitude) || math.IsInf(event.Amplitude, 0) {
+					t.Fatalf("invalid second-order event: %#v", event)
+				}
+			}
+		})
+	}
+}
+
+func testVerticalDiffractionEdge(start geometry.Vec3) geometry.DiffractionEdge {
+	end := start.Add(geometry.Vec3{Z: 4})
+
+	return geometry.DiffractionEdge{
+		Start:       start,
+		End:         end,
+		Direction:   geometry.Vec3{Z: 1},
+		Length:      4,
+		WedgeIndex:  1.5,
+		FaceONormal: geometry.Vec3{X: 1},
 	}
 }
 

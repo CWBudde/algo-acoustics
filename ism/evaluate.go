@@ -143,6 +143,10 @@ func EvaluateMesh(sources []MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]
 		}
 	}
 
+	if cfg.EnableDiffraction {
+		events = append(events, meshDiffractionEvents(sc, cfg, bvh, material, bandSpec, speedOfSound)...)
+	}
+
 	sort.Slice(events, func(i, j int) bool {
 		if events[i].TimeSeconds != events[j].TimeSeconds {
 			return events[i].TimeSeconds < events[j].TimeSeconds

@@ -14,9 +14,11 @@ import (
 
 // ISMConfig configures the shoebox image-source solver.
 type ISMConfig struct {
-	MaxOrder     int
-	SpeedOfSound float64
-	BandSpec     acoustics.BandSpec
+	MaxOrder            int
+	SpeedOfSound        float64
+	BandSpec            acoustics.BandSpec
+	EnableDiffraction   bool
+	MaxDiffractionOrder int
 }
 
 // ISMSolver emits sparse direct and specular image-source events.
@@ -30,6 +32,10 @@ func (ISMSolver) Solve(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 
 	if cfg.MaxOrder < 0 {
 		return nil, errors.New("max order must be non-negative")
+	}
+
+	if cfg.MaxDiffractionOrder < 0 || cfg.MaxDiffractionOrder > 2 {
+		return nil, errors.New("max diffraction order must be 0, 1, or 2")
 	}
 
 	err := scene.Validate(sc)

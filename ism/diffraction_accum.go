@@ -13,41 +13,13 @@ import (
 
 const diffractionCullingLevelDB = -60.0
 
-// SolveWithDiffraction returns the standard ISM events plus first-order
-// diffraction events accumulated from the room mesh.
+// SolveWithDiffraction returns the standard ISM events plus diffraction events
+// accumulated from the room mesh. It enables diffraction regardless of the
+// value of cfg.EnableDiffraction.
 func (s ISMSolver) SolveWithDiffraction(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
-	events, err := s.Solve(sc, cfg)
-	if err != nil {
-		return nil, err
-	}
+	cfg.EnableDiffraction = true
 
-	if sc == nil || sc.Room.Mesh == nil || len(sc.Sources) == 0 || len(sc.Receivers) == 0 {
-		return events, nil
-	}
-
-	bandSpec := cfg.BandSpec
-	if bandSpec.BandCount() == 0 {
-		bandSpec = sc.BandSpec
-	}
-
-	speedOfSound := cfg.SpeedOfSound
-	if speedOfSound <= 0 {
-		speedOfSound = acoustics.SpeedOfSound
-	}
-
-	edges := geometry.ExtractDiffractionEdges(sc.Room.Mesh)
-	if len(edges) == 0 {
-		return events, nil
-	}
-
-	receiver := sc.Receivers[0]
-	for _, source := range sc.Sources {
-		events = append(events, DiffractionEvents(source, receiver, edges, sc.Room.Mesh, bandSpec, speedOfSound)...)
-	}
-
-	sortIR(events)
-
-	return events, nil
+	return s.Solve(sc, cfg)
 }
 
 // DiffractionEvents accumulates first-order diffraction contributions for one
@@ -96,13 +68,6 @@ func diffractionEventsForPath(source scene.Source, receiver scene.Receiver, path
 		return nil
 	}
 
-	phi, phiPrime, betaZero := diffractionAngles(path)
-
-	spreadingFactor := geometry.WedgeSpreadingFactor(path.SourceDistance, path.ReceiverDistance)
-	if spreadingFactor <= 0 {
-		return nil
-	}
-
 	directDistance := source.Position.Distance(receiver.Position)
 	if directDistance <= pathEpsilon {
 		directDistance = distance
@@ -127,10 +92,11 @@ func diffractionEventsForPath(source scene.Source, receiver scene.Receiver, path
 			referenceGain = 1
 		}
 
-		k := 2 * math.Pi * centerFreq / speedOfSound
-		l := geometry.WedgeDistanceParameter(path.SourceDistance, path.ReceiverDistance, betaZero)
+		diffraction, err := geometry.BTMETransfer(path.Source, path.Receiver, path.Edge, centerFreq, speedOfSound)
+		if err != nil {
+			continue
+		}
 
-		diffraction := geometry.WedgeDiffraction(phi, phiPrime, betaZero, path.Edge.WedgeIndex, k, l)
 		if math.IsNaN(real(diffraction)) || math.IsNaN(imag(diffraction)) || math.IsInf(real(diffraction), 0) || math.IsInf(imag(diffraction), 0) {
 			continue
 		}
@@ -140,7 +106,7 @@ func diffractionEventsForPath(source scene.Source, receiver scene.Receiver, path
 			continue
 		}
 
-		estimatedAmplitude := sourceAmplitude * launchGain * magnitude * spreadingFactor / math.Sqrt(distance)
+		estimatedAmplitude := sourceAmplitude * launchGain * magnitude
 		if estimatedAmplitude <= 0 {
 			continue
 		}
@@ -150,12 +116,15 @@ func diffractionEventsForPath(source scene.Source, receiver scene.Receiver, path
 			continue
 		}
 
+		bandGain := make([]float64, bandCount)
+		bandGain[bandIndex] = 1
 		events = append(events, ir.Event{
 			TimeSeconds:    distance / speedOfSound,
 			Amplitude:      estimatedAmplitude,
 			Direction:      pathDirection,
 			DistanceMeters: distance,
-			PhaseRadians:   -k*distance + cmplx.Phase(diffraction),
+			BandGain:       bandGain,
+			PhaseRadians:   cmplx.Phase(diffraction),
 			Kind:           ir.EventDiffraction,
 		})
 	}
@@ -163,50 +132,86 @@ func diffractionEventsForPath(source scene.Source, receiver scene.Receiver, path
 	return events
 }
 
-func diffractionAngles(path geometry.DiffractionPath) (phi, phiPrime, betaZero float64) {
-	edge := path.Edge
-	if edge.WedgeIndex <= 0 {
-		return 0, 0, 0
+func secondOrderDiffractionEvents(
+	source scene.Source,
+	receiver scene.Receiver,
+	paths []geometry.SecondOrderDiffractionPath,
+	bandSpec acoustics.BandSpec,
+	speedOfSound float64,
+) []ir.Event {
+	bandCount := bandSpec.BandCount()
+	if bandCount <= 0 {
+		return nil
 	}
 
-	betaZero = math.Pi / edge.WedgeIndex
-
-	phi = edgeAngle(edge, path.Receiver.Sub(path.Point))
-	phiPrime = edgeAngle(edge, path.Source.Sub(path.Point))
-
-	return phi, phiPrime, betaZero
-}
-
-func edgeAngle(edge geometry.DiffractionEdge, vector geometry.Vec3) float64 {
-	axis := edge.Direction.Normalize()
-	if axis == geometry.Vec3Zero {
-		return 0
+	if speedOfSound <= 0 {
+		speedOfSound = acoustics.SpeedOfSound
 	}
 
-	transverse := vector.Sub(axis.Scale(vector.Dot(axis)))
-	if transverse.Norm() <= pathEpsilon {
-		return 0
+	sourceAmplitude := sourceAmplitude(source)
+	if sourceAmplitude <= 0 {
+		return nil
 	}
 
-	reference := edge.FaceONormal.Normalize()
-	if reference == geometry.Vec3Zero {
-		return 0
+	directDistance := source.Position.Distance(receiver.Position)
+	if directDistance <= pathEpsilon {
+		return nil
 	}
 
-	basis := axis.Cross(reference).Normalize()
-	if basis == geometry.Vec3Zero {
-		return 0
+	minRelativeLinear := math.Pow(10, diffractionCullingLevelDB/20)
+	events := make([]ir.Event, 0, len(paths)*bandCount)
+
+	for _, path := range paths {
+		launchGain := directivityBandGain(source, bandSpec, path.Point1)
+		if bandGainSilent(launchGain) {
+			continue
+		}
+
+		intermediate := path.Point1.Add(path.Point2).Scale(0.5)
+		arrivalDirection := path.Point2.Sub(receiver.Position).Normalize()
+
+		for bandIndex, centerFreq := range bandSpec.CenterFreqs {
+			if bandIndex >= len(launchGain) || launchGain[bandIndex] <= 0 {
+				continue
+			}
+
+			first, err := geometry.BTMETransfer(source.Position, intermediate, path.Edge1, centerFreq, speedOfSound)
+			if err != nil {
+				continue
+			}
+
+			second, err := geometry.BTMETransfer(intermediate, receiver.Position, path.Edge2, centerFreq, speedOfSound)
+			if err != nil {
+				continue
+			}
+
+			transfer := first * second
+			magnitude := cmplx.Abs(transfer)
+			amplitude := sourceAmplitude * launchGain[bandIndex] * magnitude
+
+			if amplitude <= 0 || math.IsNaN(amplitude) || math.IsInf(amplitude, 0) {
+				continue
+			}
+
+			if amplitude/(sourceAmplitude/directDistance) < minRelativeLinear {
+				continue
+			}
+
+			bandGain := make([]float64, bandCount)
+			bandGain[bandIndex] = 1
+			events = append(events, ir.Event{
+				TimeSeconds:    path.TotalDistance / speedOfSound,
+				Amplitude:      amplitude,
+				Direction:      arrivalDirection,
+				DistanceMeters: path.TotalDistance,
+				BandGain:       bandGain,
+				PhaseRadians:   cmplx.Phase(transfer),
+				Kind:           ir.EventDiffraction,
+			})
+		}
 	}
 
-	x := transverse.Dot(reference)
-	y := transverse.Dot(basis)
-
-	angle := math.Atan2(y, x)
-	if angle < 0 {
-		angle += 2 * math.Pi
-	}
-
-	return angle
+	return events
 }
 
 func sortIR(events []ir.Event) {

@@ -83,6 +83,56 @@ func TestDiffractionPathEnumerationFindsBarrierTopEdge(t *testing.T) {
 	}
 }
 
+func TestEnumerateSecondOrderDiffractionPathsFindsInteriorFermatPoints(t *testing.T) {
+	edges := []DiffractionEdge{
+		{Start: Vec3{}, End: Vec3{Z: 4}, Direction: Vec3{Z: 1}, Length: 4},
+		{Start: Vec3{X: 4}, End: Vec3{X: 4, Z: 4}, Direction: Vec3{Z: 1}, Length: 4},
+	}
+	source := Vec3{X: -2, Y: 1, Z: 1}
+	receiver := Vec3{X: 6, Y: 1, Z: 3}
+
+	paths := EnumerateSecondOrderDiffractionPaths(source, receiver, edges, nil)
+	if len(paths) == 0 {
+		t.Fatal("EnumerateSecondOrderDiffractionPaths() returned no paths")
+	}
+
+	wantFirstZ := 1 + 2*math.Sqrt(5)/(4+2*math.Sqrt(5))
+	wantSecondZ := 1 + 2*(math.Sqrt(5)+4)/(4+2*math.Sqrt(5))
+	var found bool
+
+	for _, path := range paths {
+		if path.Edge1.Start == edges[0].Start && path.Edge2.Start == edges[1].Start {
+			found = true
+
+			if math.Abs(path.Point1.Z-wantFirstZ) > 1e-7 || math.Abs(path.Point2.Z-wantSecondZ) > 1e-7 {
+				t.Fatalf("Fermat points = (%v, %v), want z=(%v, %v)", path.Point1, path.Point2, wantFirstZ, wantSecondZ)
+			}
+
+			wantTypes := [...]DiffractionSubpathType{DiffractionSubpathS2D, DiffractionSubpathD2D, DiffractionSubpathD2R}
+			wantStarts := [...]Vec3{source, path.Point1, path.Point2}
+			wantEnds := [...]Vec3{path.Point1, path.Point2, receiver}
+
+			for index, subpath := range path.Subpaths {
+				if subpath.Type != wantTypes[index] || subpath.Start != wantStarts[index] || subpath.End != wantEnds[index] {
+					t.Fatalf("Subpaths[%d] = %#v, want type=%v start=%v end=%v", index, subpath, wantTypes[index], wantStarts[index], wantEnds[index])
+				}
+
+				if math.Abs(subpath.Distance-subpath.Start.Distance(subpath.End)) > 1e-12 {
+					t.Fatalf("Subpaths[%d].Distance = %v, want endpoint distance", index, subpath.Distance)
+				}
+			}
+		}
+	}
+
+	if !found {
+		t.Fatal("ordered edge-1 to edge-2 path not found")
+	}
+
+	if got := EnumerateSecondOrderDiffractionPaths(source, receiver, edges[:1], nil); got != nil {
+		t.Fatalf("one-edge enumeration = %#v, want nil", got)
+	}
+}
+
 func barrierMesh() *Mesh {
 	minCorner := Vec3{X: -0.1, Y: -1, Z: 0}
 	maxCorner := Vec3{X: 0.1, Y: 1, Z: 2}

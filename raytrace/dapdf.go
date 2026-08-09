@@ -6,11 +6,13 @@ import (
 	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
-// DAPDFV0 is the continuous join between the parabolic central lobe and the
-// rational outer branches of the deflection-angle density.
-var DAPDFV0 = math.Sqrt(1 - 1/math.Sqrt2)
+const (
+	// DAPDFV0 is the continuous join between the parabolic central lobe and
+	// the rational outer branches of the deflection-angle density.
+	DAPDFV0 = 0.5411961001461969
 
-const dapdfOuterOffset = math.Sqrt2 - 1
+	dapdfOuterOffset = math.Sqrt2 - 1
+)
 
 // DAPDF evaluates the unscaled piecewise deflection density at v. v0 and d0
 // are explicit to retain the formulation used by the RAVEN reference. The
@@ -38,6 +40,7 @@ func DAPDFIntegral(epsilonMin, epsilonMax, b float64) float64 {
 
 	vMin := 2 * b * epsilonMin
 	vMax := 2 * b * epsilonMax
+
 	return (dapdfPrimitive(vMax) - dapdfPrimitive(vMin)) / dapdfTotalIntegral()
 }
 
@@ -55,6 +58,7 @@ func dapdfPrimitive(v float64) float64 {
 	}
 
 	sign := 1.0
+
 	x := v
 	if x < 0 {
 		sign = -1

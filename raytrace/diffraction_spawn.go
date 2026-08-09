@@ -13,8 +13,16 @@ const (
 )
 
 func spawnDiffractionBranches(state RayState, ray geometry.Ray, hitPoint geometry.Vec3, segmentLength float64, _ []geometry.DiffractionEdge, index *DiffractionEdgeIndex, cfg LaunchConfig, rng *rand.Rand, launchEnergy float64, bandFreqs []float64) []RayState {
-	if index == nil || cfg.DiffractionAngularThreshold <= 0 || cfg.DiffractionConeSamples <= 0 {
+	if index == nil || cfg.effectiveDiffractionMode() != DiffractionKellerCone {
 		return nil
+	}
+
+	if cfg.DiffractionAngularThreshold <= 0 {
+		cfg.DiffractionAngularThreshold = 0.3
+	}
+
+	if cfg.DiffractionConeSamples <= 0 {
+		cfg.DiffractionConeSamples = 8
 	}
 
 	padding := math.Tan(cfg.DiffractionAngularThreshold) * segmentLength

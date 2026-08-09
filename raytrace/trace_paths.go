@@ -19,6 +19,10 @@ func (r *RayTracer) TracePaths() (*PathCache, error) {
 		return nil, errors.New("scene is nil")
 	}
 
+	if r.Config.effectiveDiffractionMode() == DiffractionDAPDFRain {
+		return nil, errors.New("TracePaths does not support DAPDF diffraction; trace detectors directly")
+	}
+
 	if len(r.Scene.Sources) == 0 {
 		return nil, errors.New("scene has no sources")
 	}

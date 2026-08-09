@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "blocked_no_official_numeric_output",
+  "reference": {
+    "model": "Svensson Edge Diffraction Toolbox EDB2",
+    "release_date": "2015-04-24",
+    "download_url": "https://ulfps.folk.ntnu.no/software/edbtoolbox/EDB2toolbox_25April2015.zip",
+    "sha256": "fd8dfcd13848817e116fe059fc25d3f07d462e9e070fd927dc6a2e1238b3af3d",
+    "license": "GPL-3.0-or-later"
+  },
+  "geometry": {
+    "coordinate_system": "right_handed_metres",
+    "edge_start": [0.0, 0.0, -50.0],
+    "edge_end": [0.0, 0.0, 50.0],
+    "wedge_inner_angle_degrees": 10.0,
+    "wedge_face_azimuth_degrees": [-5.0, 5.0],
+    "wedge_face_radial_extent_metres": 100.0,
+    "source": {
+      "radius_metres": 10.0,
+      "azimuth_degrees": 90.0,
+      "z_metres": 0.0
+    },
+    "receivers": {
+      "radius_metres": 10.0,
+      "azimuth_degrees": [-84.0, -72.0, -60.0, -48.0, -36.0, -24.0, -12.0, 0.0, 12.0, 24.0, 36.0, 48.0, 60.0, 72.0, 84.0],
+      "z_metres": 0.0
+    },
+    "canonicalization": "Repository coordinate embedding of the rotation-invariant RAVEN Section 10.3 dimensions; the checked-in generator must preserve these coordinates."
+  },
+  "evaluation": {
+    "speed_of_sound_metres_per_second": 343.0,
+    "frequencies_hz": [50.0, 500.0, 5000.0, 10000.0],
+    "reference_component": "tfdiff",
+    "csv_file": "svensson_edb2_single_wedge.csv",
+    "csv_columns": [
+      "receiver_azimuth_deg",
+      "frequency_hz",
+      "transfer_real",
+      "transfer_imag",
+      "magnitude_db"
+    ]
+  },
+  "generator": null,
+  "generated_csv_sha256": null,
+  "blocker": "The official archives contain source and setup examples but no numeric output for this case; MATLAB and GNU Octave are unavailable in the current environment."
+}

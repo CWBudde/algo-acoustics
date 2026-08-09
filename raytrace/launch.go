@@ -21,14 +21,14 @@ const (
 
 // LaunchConfig controls Monte Carlo ray emission for the late-field model.
 type LaunchConfig struct {
-	NumRays                     int
-	MaxBounces                  int
-	MaxTimeSeconds              float64
-	SpeedOfSound                float64
-	ReflectionStrategy          ReflectionStrategy
-	EnergyTerminationThreshold  float64
-	DiffractionMode             DiffractionMode
-	MaxDiffractionDepth         int
+	NumRays                    int
+	MaxBounces                 int
+	MaxTimeSeconds             float64
+	SpeedOfSound               float64
+	ReflectionStrategy         ReflectionStrategy
+	EnergyTerminationThreshold float64
+	DiffractionMode            DiffractionMode
+	MaxDiffractionDepth        int
 	// DiffractionAngularThreshold and DiffractionConeSamples are deprecated.
 	// Non-zero values still activate the legacy Keller-cone model when
 	// DiffractionMode is DiffractionDisabled.

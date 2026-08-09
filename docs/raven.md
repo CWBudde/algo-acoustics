@@ -1,6 +1,9 @@
 # RAVEN -- Condensed Reference
 
-Condensed from: Dirk Schroeder, _Physically Based Real-Time Auralization of Interactive Virtual Environments_, RWTH Aachen, 2011.
+Condensed from: Dirk Schröder,
+[_Physically Based Real-Time Auralization of Interactive Virtual Environments_](https://publications.rwth-aachen.de/record/50580/files/3875.pdf),
+RWTH Aachen, 2011. Equation and section numbers in this document refer to that
+dissertation unless stated otherwise.
 
 This document distills the key formulas, models, and design decisions from the RAVEN dissertation. It focuses on what goes beyond textbook acoustics -- the specific simulation models, their combination into a hybrid system, the energy calibration between methods, and the real-time implementation strategies. Basic wave acoustics is included only where the specific formulation matters for implementation.
 
@@ -296,9 +299,9 @@ To incorporate edge diffraction into the stochastic ray tracer, finite cylindric
 
 When a particle passes through a DC, the edge's influence on the particle is described by the 2D Deflection Angle Probability Density Function (DAPDF), derived from the Fraunhofer single-slit diffraction expression:
 
-$$D(v) = D_0 \cdot \begin{cases} 1 - v^2 & \text{if } |v| \le v_0 \\ \frac{1/2}{\sqrt{2-1+v^2}} & \text{if } |v| > v_0 \end{cases}$$
+$$D(v) = D_0 \cdot \begin{cases} 1 - v^2 & \text{if } |v| \le v_0 \\ \frac{1/2}{\sqrt{2}-1+v^2} & \text{if } |v| > v_0 \end{cases}$$
 
-with $v_0 = \sqrt{1 - 1/\sqrt{2}} \approx 0.5412$ and $v = 2 \cdot b \cdot \epsilon$, where $b = 6a$ is the apparent slit width ($a$ = shortest distance from particle path to edge) and $\epsilon$ is the deflection angle. $D_0$ normalizes the integral to unity.
+with $v_0 = \sqrt{1 - 1/\sqrt{2}} \approx 0.5412$ and $v = 2 \cdot b \cdot \epsilon$, where $b = 6a/\lambda$ is the dimensionless apparent slit width ($a$ = shortest distance from particle path to edge) and $\epsilon$ is the deflection angle. $D_0$ normalizes the integral to unity. Note that the outer denominator is $\sqrt{2}-1+v^2$; the square root does not enclose the complete denominator.
 
 The outgoing energy from an edge toward a visible detector is computed by integrating the DAPDF over the angular range subtended by the detector:
 
@@ -602,9 +605,12 @@ A virtual two-room test facility (each room 90 m^3, partition area 16 m^2) was m
 - Very low frequencies (<125 Hz): errors increase to ~8 dB (well below Schroeder frequency, GA is not valid here)
 - At 20 kHz: 8 dB error due to insufficient particle count for the massive air absorption at this frequency
 
-### 11.3 Edge Diffraction Validation
+### 11.3 Edge Diffraction Validation Reported by RAVEN
 
-Validated against Svensson's Edge Diffraction Toolbox (an exact analytical solution) using a 10-degree wedge with 100 m edge length:
+The dissertation reports validation against Svensson's Edge Diffraction Toolbox
+using a 10-degree wedge with 100 m edge length. The following bullets summarize
+the dissertation's results; they are not validation results produced by this
+repository:
 
 **IS-based diffraction (BTME):**
 
@@ -618,6 +624,10 @@ Validated against Svensson's Edge Diffraction Toolbox (an exact analytical solut
 - At 50 Hz: good match across all receiver angles, with known errors in the deep shadow zone for low frequencies
 - At 10 kHz: simulation results closely match the reference across view and shadow zones
 - The stochastic DAPDF model reproduces diffraction effects with ~1 dB accuracy for typical geometries
+
+The underlying numeric series are not published in machine-readable form. The
+repository's fixture status and reproduction contract are tracked in
+[`testdata/diffraction`](../testdata/diffraction/README.md).
 
 ### 11.4 Perceptual Thresholds (Listening Tests)
 
@@ -789,7 +799,7 @@ Implementation would extend `SolveWithDiffraction()` to enumerate edge-to-edge p
 
 Replace our Keller-cone diffraction sampling with RAVEN's DAPDF model (Section 3.3). The DAPDF is physically motivated (derived from Fraunhofer single-slit diffraction) and provides better energy distribution:
 
-$$D(v) = D_0 \cdot \begin{cases} 1 - v^2 & |v| \le v_0 \\ \frac{1/2}{\sqrt{2-1+v^2}} & |v| > v_0 \end{cases}$$
+$$D(v) = D_0 \cdot \begin{cases} 1 - v^2 & |v| \le v_0 \\ \frac{1/2}{\sqrt{2}-1+v^2} & |v| > v_0 \end{cases}$$
 
 This requires placing frequency-dependent deflection cylinders ($r = 7\lambda$) around edges and integrating the DAPDF over the angular range subtended by visible detectors. The six piecewise closed-form solutions for the integral (Eqs. 5.29--5.34) make this efficient at runtime.
 

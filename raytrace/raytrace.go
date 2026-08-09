@@ -155,9 +155,21 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				}
 			}
 
-			if diffractionIndex != nil && r.Config.DiffractionAngularThreshold > 0 {
-				branches := spawnDiffractionBranches(state, currentRay, hitPoint, segmentLength, diffractionIndex.edges, diffractionIndex, r.Config, rng, launchEnergy, r.Scene.BandSpec.CenterFreqs)
+			switch r.Config.effectiveDiffractionMode() {
+			case DiffractionKellerCone:
+				branches := spawnDiffractionBranches(state, currentRay, hitPoint, segmentLength, nil, diffractionIndex, r.Config, rng, launchEnergy, r.Scene.BandSpec.CenterFreqs)
 				states = append(states, branches...)
+			case DiffractionDAPDFRain:
+				deposits := dapdfRainForSegment(state, currentRay, segmentLength, diffractionIndex, tracer, &receiver, nil, r.Config, r.Scene.BandSpec.CenterFreqs, launchEnergy)
+				for _, deposit := range deposits {
+					energy := oneBandEnergy(bandCount, deposit.BandIndex, deposit.Energy)
+					hist.Add(deposit.ArrivalTime, energy)
+
+					if len(r.DirectivityGroups) > 0 {
+						groupIndex := ClassifyDirection(r.DirectivityGroups, deposit.ArrivalDir)
+						r.DirectivityGroups[groupIndex].Histogram.Add(deposit.ArrivalTime, energy)
+					}
+				}
 			}
 
 			pathLength += segmentLength
@@ -313,11 +325,20 @@ func (r *RayTracer) sceneTracer() (Tracer, error) {
 }
 
 func (r *RayTracer) diffractionEdgeIndex() *DiffractionEdgeIndex {
-	if r == nil || r.Scene == nil || r.Scene.Room.Mesh == nil || r.Config.DiffractionAngularThreshold <= 0 {
+	if r == nil || r.Scene == nil || r.Scene.Room.Mesh == nil || r.Config.effectiveDiffractionMode() == DiffractionDisabled {
 		return nil
 	}
 
 	return NewDiffractionEdgeIndex(r.Scene.Room.Mesh)
+}
+
+func oneBandEnergy(bandCount, bandIndex int, energy float64) []float64 {
+	values := make([]float64, bandCount)
+	if bandIndex >= 0 && bandIndex < len(values) {
+		values[bandIndex] = energy
+	}
+
+	return values
 }
 
 func calibratedRayLaunchEnergy(sourceGainDB float64, sourcePosition, receiverPosition geometry.Vec3, receiverRadius float64, rayCount int) float64 {

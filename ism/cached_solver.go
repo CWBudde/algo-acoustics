@@ -59,6 +59,10 @@ func (c *CachedISMSolver) Solve(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, err
 		return nil, errors.New("max order must be non-negative")
 	}
 
+	if cfg.MaxDiffractionOrder < 0 || cfg.MaxDiffractionOrder > 2 {
+		return nil, errors.New("max diffraction order must be 0, 1, or 2")
+	}
+
 	err := scene.Validate(sc)
 	if err != nil {
 		return nil, fmt.Errorf("validate scene: %w", err)
@@ -297,6 +301,10 @@ func evaluateMeshMultiSource(perSource [][]MeshImageSource, sc *scene.Scene, cfg
 				events = append(events, event)
 			}
 		}
+	}
+
+	if cfg.EnableDiffraction {
+		events = append(events, meshDiffractionEvents(sc, cfg, bvh, material, bandSpec, speedOfSound)...)
 	}
 
 	sortEvents(events)

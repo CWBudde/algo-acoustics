@@ -13,6 +13,8 @@ for the output you need.
   models.
 - [Hybrid rendering](hybrid-rendering.md): choose early, late, hybrid, and
   low-frequency options.
+- [Diffraction](diffraction.md): enable finite-edge BTME paths or stochastic
+  DAPDF rain and understand their validation status.
 - [Sound transmission](sound-transmission.md): author adjacent rooms and
   portals, render secondary-source propagation, and interpret isolation
   metrics.

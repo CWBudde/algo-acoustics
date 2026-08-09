@@ -30,3 +30,10 @@ codebase baselines with intentionally broad drift tolerances, not published
 measurements or third-party ground truth. The external mesh WAV golden has its
 separate provenance and refresh procedure in
 [external-tool-compatibility.md](external-tool-compatibility.md).
+
+Higher-order diffraction has deterministic unit and regression coverage, but it
+does not yet have checked-in Svensson/RAVEN numeric goldens. The official
+reference-tool blocker and the exact reproduction contract are documented in
+[`testdata/diffraction`](../testdata/diffraction/README.md). Do not describe the
+external BTME or DAPDF validation as complete until those fixtures and their
+generator are checked in.
