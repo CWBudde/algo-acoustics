@@ -6,6 +6,19 @@ import (
 	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
+// DiffractionMode selects the stochastic edge-diffraction model.
+type DiffractionMode int
+
+const (
+	// DiffractionDisabled disables stochastic edge diffraction.
+	DiffractionDisabled DiffractionMode = iota
+	// DiffractionKellerCone retains the legacy sampled Keller-cone branches.
+	DiffractionKellerCone
+	// DiffractionDAPDFRain uses frequency-dependent deflection cylinders and
+	// deterministic DAPDF detector deposits.
+	DiffractionDAPDFRain
+)
+
 // LaunchConfig controls Monte Carlo ray emission for the late-field model.
 type LaunchConfig struct {
 	NumRays                     int
@@ -14,9 +27,34 @@ type LaunchConfig struct {
 	SpeedOfSound                float64
 	ReflectionStrategy          ReflectionStrategy
 	EnergyTerminationThreshold  float64
+	DiffractionMode             DiffractionMode
+	MaxDiffractionDepth         int
+	// DiffractionAngularThreshold and DiffractionConeSamples are deprecated.
+	// Non-zero values still activate the legacy Keller-cone model when
+	// DiffractionMode is DiffractionDisabled.
 	DiffractionAngularThreshold float64
 	DiffractionConeSamples      int
 	DiffuseRain                 bool
+}
+
+func (c LaunchConfig) effectiveDiffractionMode() DiffractionMode {
+	if c.DiffractionMode != DiffractionDisabled {
+		return c.DiffractionMode
+	}
+
+	if c.DiffractionAngularThreshold > 0 || c.DiffractionConeSamples > 0 {
+		return DiffractionKellerCone
+	}
+
+	return DiffractionDisabled
+}
+
+func (c LaunchConfig) effectiveMaxDiffractionDepth() int {
+	if c.MaxDiffractionDepth > 0 {
+		return c.MaxDiffractionDepth
+	}
+
+	return 2
 }
 
 // FibonacciSphere returns near-uniform unit vectors on the sphere.

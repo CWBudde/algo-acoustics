@@ -54,6 +54,16 @@ func NewDiffractionEdgeIndex(mesh *geometry.Mesh) *DiffractionEdgeIndex {
 
 // Candidates returns the edges whose expanded bounding cells overlap the query segment.
 func (i *DiffractionEdgeIndex) Candidates(start, end geometry.Vec3, padding float64) []geometry.DiffractionEdge {
+	refs := i.candidateRefs(start, end, padding)
+	candidates := make([]geometry.DiffractionEdge, len(refs))
+	for index, ref := range refs {
+		candidates[index] = ref.edge
+	}
+
+	return candidates
+}
+
+func (i *DiffractionEdgeIndex) candidateRefs(start, end geometry.Vec3, padding float64) []diffractionEdgeRef {
 	if i == nil || len(i.edges) == 0 {
 		return nil
 	}
@@ -77,7 +87,7 @@ func (i *DiffractionEdgeIndex) Candidates(start, end geometry.Vec3, padding floa
 	maxKey := i.keyForPoint(maxCorner)
 
 	seen := make(map[int]struct{})
-	candidates := make([]geometry.DiffractionEdge, 0)
+	candidates := make([]diffractionEdgeRef, 0)
 
 	for x := minKey.X; x <= maxKey.X; x++ {
 		for y := minKey.Y; y <= maxKey.Y; y++ {
@@ -93,7 +103,7 @@ func (i *DiffractionEdgeIndex) Candidates(start, end geometry.Vec3, padding floa
 					}
 
 					seen[ref.index] = struct{}{}
-					candidates = append(candidates, ref.edge)
+					candidates = append(candidates, ref)
 				}
 			}
 		}
