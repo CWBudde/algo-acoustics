@@ -16,7 +16,10 @@
       property="og:description"
       content="A browser demo for algo-acoustics: tweak a room, swap materials, render a hybrid impulse response, and audition the result in-browser."
     />
-    <meta property="og:url" content="https://cwbudde.github.io/algo-acoustics/" />
+    <meta
+      property="og:url"
+      content="https://cwbudde.github.io/algo-acoustics/"
+    />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="algo-acoustics Room Demo" />
@@ -222,6 +225,42 @@
               />
             </label>
           </div>
+        </section>
+
+        <section class="panel reveal portal-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Connected rooms</p>
+              <h2>Portal</h2>
+            </div>
+            <label class="portal-toggle">
+              <input id="portal-enabled" type="checkbox" />
+              <span>Enable</span>
+            </label>
+          </div>
+
+          <label class="field compact-field">
+            <span>Partition material</span>
+            <select id="portal-material"></select>
+          </label>
+
+          <div class="field split-field">
+            <label>
+              <span>Aperture</span>
+              <input
+                id="portal-aperture"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+              />
+            </label>
+            <strong id="portal-aperture-value" class="field-value"></strong>
+          </div>
+          <p class="field-note">
+            Aperture crossfades cached closed and fully-open responses in real
+            time using the square-root portal curve.
+          </p>
         </section>
 
         <section class="panel reveal">

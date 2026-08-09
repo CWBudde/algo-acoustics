@@ -1,0 +1,40 @@
+# Documentation
+
+Start with [scene authoring](scene-authoring.md), then choose a rendering guide
+for the output you need.
+
+## User Guides
+
+- [Scene authoring](scene-authoring.md): build, validate, inspect, and render JSON
+  scenes.
+- [HRTF usage](hrtf-sofa.md): configure binaural receivers and provide measured
+  grids from Go.
+- [Directivity usage](directivity-gll.md): use omni, cardioid, and GLL source
+  models.
+- [Hybrid rendering](hybrid-rendering.md): choose early, late, hybrid, and
+  low-frequency options.
+- [Sound transmission](sound-transmission.md): author adjacent rooms and
+  portals, render secondary-source propagation, and interpret isolation
+  metrics.
+- [Comparing against another tool](compare-another-tool.md): prepare equivalent
+  inputs and interpret `roomir compare` output.
+- [External-tool compatibility](external-tool-compatibility.md): interchange
+  conventions and the external-authoring import golden.
+
+## Contributor Guides
+
+- [Regression workflow](regression-workflow.md): run and intentionally update
+  event, metric-envelope, and audio baselines.
+- [Maintenance](maintenance.md): quarterly private-dependency audit, benchmark
+  upkeep, and fixture-first feature workflow.
+- [Validation](validation.md): validation boundaries and engine cardinality.
+- [Architecture](architecture.md): rendering pipeline and package boundaries.
+- [Profiling baseline](profiling-baseline.md) and
+  [GPU profiling](profiling-gpu-kernels.md): performance measurement.
+
+## Reference
+
+- [Scene format](scene-format.md) and canonical
+  [JSON Schema](scene-schema.json).
+- [GPU deployment](gpu-deployment.md).
+- [RAVEN notes](raven.md).

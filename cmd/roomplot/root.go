@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/cwbudde/algo-acoustics/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -10,6 +11,7 @@ func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "roomplot",
 		Short:         "Inspect room-acoustics diagnostics and plots.",
+		Version:       buildinfo.String(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

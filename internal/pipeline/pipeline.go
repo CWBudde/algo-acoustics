@@ -36,11 +36,23 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 		bandSpec = sc.BandSpec
 	}
 
-	engine := algoacoustics.NewISMEngine(ism.ISMConfig{
+	ismConfig := ism.ISMConfig{
 		MaxOrder:     cfg.MaxOrder,
 		SpeedOfSound: acoustics.SpeedOfSound,
 		BandSpec:     bandSpec,
-	})
+	}
+	if sc != nil && sc.RoomCount() > 1 {
+		engine := algoacoustics.NewTransmissionRenderer(algoacoustics.TransmissionRendererConfig{ISM: ismConfig})
+
+		events, err := engine.SolveEarly(sc, renderConfig(sc, 0))
+		if err != nil {
+			return nil, fmt.Errorf("solve transmitted early reflections: %w", err)
+		}
+
+		return events, nil
+	}
+
+	engine := algoacoustics.NewISMEngine(ismConfig)
 
 	events, err := engine.Generate(sc, renderConfig(sc, 0))
 	if err != nil {
@@ -52,6 +64,19 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 
 // RenderLateBuffer traces late-field energy via ray tracing and returns a dense buffer.
 func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
+	if sc != nil && sc.RoomCount() > 1 {
+		engine := algoacoustics.NewTransmissionRenderer(algoacoustics.TransmissionRendererConfig{
+			Raytrace: newLateEngine(cfg).Config,
+		})
+
+		buffer, err := engine.RenderLateMono(sc, renderConfig(sc, cfg.DurationSeconds))
+		if err != nil {
+			return nil, fmt.Errorf("render transmitted late field: %w", err)
+		}
+
+		return buffer, nil
+	}
+
 	buffer, err := newLateEngine(cfg).RenderMono(sc, renderConfig(sc, cfg.DurationSeconds))
 	if err != nil {
 		return nil, err
@@ -63,6 +88,19 @@ func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
 // RenderLateBinaural traces directional late-field energy and spatializes it
 // through the receiver's HRTF using binaural Poisson synthesis.
 func RenderLateBinaural(sc *scene.Scene, receiver scene.Receiver, cfg LateConfig) (left, right *ir.Buffer, err error) {
+	if sc != nil && sc.RoomCount() > 1 {
+		engine := algoacoustics.NewTransmissionRenderer(algoacoustics.TransmissionRendererConfig{
+			Raytrace: newLateEngine(cfg).Config,
+		})
+
+		left, right, err = engine.RenderLateBinaural(sc, receiver, renderConfig(sc, cfg.DurationSeconds))
+		if err != nil {
+			return nil, nil, fmt.Errorf("render transmitted binaural late field: %w", err)
+		}
+
+		return left, right, nil
+	}
+
 	left, right, err = newLateEngine(cfg).RenderBinaural(sc, receiver, renderConfig(sc, cfg.DurationSeconds))
 	if err != nil {
 		return nil, nil, err

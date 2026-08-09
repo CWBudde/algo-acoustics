@@ -103,6 +103,39 @@ func EncodeMonoWAVBytes(buf *ir.Buffer) ([]byte, error) {
 	return output.bytes(), nil
 }
 
+// EncodeStereoWAVBytes encodes a stereo 16-bit PCM WAV into an in-memory byte slice.
+func EncodeStereoWAVBytes(left, right *ir.Buffer) ([]byte, error) {
+	if left == nil || right == nil {
+		return nil, errors.New("left and right buffers must not be nil")
+	}
+
+	if left.SampleRate <= 0 || right.SampleRate <= 0 {
+		return nil, errors.New("buffer sample rates must be positive")
+	}
+
+	if left.SampleRate != right.SampleRate {
+		return nil, errors.New("buffer sample rates must match")
+	}
+
+	if len(left.Samples) != len(right.Samples) {
+		return nil, errors.New("buffer lengths must match")
+	}
+
+	data := make([]float32, 0, len(left.Samples)*2)
+	for index := range left.Samples {
+		data = append(data, float32(left.Samples[index]), float32(right.Samples[index]))
+	}
+
+	var output memBuffer
+
+	err := encodeWAV(&output, left.SampleRate, 2, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return output.bytes(), nil
+}
+
 func writeWAV(path string, sampleRate int, numChans int, data []float32) (err error) {
 	file, err := os.Create(path)
 	if err != nil {

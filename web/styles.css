@@ -27,7 +27,8 @@
   --chip-border: rgba(24, 36, 50, 0.08);
   --metric-bg: rgba(255, 255, 255, 0.65);
   --metric-border: rgba(24, 36, 50, 0.06);
-  --viewport-bg: radial-gradient(circle at top, rgba(79, 94, 111, 0.18), transparent 28%),
+  --viewport-bg:
+    radial-gradient(circle at top, rgba(79, 94, 111, 0.18), transparent 28%),
     linear-gradient(180deg, #16202b, #0c1218 82%);
   --wave-bg: linear-gradient(
     180deg,
@@ -89,13 +90,10 @@
   --chip-border: rgba(186, 205, 220, 0.12);
   --metric-bg: rgba(255, 255, 255, 0.05);
   --metric-border: rgba(186, 205, 220, 0.1);
-  --viewport-bg: radial-gradient(circle at top, rgba(108, 225, 214, 0.12), transparent 32%),
+  --viewport-bg:
+    radial-gradient(circle at top, rgba(108, 225, 214, 0.12), transparent 32%),
     linear-gradient(180deg, #081018, #03070d 82%);
-  --wave-bg: linear-gradient(
-    180deg,
-    rgba(9, 14, 19, 0.98),
-    rgba(3, 6, 10, 1)
-  );
+  --wave-bg: linear-gradient(180deg, rgba(9, 14, 19, 0.98), rgba(3, 6, 10, 1));
   --wave-fill: #060b10;
   --wave-border: rgba(186, 205, 220, 0.1);
   --wave-grid: rgba(193, 209, 221, 0.1);
@@ -538,6 +536,31 @@ audio {
   color: var(--muted);
   font-size: 0.8rem;
   line-height: 1.4;
+}
+
+.portal-panel .split-field {
+  margin-top: 16px;
+}
+
+.portal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.portal-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-2);
 }
 
 .material-summary {

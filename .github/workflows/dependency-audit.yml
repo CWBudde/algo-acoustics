@@ -1,0 +1,85 @@
+name: Private Dependency Audit
+
+on:
+  schedule:
+    - cron: "17 5 1 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit private Go modules
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/cwbudde/*
+      GONOSUMDB: github.com/cwbudde/*
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check private-module credential
+        env:
+          PRIVATE_MODULES_TOKEN: ${{ secrets.PRIVATE_MODULES_TOKEN }}
+        run: |
+          if [ -z "$PRIVATE_MODULES_TOKEN" ]; then
+            echo "PRIVATE_MODULES_TOKEN must grant read-only Contents access to the five sibling module repositories." >&2
+            exit 1
+          fi
+
+      - name: Configure private-module access
+        env:
+          PRIVATE_MODULES_TOKEN: ${{ secrets.PRIVATE_MODULES_TOKEN }}
+        run: git config --global url."https://x-access-token:${PRIVATE_MODULES_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      - name: Record current and available versions
+        run: |
+          {
+            echo "Private dependency audit"
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            go version
+            echo
+            go list -m -u \
+              github.com/cwbudde/algo-dsp \
+              github.com/cwbudde/algo-fft \
+              github.com/cwbudde/algo-pde \
+              github.com/cwbudde/gll-tools \
+              github.com/cwbudde/wav
+          } | tee private-dependency-audit.txt
+
+      - name: Verify pinned dependency graph
+        run: |
+          go mod download all
+          go mod verify | tee -a private-dependency-audit.txt
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Test pinned dependency graph
+        run: go test ./...
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f private-dependency-audit.txt ]; then
+            {
+              echo '## Private dependency audit'
+              echo '```text'
+              cat private-dependency-audit.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-dependency-audit
+          path: private-dependency-audit.txt
+          if-no-files-found: warn

@@ -1,0 +1,43 @@
+name: Web Tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web and WASM Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test web JavaScript
+        run: node --test web/*.test.mjs
+
+      - name: Compile WASM tests
+        run: GOOS=js GOARCH=wasm go test -c -o /tmp/algo-acoustics-wasm.test ./web/wasm/
+
+      - name: Run WASM tests
+        run: env -i HOME="$HOME" PATH="$PATH" "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" /tmp/algo-acoustics-wasm.test -test.v -test.timeout 120s
+
+      - name: Build browser demo
+        run: bash ./web/build-wasm.sh
+
+      - name: Verify browser demo assets
+        run: |
+          test -s web/algo_acoustics_demo.wasm
+          test -s web/wasm_exec.js

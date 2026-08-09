@@ -1,6 +1,7 @@
 package raytrace
 
 import (
+	"errors"
 	"math"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
@@ -10,9 +11,92 @@ import (
 // for capturing diffuse rain energy from ray tracing. It will serve as
 // the portal detector in multi-room sound transmission (Phase 21).
 type SurfaceReceiver struct {
-	Center geometry.Vec3 // Center of the detector surface
-	Normal geometry.Vec3 // Outward-facing unit normal of the surface
-	Area   float64       // Area in m^2
+	Center  geometry.Vec3   // Center of the detector surface
+	Normal  geometry.Vec3   // Outward-facing unit normal of the surface
+	Area    float64         // Area in m^2
+	Polygon []geometry.Vec3 // Ordered, planar polygon vertices
+}
+
+// NewSurfaceReceiver constructs a planar polygon detector. Vertices must be
+// ordered around a convex polygon; the winding defines the detector normal.
+func NewSurfaceReceiver(polygon []geometry.Vec3) (SurfaceReceiver, error) {
+	vertices := append([]geometry.Vec3(nil), polygon...)
+	if len(vertices) > 1 && vertices[0] == vertices[len(vertices)-1] {
+		vertices = vertices[:len(vertices)-1]
+	}
+
+	if len(vertices) < 3 {
+		return SurfaceReceiver{}, errors.New("surface receiver requires at least three vertices")
+	}
+
+	var normal geometry.Vec3
+
+	for index, vertex := range vertices {
+		next := vertices[(index+1)%len(vertices)]
+		normal.X += (vertex.Y - next.Y) * (vertex.Z + next.Z)
+		normal.Y += (vertex.Z - next.Z) * (vertex.X + next.X)
+		normal.Z += (vertex.X - next.X) * (vertex.Y + next.Y)
+	}
+
+	normal = normal.Normalize()
+	if normal == geometry.Vec3Zero {
+		return SurfaceReceiver{}, errors.New("surface receiver polygon is degenerate")
+	}
+
+	const planarTolerance = 1e-7
+
+	plane := geometry.NewPlaneFromPointNormal(vertices[0], normal)
+	for _, vertex := range vertices[1:] {
+		if math.Abs(plane.SideOf(vertex)) > planarTolerance {
+			return SurfaceReceiver{}, errors.New("surface receiver polygon is not planar")
+		}
+	}
+
+	var area float64
+	var weightedCenter geometry.Vec3
+
+	for index := 1; index+1 < len(vertices); index++ {
+		triangle := geometry.Triangle{V0: vertices[0], V1: vertices[index], V2: vertices[index+1]}
+		triangleArea := triangle.Area()
+		area += triangleArea
+		weightedCenter = weightedCenter.Add(triangle.Centroid().Scale(triangleArea))
+	}
+
+	if area <= 0 || math.IsNaN(area) || math.IsInf(area, 0) {
+		return SurfaceReceiver{}, errors.New("surface receiver polygon has invalid area")
+	}
+
+	return SurfaceReceiver{
+		Center:  weightedCenter.Scale(1 / area),
+		Normal:  normal,
+		Area:    area,
+		Polygon: vertices,
+	}, nil
+}
+
+// Intersects reports the nearest intersection with the detector polygon in
+// [tMin, tMax]. The polygon is double-sided; Normal controls rain orientation.
+func (s SurfaceReceiver) Intersects(ray geometry.Ray, tMin, tMax float64) (float64, bool) {
+	if len(s.Polygon) < 3 || tMax < tMin {
+		return 0, false
+	}
+
+	nearest := math.Inf(1)
+
+	for index := 1; index+1 < len(s.Polygon); index++ {
+		triangle := geometry.Triangle{V0: s.Polygon[0], V1: s.Polygon[index], V2: s.Polygon[index+1]}
+
+		distance, hit := geometry.RayTriangle(ray, triangle)
+		if hit && distance >= tMin && distance <= tMax && distance < nearest {
+			nearest = distance
+		}
+	}
+
+	if math.IsInf(nearest, 1) {
+		return 0, false
+	}
+
+	return nearest, true
 }
 
 // DiffuseRainContribution holds the energy and arrival time of a single
@@ -138,8 +222,6 @@ func computeDiffuseRain(
 // the connection vector.
 //
 // If the detector is not visible (occluded or backfacing), nil is returned.
-//
-//nolint:unparam // These physical inputs vary when surface rain is used by production tracing.
 func computeSurfaceRain(
 	reflectionPoint, surfaceNormal geometry.Vec3,
 	energy, scattering []float64,

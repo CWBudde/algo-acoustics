@@ -3,6 +3,7 @@ package scene_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -49,13 +50,13 @@ func TestLoadMaterialFileCSV(t *testing.T) {
 	path := filepath.Join(tmpDir, "plasterboard.csv")
 
 	err := os.WriteFile(path, []byte(strings.TrimSpace(`
-band,center_hz,absorption,scattering
-0,125,0.08,0.04
-1,250,0.09,0.05
-2,500,0.12,0.06
-3,1000,0.15,0.08
-4,2000,0.12,0.10
-5,4000,0.10,0.12
+band,center_hz,absorption,scattering,sound_reduction_index
+0,125,0.08,0.04,35
+1,250,0.09,0.05,35
+2,500,0.12,0.06,35
+3,1000,0.15,0.08,35
+4,2000,0.12,0.10,35
+5,4000,0.10,0.12,35
 `)), 0o600)
 	if err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -76,5 +77,26 @@ band,center_hz,absorption,scattering
 
 	if material.Scattering[5] != 0.12 {
 		t.Fatalf("Scattering[5] = %v, want 0.12", material.Scattering[5])
+	}
+
+	if material.SoundReductionIndex[5] != 35 {
+		t.Fatalf("SoundReductionIndex[5] = %v, want 35", material.SoundReductionIndex[5])
+	}
+}
+
+func TestLoadMaterialCSVTransmission(t *testing.T) {
+	t.Parallel()
+
+	material, err := scene.LoadMaterialCSV(strings.NewReader(strings.TrimSpace(`
+band,absorption,scattering,transmission
+0,0.1,0.2,0.01
+1,0.1,0.2,0.02
+`)))
+	if err != nil {
+		t.Fatalf("LoadMaterialCSV() error = %v", err)
+	}
+
+	if got, want := material.TransmissionByBand, []float64{0.01, 0.02}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("TransmissionByBand = %#v, want %#v", got, want)
 	}
 }

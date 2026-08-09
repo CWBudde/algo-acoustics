@@ -210,6 +210,10 @@ func renderHybridMode(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.RenderCo
 }
 
 func applyLowFrequencyBlend(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.RenderConfig, buffer *ir.Buffer, cfg renderCommandConfig) (*ir.Buffer, error) {
+	if sc != nil && sc.RoomCount() > 1 {
+		return nil, errors.New("low-frequency PDE blending is not supported for multi-room transmission")
+	}
+
 	engine := pde.PDELowFreqEngine{
 		Sweep: pde.SweepConfig{
 			FreqMin:           cfg.lowFreqMin,

@@ -2,11 +2,11 @@ import * as presets from "./app-presets.js";
 import * as appState from "./app-state.js";
 import * as sceneModule from "./app-scene.js";
 import * as audioModule from "./app-audio.js";
-import { AuralizationEngine } from "./auralization-engine.mjs";
 import {
-  DRY_AUDIO_SOURCES,
-  DryAudioLoader,
-} from "./audio-samples.mjs";
+  AuralizationEngine,
+  portalCrossfadeWeight,
+} from "./auralization-engine.mjs";
+import { DRY_AUDIO_SOURCES, DryAudioLoader } from "./audio-samples.mjs";
 import {
   clamp,
   clampInt,
@@ -21,6 +21,7 @@ import { normalizeReflectionOrder } from "./reflection-preview.mjs";
 import { RenderWorkerController } from "./render-worker-controller.mjs";
 
 const MATERIALS = presets.MATERIALS;
+const PORTAL_MATERIALS = presets.PORTAL_MATERIALS;
 const ROOM_PRESETS = presets.ROOM_PRESETS;
 const ROOM_PRESET_GROUPS = presets.ROOM_PRESET_GROUPS;
 const MATERIAL_PRESETS = presets.MATERIAL_PRESETS;
@@ -53,6 +54,14 @@ const DEFAULT_STATE = {
     cardioidOrder: 1.15,
   },
   receiver: { x: 4.85, y: 2.9, z: 1.2 },
+  portal: {
+    enabled: false,
+    aperture: 0,
+    rootOrder: 2,
+    material: "woodenDoor",
+    receiverRoom: { width: 6.4, depth: 4.8, height: 2.9 },
+    opening: { width: 1.2, height: 2.1, bottom: 0 },
+  },
   render: {
     mode: "hybrid",
     maxOrder: 4,
@@ -107,6 +116,8 @@ let latestEncodedState = null;
 let audioContext = null;
 let currentIRBuffer = null;
 let currentIRDecode = null;
+let currentPortalBuffers = null;
+let currentPortalDecode = null;
 let currentIRVersion = 0;
 let auralizationEngine = null;
 let auralizationStarting = false;
@@ -114,6 +125,7 @@ let currentAuralizationPlaying = false;
 let auralizationStatusOverride = null;
 let audioTransitionTimer = 0;
 let lastAuralizedWav = null;
+let lastPortalResponseWavs = null;
 const dryAudioLoader = new DryAudioLoader();
 let waveformZoom = 1;
 let dragState = null;
@@ -144,6 +156,10 @@ const refs = {
   roomWidth: document.getElementById("room-width"),
   roomDepth: document.getElementById("room-depth"),
   roomHeight: document.getElementById("room-height"),
+  portalEnabled: document.getElementById("portal-enabled"),
+  portalAperture: document.getElementById("portal-aperture"),
+  portalApertureValue: document.getElementById("portal-aperture-value"),
+  portalMaterial: document.getElementById("portal-material"),
   wallWest: document.getElementById("wall-west"),
   wallEast: document.getElementById("wall-east"),
   wallSouth: document.getElementById("wall-south"),
@@ -197,11 +213,13 @@ const refs = {
 
 const {
   populatePresetSelects,
+  populatePortalMaterialSelect,
   updateMaterialSummary,
   syncPresetSelects,
   syncFormFromState,
   syncDirectivityAvailability,
   syncRoomModeAvailability,
+  syncPortalAvailability,
   syncModeButtons,
   syncIrViewButtons,
   syncPositionConstraints,
@@ -214,6 +232,7 @@ const {
   assignMaterialState,
   assignSourceState,
   assignReceiverState,
+  assignPortalState,
   assignRenderState,
   normalizeSceneState,
   normalizeCrossoverWindow,
@@ -242,6 +261,7 @@ appState.setAppStateContext({
   THEME_MODES,
   THEME_ICONS,
   MATERIALS,
+  PORTAL_MATERIALS,
   ROOM_PRESETS,
   ROOM_PRESET_GROUPS,
   MATERIAL_PRESETS,
@@ -269,6 +289,7 @@ async function init() {
   initTheme();
   populatePresetSelects();
   populateMaterialSelects();
+  populatePortalMaterialSelect();
   populateDrySources();
   loadStateFromUrl();
   bindEvents();
@@ -392,10 +413,17 @@ function handleWorkerMessage(event) {
     const wavBytes = result?.wavBytes
       ? new Uint8Array(result.wavBytes)
       : new Uint8Array();
+    // Phase 21 WASM contract: endpoint responses arrive as encoded WAVs at
+    // portalResponses.closedWavBytes and portalResponses.openWavBytes. The
+    // top-level wavBytes remains the aperture-specific preview/download IR.
+    const portalResponses = normalizePortalResponseWavs(
+      result?.portalResponses,
+    );
     lastRender = {
       ...result,
       samples,
       wavBytes,
+      portalResponses,
     };
     publishRenderResult(requestId, lastRender);
 
@@ -407,7 +435,7 @@ function handleWorkerMessage(event) {
     setRenderBadge("Render complete", "ready");
     updateMetrics(lastRender);
     installSPLHeatmap(lastRender.splHeatmap);
-    updateAudio(lastRender.wavBytes);
+    updateAudio(lastRender.wavBytes, lastRender.portalResponses);
     updateRenderLog(lastRender);
     redrawWaveform(samples);
     refs.downloadWav.disabled = false;
@@ -445,6 +473,28 @@ function bindEvents() {
 
   refs.materialPreset.addEventListener("change", () => {
     applyMaterialPreset(refs.materialPreset.value);
+  });
+
+  refs.portalEnabled.addEventListener("change", () => {
+    state.portal.enabled = refs.portalEnabled.checked;
+    normalizeSpatialState();
+    syncFormFromState();
+    updateSceneView();
+    scheduleUrlSync();
+  });
+
+  bindRange(refs.portalAperture, refs.portalApertureValue, (value) => {
+    state.portal.aperture = clamp(value, 0, 1);
+    auralizationEngine?.setPortalAperture(
+      state.portal.aperture,
+      state.portal.rootOrder,
+    );
+    return `${Math.round(state.portal.aperture * 100)}%`;
+  });
+
+  refs.portalMaterial.addEventListener("change", () => {
+    state.portal.material = refs.portalMaterial.value;
+    scheduleUrlSync();
   });
 
   refs.sourceDirectivity.addEventListener("change", () => {
@@ -509,28 +559,37 @@ function bindEvents() {
     syncPresetSelects();
   });
   bindNumber(refs.receiverX, (value) => {
+    const receiverRoom = state.portal.enabled
+      ? state.portal.receiverRoom
+      : state.room;
     state.receiver.x = clamp(
       value,
       POSITION_MARGIN,
-      state.room.width - POSITION_MARGIN,
+      receiverRoom.width - POSITION_MARGIN,
     );
     state.roomPreset = "custom";
     syncPresetSelects();
   });
   bindNumber(refs.receiverY, (value) => {
+    const receiverRoom = state.portal.enabled
+      ? state.portal.receiverRoom
+      : state.room;
     state.receiver.y = clamp(
       value,
       POSITION_MARGIN,
-      state.room.depth - POSITION_MARGIN,
+      receiverRoom.depth - POSITION_MARGIN,
     );
     state.roomPreset = "custom";
     syncPresetSelects();
   });
   bindNumber(refs.receiverZ, (value) => {
+    const receiverRoom = state.portal.enabled
+      ? state.portal.receiverRoom
+      : state.room;
     state.receiver.z = clamp(
       value,
       POSITION_MARGIN,
-      state.room.height - POSITION_MARGIN,
+      receiverRoom.height - POSITION_MARGIN,
     );
     state.roomPreset = "custom";
     syncPresetSelects();
@@ -880,7 +939,7 @@ function updateMetrics(result) {
 }
 
 function updateRenderLog(result) {
-  refs.renderLog.textContent = [
+  const lines = [
     `Mode: ${result.mode ?? state.render.mode}`,
     `Room: ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} × ${state.room.height.toFixed(1)} m`,
     `Room preset: ${state.roomPreset}`,
@@ -890,10 +949,18 @@ function updateRenderLog(result) {
     `Rays: ${state.render.numRays.toLocaleString()} | Max order: ${state.render.maxOrder}`,
     `Duration: ${state.render.durationSeconds.toFixed(2)} s | Crossover: ${state.render.crossoverTimeSeconds.toFixed(2)} s`,
     `Peak amplitude: ${result.peakAmplitude.toFixed(4)} | RMS: ${result.rmsAmplitude.toFixed(4)}`,
-  ].join("\n");
+  ];
+  if (state.portal.enabled) {
+    lines.splice(
+      2,
+      0,
+      `Portal: ${PORTAL_MATERIALS[state.portal.material].label} | Aperture: ${Math.round(state.portal.aperture * 100)}%`,
+    );
+  }
+  refs.renderLog.textContent = lines.join("\n");
 }
 
-function updateAudio(wavBytes) {
+function updateAudio(wavBytes, portalResponses = null) {
   if (lastAudioURL) {
     URL.revokeObjectURL(lastAudioURL);
   }
@@ -903,9 +970,12 @@ function updateAudio(wavBytes) {
   lastAuralizedWav = wavBytes.slice
     ? wavBytes.slice()
     : new Uint8Array(wavBytes);
+  lastPortalResponseWavs = portalResponses;
   currentIRVersion += 1;
   currentIRBuffer = null;
   currentIRDecode = null;
+  currentPortalBuffers = null;
+  currentPortalDecode = null;
   auralizationStatusOverride = null;
   syncAuralizationControls();
 
@@ -965,6 +1035,8 @@ async function ensureAudioContext() {
     audioContext = new AudioContext({ sampleRate: 48000 });
     currentIRBuffer = null;
     currentIRDecode = null;
+    currentPortalBuffers = null;
+    currentPortalDecode = null;
     auralizationEngine = new AuralizationEngine({
       context: audioContext,
       onPlaybackEnded: () => {
@@ -1017,15 +1089,65 @@ async function ensureIrAudioBuffer() {
   return currentIRBuffer;
 }
 
+async function ensurePortalAudioBuffers() {
+  if (!state.portal.enabled || !lastPortalResponseWavs) {
+    return null;
+  }
+
+  const context = await ensureAudioContext();
+  while (!currentPortalBuffers) {
+    const version = currentIRVersion;
+    if (!currentPortalDecode || currentPortalDecode.version !== version) {
+      currentPortalDecode = {
+        version,
+        promise: Promise.all([
+          context.decodeAudioData(
+            copyWavArrayBuffer(lastPortalResponseWavs.closedWavBytes),
+          ),
+          context.decodeAudioData(
+            copyWavArrayBuffer(lastPortalResponseWavs.openWavBytes),
+          ),
+        ]),
+      };
+    }
+
+    try {
+      const [closed, open] = await currentPortalDecode.promise;
+      if (version === currentIRVersion) {
+        currentPortalBuffers = { closed, open };
+      }
+    } catch (error) {
+      if (version === currentIRVersion) {
+        currentPortalDecode = null;
+        throw error;
+      }
+    }
+  }
+
+  return currentPortalBuffers;
+}
+
 async function installLatestImpulseResponse(requestedVersion) {
   auralizationStatusOverride = { label: "Updating IR", state: "busy" };
   syncAuralizationControls();
   try {
-    const irBuffer = await ensureIrAudioBuffer();
+    const [irBuffer, portalBuffers] = await Promise.all([
+      ensureIrAudioBuffer(),
+      ensurePortalAudioBuffers(),
+    ]);
     if (requestedVersion !== currentIRVersion) {
       return;
     }
-    const transitioned = auralizationEngine?.setImpulseResponse(irBuffer);
+    const transitioned = portalBuffers
+      ? auralizationEngine?.setPortalResponses(
+          portalBuffers.closed,
+          portalBuffers.open,
+          {
+            aperture: state.portal.aperture,
+            rootOrder: state.portal.rootOrder,
+          },
+        )
+      : auralizationEngine?.setImpulseResponse(irBuffer);
     if (transitioned) {
       if (audioTransitionTimer) {
         window.clearTimeout(audioTransitionTimer);
@@ -1058,11 +1180,23 @@ async function startAuralizationPlayback() {
   syncAuralizationControls();
   try {
     const context = await ensureAudioContext();
-    const [irBuffer, dryBuffer] = await Promise.all([
+    const [irBuffer, portalBuffers, dryBuffer] = await Promise.all([
       ensureIrAudioBuffer(),
+      ensurePortalAudioBuffers(),
       dryAudioLoader.load(context, refs.drySource.value),
     ]);
-    auralizationEngine.setImpulseResponse(irBuffer);
+    if (portalBuffers) {
+      auralizationEngine.setPortalResponses(
+        portalBuffers.closed,
+        portalBuffers.open,
+        {
+          aperture: state.portal.aperture,
+          rootOrder: state.portal.rootOrder,
+        },
+      );
+    } else {
+      auralizationEngine.setImpulseResponse(irBuffer);
+    }
     auralizationEngine.play(dryBuffer, {
       wetMix: clamp(Number(refs.wetMix.value || 0.72), 0, 1),
       gainLinear: dbToLinear(
@@ -1118,22 +1252,27 @@ async function exportAuralizedWav() {
 
 async function renderAuralizationOffline() {
   const baseContext = await ensureAudioContext();
-  const [irBuffer, dryBuffer] = await Promise.all([
+  const [irBuffer, portalBuffers, dryBuffer] = await Promise.all([
     ensureIrAudioBuffer(),
+    ensurePortalAudioBuffers(),
     dryAudioLoader.load(baseContext, refs.drySource.value),
   ]);
+  const impulseResponses = portalBuffers
+    ? [portalBuffers.closed, portalBuffers.open]
+    : [irBuffer];
+  const maximumIRDuration = Math.max(
+    ...impulseResponses.map((response) => response.duration),
+  );
   const offline = new OfflineAudioContext(
     1,
     Math.ceil(
-      (dryBuffer.duration + irBuffer.duration + 1.2) * baseContext.sampleRate,
+      (dryBuffer.duration + maximumIRDuration + 1.2) * baseContext.sampleRate,
     ),
     baseContext.sampleRate,
   );
 
   const drySource = offline.createBufferSource();
   drySource.buffer = dryBuffer;
-  const convolver = offline.createConvolver();
-  convolver.buffer = irBuffer;
   const dryGain = offline.createGain();
   const wetGain = offline.createGain();
   const outputGain = offline.createGain();
@@ -1144,8 +1283,22 @@ async function renderAuralizationOffline() {
   outputGain.gain.value = dbToLinear(gainDb);
 
   drySource.connect(dryGain);
-  drySource.connect(convolver);
-  convolver.connect(wetGain);
+  const portalWeight = portalBuffers
+    ? portalCrossfadeWeight(state.portal.aperture, state.portal.rootOrder)
+    : 1;
+  impulseResponses.forEach((response, index) => {
+    const convolver = offline.createConvolver();
+    const responseGain = offline.createGain();
+    convolver.buffer = response;
+    responseGain.gain.value = portalBuffers
+      ? index === 0
+        ? 1 - portalWeight
+        : portalWeight
+      : 1;
+    drySource.connect(convolver);
+    convolver.connect(responseGain);
+    responseGain.connect(wetGain);
+  });
   dryGain.connect(outputGain);
   wetGain.connect(outputGain);
   outputGain.connect(offline.destination);
@@ -1156,6 +1309,24 @@ async function renderAuralizationOffline() {
 
 function encodeAudioBufferToWav(audioBuffer) {
   return audioModule.encodeAudioBufferToWav(audioBuffer);
+}
+
+function normalizePortalResponseWavs(portalResponses) {
+  if (!portalResponses?.closedWavBytes || !portalResponses?.openWavBytes) {
+    return null;
+  }
+
+  return {
+    closedWavBytes: new Uint8Array(portalResponses.closedWavBytes),
+    openWavBytes: new Uint8Array(portalResponses.openWavBytes),
+  };
+}
+
+function copyWavArrayBuffer(bytes) {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  );
 }
 
 // State helpers moved to app-state.js.
@@ -1195,7 +1366,8 @@ function updateSceneView() {
 }
 
 function installSPLHeatmap(heatmap) {
-  const hasSamples = Array.isArray(heatmap?.samples) && heatmap.samples.length > 0;
+  const hasSamples =
+    Array.isArray(heatmap?.samples) && heatmap.samples.length > 0;
   sceneModule.setSPLHeatmap(hasSamples ? heatmap : null);
   refs.splHeatmap.disabled = !hasSamples;
   refs.splHeatmap.title = hasSamples

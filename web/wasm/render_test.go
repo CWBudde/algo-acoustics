@@ -3,8 +3,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"math"
 	"strings"
+	"syscall/js"
 	"testing"
 )
 
@@ -57,6 +60,88 @@ func TestRunDemoRenderProducesWaveformAndMetrics(t *testing.T) {
 	}
 	if result.SPLHeatmap.MinimumDB < heatmapFloorDB || result.SPLHeatmap.MinimumDB > 0 {
 		t.Fatalf("SPL heatmap minimum = %v, want within [%v, 0]", result.SPLHeatmap.MinimumDB, heatmapFloorDB)
+	}
+}
+
+func TestRunDemoPortalRenderReturnsCachedEndpointResponses(t *testing.T) {
+	t.Parallel()
+
+	request := defaultDemoRequest()
+	request.Portal.Enabled = true
+	request.Portal.Aperture = 0
+	request.Render.Mode = "early"
+	request.Render.MaxOrder = 1
+	request.Render.DurationSeconds = 0.25
+
+	result, err := runDemoRender(request)
+	if err != nil {
+		t.Fatalf("runDemoRender(portal) error = %v", err)
+	}
+
+	if result.PortalResponses == nil {
+		t.Fatal("PortalResponses = nil, want closed/open endpoint WAVs")
+	}
+	if len(result.PortalResponses.ClosedWAVBytes) <= 44 || len(result.PortalResponses.OpenWAVBytes) <= 44 {
+		t.Fatalf("portal endpoint WAV sizes = %d/%d, want encoded samples",
+			len(result.PortalResponses.ClosedWAVBytes), len(result.PortalResponses.OpenWAVBytes))
+	}
+	if !bytes.Equal(result.WAVBytes, result.PortalResponses.ClosedWAVBytes) {
+		t.Fatal("zero-aperture preview WAV differs from cached closed response")
+	}
+	if bytes.Equal(
+		result.PortalResponses.ClosedWAVBytes[44:],
+		result.PortalResponses.OpenWAVBytes[44:],
+	) {
+		t.Fatal("closed and open portal WAV payloads are identical")
+	}
+
+	for name, wav := range map[string][]byte{
+		"preview": result.WAVBytes,
+		"closed":  result.PortalResponses.ClosedWAVBytes,
+		"open":    result.PortalResponses.OpenWAVBytes,
+	} {
+		if got := string(wav[:4]); got != "RIFF" {
+			t.Errorf("%s WAV signature = %q, want RIFF", name, got)
+		}
+		if channels := binary.LittleEndian.Uint16(wav[22:24]); channels != 2 {
+			t.Errorf("%s WAV channels = %d, want stereo", name, channels)
+		}
+	}
+
+	jsResult := demoResultToJS(result)
+	responses := jsResult.Get("portalResponses")
+	if responses.Type() != js.TypeObject {
+		t.Fatalf("portalResponses JS type = %s, want object", responses.Type())
+	}
+	if got := responses.Get("closedWavBytes").Length(); got != len(result.PortalResponses.ClosedWAVBytes) {
+		t.Errorf("closedWavBytes JS length = %d, want %d", got, len(result.PortalResponses.ClosedWAVBytes))
+	}
+	if got := responses.Get("openWavBytes").Length(); got != len(result.PortalResponses.OpenWAVBytes) {
+		t.Errorf("openWavBytes JS length = %d, want %d", got, len(result.PortalResponses.OpenWAVBytes))
+	}
+}
+
+func TestNormalizeDemoPortalRequestUsesBrowserMaterialKeysAndDefaults(t *testing.T) {
+	t.Parallel()
+
+	for _, material := range []string{"glassPartition", "openDoorway"} {
+		request := defaultDemoRequest()
+		request.Portal.Enabled = true
+		request.Portal.Material = material
+		request.Portal.Opening = demoOpening{}
+
+		normalized, err := normalizeDemoRequest(request)
+		if err != nil {
+			t.Fatalf("normalizeDemoRequest(%s) error = %v", material, err)
+		}
+		if normalized.Portal.Material != material {
+			t.Errorf("normalized portal material = %q, want %q", normalized.Portal.Material, material)
+		}
+		if normalized.Portal.Opening.Width != defaultDemoRequest().Portal.Opening.Width ||
+			normalized.Portal.Opening.Height != defaultDemoRequest().Portal.Opening.Height {
+			t.Errorf("normalized opening = %#v, want defaults %#v",
+				normalized.Portal.Opening, defaultDemoRequest().Portal.Opening)
+		}
 	}
 }
 

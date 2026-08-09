@@ -23,11 +23,12 @@ const (
 
 // RayState carries the geometric ray plus its per-band energy and path state.
 type RayState struct {
-	Ray         geometry.Ray
-	Energy      []float64
-	PathLength  float64
-	Bounces     int
-	RainCovered bool // true when this ray's energy was already deposited by diffuse rain
+	Ray          geometry.Ray
+	Energy       []float64
+	PathLength   float64
+	DelaySeconds float64
+	Bounces      int
+	RainCovered  bool // true when this ray's energy was already deposited by diffuse rain
 }
 
 func splitReflectionEnergy(in, absorption, scattering []float64) (specular, diffuse, remaining []float64) {

@@ -44,6 +44,9 @@ export class AuralizationEngine {
     this.wetGain = null;
     this.outputGain = null;
     this.branches = [];
+    this.portalResponses = null;
+    this.portalAperture = 0;
+    this.portalRootOrder = 2;
     this.cleanupTimers = new Set();
     this.naturalStopTimer = 0;
   }
@@ -62,6 +65,7 @@ export class AuralizationEngine {
     }
 
     this.impulseResponse = buffer;
+    this.portalResponses = null;
     if (!this.isSourceActive) {
       return false;
     }
@@ -113,6 +117,52 @@ export class AuralizationEngine {
     return true;
   }
 
+  setPortalResponses(
+    closed,
+    open,
+    { aperture = this.portalAperture, rootOrder = this.portalRootOrder } = {},
+  ) {
+    if (!closed || !open) {
+      throw new Error("closed and open portal responses are required");
+    }
+
+    const weight = portalCrossfadeWeight(aperture, rootOrder);
+    this.portalResponses = { closed, open };
+    this.portalAperture = clampUnit(aperture);
+    this.portalRootOrder = rootOrder;
+    this.impulseResponse = weight >= 1 ? open : closed;
+
+    if (!this.isSourceActive) {
+      return false;
+    }
+
+    for (const branch of this.branches) {
+      this.disconnectBranch(branch);
+    }
+
+    this.branches = [
+      this.createWetBranch(closed, 1 - weight),
+      this.createWetBranch(open, weight),
+    ];
+    this.scheduleNaturalStop();
+    return true;
+  }
+
+  setPortalAperture(aperture, rootOrder = this.portalRootOrder) {
+    const weight = portalCrossfadeWeight(aperture, rootOrder);
+    this.portalAperture = clampUnit(aperture);
+    this.portalRootOrder = rootOrder;
+
+    if (!this.portalResponses || !this.isPlaying || this.branches.length !== 2) {
+      return weight;
+    }
+
+    const now = this.context.currentTime;
+    rampParameter(this.branches[0].gain.gain, 1 - weight, now);
+    rampParameter(this.branches[1].gain.gain, weight, now);
+    return weight;
+  }
+
   play(dryBuffer, { wetMix = 0.72, gainLinear = 1 } = {}) {
     if (!dryBuffer) {
       throw new Error("a dry-source buffer is required");
@@ -140,7 +190,18 @@ export class AuralizationEngine {
     this.wetGain.connect(this.outputGain);
     this.outputGain.connect(this.destination);
 
-    this.branches = [this.createWetBranch(this.impulseResponse, 1)];
+    if (this.portalResponses) {
+      const weight = portalCrossfadeWeight(
+        this.portalAperture,
+        this.portalRootOrder,
+      );
+      this.branches = [
+        this.createWetBranch(this.portalResponses.closed, 1 - weight),
+        this.createWetBranch(this.portalResponses.open, weight),
+      ];
+    } else {
+      this.branches = [this.createWetBranch(this.impulseResponse, 1)];
+    }
     this.source.onended = () => {
       this.sourceEnded = true;
     };
@@ -298,4 +359,15 @@ function disconnectNode(node, destination) {
 
 function clampUnit(value) {
   return Math.min(1, Math.max(0, value));
+}
+
+export function portalCrossfadeWeight(aperture, rootOrder = 2) {
+  if (!Number.isFinite(aperture)) {
+    throw new Error("portal aperture must be finite");
+  }
+  if (!Number.isFinite(rootOrder) || rootOrder <= 0) {
+    throw new Error("portal root order must be finite and positive");
+  }
+
+  return Math.pow(clampUnit(aperture), 1 / rootOrder);
 }

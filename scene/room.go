@@ -1,6 +1,8 @@
 package scene
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
@@ -18,17 +20,73 @@ const (
 
 // Shoebox stores axis-aligned room dimensions and wall-material references.
 //
-//nolint:tagliatelle // wallMaterials is part of the established public scene schema.
+//nolint:recvcheck,tagliatelle // Mutable JSON receiver; wallMaterials is part of the established schema.
 type Shoebox struct {
-	Width         float64   `json:"width"`
-	Depth         float64   `json:"depth"`
-	Height        float64   `json:"height"`
-	WallMaterials [6]string `json:"wallMaterials"`
+	Width         float64       `json:"width"`
+	Depth         float64       `json:"depth"`
+	Height        float64       `json:"height"`
+	WallMaterials [6]string     `json:"wallMaterials"`
+	Origin        geometry.Vec3 `json:"-"`
 }
 
-// Bounds returns the shoebox as an axis-aligned box anchored at the origin.
+//nolint:tagliatelle // This compatibility payload mirrors the public scene schema.
+type shoeboxJSON struct {
+	Width         float64        `json:"width"`
+	Depth         float64        `json:"depth"`
+	Height        float64        `json:"height"`
+	WallMaterials [6]string      `json:"wallMaterials"`
+	Origin        *geometry.Vec3 `json:"origin,omitempty"`
+}
+
+// MarshalJSON preserves the legacy shoebox representation when the origin is
+// the zero vector.
+func (s Shoebox) MarshalJSON() ([]byte, error) {
+	payload := shoeboxJSON{
+		Width:         s.Width,
+		Depth:         s.Depth,
+		Height:        s.Height,
+		WallMaterials: s.WallMaterials,
+	}
+
+	if s.Origin != geometry.Vec3Zero {
+		origin := s.Origin
+		payload.Origin = &origin
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal shoebox: %w", err)
+	}
+
+	return data, nil
+}
+
+// UnmarshalJSON accepts both legacy origin-anchored shoeboxes and translated
+// shoeboxes.
+func (s *Shoebox) UnmarshalJSON(data []byte) error {
+	var payload shoeboxJSON
+
+	err := json.Unmarshal(data, &payload)
+	if err != nil {
+		return fmt.Errorf("unmarshal shoebox: %w", err)
+	}
+
+	s.Width = payload.Width
+	s.Depth = payload.Depth
+	s.Height = payload.Height
+	s.WallMaterials = payload.WallMaterials
+
+	s.Origin = geometry.Vec3Zero
+	if payload.Origin != nil {
+		s.Origin = *payload.Origin
+	}
+
+	return nil
+}
+
+// Bounds returns the shoebox as an axis-aligned world-space box.
 func (s Shoebox) Bounds() geometry.Box {
-	return geometry.NewBox(geometry.Vec3Zero, geometry.Vec3{X: s.Width, Y: s.Depth, Z: s.Height})
+	return geometry.NewBox(s.Origin, s.Origin.Add(geometry.Vec3{X: s.Width, Y: s.Depth, Z: s.Height}))
 }
 
 // Room is the top-level geometry container for a scene.

@@ -20,6 +20,7 @@ import (
 const (
 	outputFilename                = "output.wav"
 	gllFixturePath                = "../../testdata/gll/synthetic_ls.gll"
+	repositoryGLLFixturePath      = "testdata/gll/synthetic_ls.gll"
 	defaultExampleCrossoverWindow = "hann"
 	frontReceiverX                = 4.2
 	rearReceiverX                 = 1.8
@@ -99,7 +100,7 @@ func normalizeExampleOptions(opts exampleOptions) (exampleOptions, error) {
 }
 
 func evaluateExample(opts exampleOptions) (exampleResult, error) {
-	fixturePath := filepath.Clean(gllFixturePath)
+	fixturePath := resolveGLLFixturePath()
 
 	model, err := directivity.LoadGLL(fixturePath, "")
 	if err != nil {
@@ -107,6 +108,20 @@ func evaluateExample(opts exampleOptions) (exampleResult, error) {
 	}
 
 	return evaluateModel(exampleDirectivityModel{base: model}, opts)
+}
+
+func resolveGLLFixturePath() string {
+	candidates := []string{repositoryGLLFixturePath, gllFixturePath}
+	for _, candidate := range candidates {
+		path := filepath.Clean(candidate)
+
+		_, err := os.Stat(path)
+		if err == nil {
+			return path
+		}
+	}
+
+	return filepath.Clean(gllFixturePath)
 }
 
 func evaluateModel(model directivity.Model, opts exampleOptions) (exampleResult, error) {

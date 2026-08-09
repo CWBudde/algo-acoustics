@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/cwbudde/algo-acoustics/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -11,6 +12,7 @@ func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "roomir",
 		Short:         "Validate and render room acoustics scenes.",
+		Version:       buildinfo.String(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

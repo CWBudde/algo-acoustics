@@ -2,98 +2,95 @@ package scene
 
 import (
 	"encoding/binary"
+	"hash"
 	"hash/fnv"
 	"math"
+
+	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
-// GeometryHash returns a uint64 FNV-64a hash of the scene's geometry and
-// source/receiver positions. Material changes do not affect this hash,
-// making it suitable for cache invalidation of geometry-dependent results.
+// GeometryHash returns a uint64 FNV-64a hash of the scene's room and portal
+// geometry, portal state, and source/receiver positions. Material changes do
+// not affect this hash, making it suitable for cache invalidation of
+// geometry-dependent results.
 func (s *Scene) GeometryHash() uint64 {
-	h := fnv.New64a()
-	buf := make([]byte, 8) //nolint:mnd // 8 bytes for float64
+	writer := newSceneHashWriter()
+	writer.writeRoomsAndPortals(s)
 
-	writeFloat := func(v float64) {
-		binary.LittleEndian.PutUint64(buf, math.Float64bits(v))
-		_, _ = h.Write(buf)
+	for index := range s.Sources {
+		writer.writeVec3(s.Sources[index].Position)
 	}
 
-	writeVec3 := func(x, y, z float64) {
-		writeFloat(x)
-		writeFloat(y)
-		writeFloat(z)
+	for index := range s.Receivers {
+		writer.writeVec3(s.Receivers[index].Position)
 	}
 
-	// Room kind.
-	_, _ = h.Write([]byte(s.Room.Kind))
-
-	// Shoebox dimensions.
-	if s.Room.Shoebox != nil {
-		writeVec3(s.Room.Shoebox.Width, s.Room.Shoebox.Depth, s.Room.Shoebox.Height)
-	}
-
-	// Mesh triangle vertices.
-	if s.Room.Mesh != nil {
-		for i := range s.Room.Mesh.Triangles {
-			tri := &s.Room.Mesh.Triangles[i]
-			writeVec3(tri.V0.X, tri.V0.Y, tri.V0.Z)
-			writeVec3(tri.V1.X, tri.V1.Y, tri.V1.Z)
-			writeVec3(tri.V2.X, tri.V2.Y, tri.V2.Z)
-		}
-	}
-
-	// Source positions.
-	for i := range s.Sources {
-		p := &s.Sources[i].Position
-		writeVec3(p.X, p.Y, p.Z)
-	}
-
-	// Receiver positions.
-	for i := range s.Receivers {
-		p := &s.Receivers[i].Position
-		writeVec3(p.X, p.Y, p.Z)
-	}
-
-	return h.Sum64()
+	return writer.hash.Sum64()
 }
 
-// RoomHash returns a uint64 FNV-64a hash of the room geometry only.
-// Unlike GeometryHash, this excludes source and receiver positions, making
-// it suitable for caches whose validity depends on room shape alone (for
-// example, an image-source tree topology that can be rebuilt from a moved
-// source without re-discovering which walls contribute).
+// RoomHash returns a uint64 FNV-64a hash of room and portal geometry and portal
+// state only. Unlike GeometryHash, this excludes source and receiver positions,
+// making it suitable for caches whose validity depends on room shape alone.
 func (s *Scene) RoomHash() uint64 {
-	h := fnv.New64a()
-	buf := make([]byte, 8) //nolint:mnd // 8 bytes for float64
+	writer := newSceneHashWriter()
+	writer.writeRoomsAndPortals(s)
 
-	writeFloat := func(v float64) {
-		binary.LittleEndian.PutUint64(buf, math.Float64bits(v))
-		_, _ = h.Write(buf)
-	}
+	return writer.hash.Sum64()
+}
 
-	writeVec3 := func(x, y, z float64) {
-		writeFloat(x)
-		writeFloat(y)
-		writeFloat(z)
-	}
+type sceneHashWriter struct {
+	hash   hash.Hash64
+	buffer [8]byte
+}
 
-	// Room kind.
-	_, _ = h.Write([]byte(s.Room.Kind))
+func newSceneHashWriter() *sceneHashWriter {
+	return &sceneHashWriter{hash: fnv.New64a()}
+}
 
-	// Shoebox dimensions.
-	if s.Room.Shoebox != nil {
-		writeVec3(s.Room.Shoebox.Width, s.Room.Shoebox.Depth, s.Room.Shoebox.Height)
-	}
+func (w *sceneHashWriter) writeRoomsAndPortals(s *Scene) {
+	for roomIndex := range s.RoomCount() {
+		room, ok := s.RoomAt(roomIndex)
+		if !ok {
+			continue
+		}
 
-	// Mesh triangle vertices.
-	if s.Room.Mesh != nil {
-		for i := range s.Room.Mesh.Triangles {
-			tri := &s.Room.Mesh.Triangles[i]
-			writeVec3(tri.V0.X, tri.V0.Y, tri.V0.Z)
-			writeVec3(tri.V1.X, tri.V1.Y, tri.V1.Z)
-			writeVec3(tri.V2.X, tri.V2.Y, tri.V2.Z)
+		w.writeFloat(float64(roomIndex))
+		_, _ = w.hash.Write([]byte(room.Kind))
+
+		if room.Shoebox != nil {
+			w.writeVec3(room.Shoebox.Origin)
+			w.writeVec3(geometry.Vec3{X: room.Shoebox.Width, Y: room.Shoebox.Depth, Z: room.Shoebox.Height})
+		}
+
+		if room.Mesh != nil {
+			for index := range room.Mesh.Triangles {
+				triangle := &room.Mesh.Triangles[index]
+				w.writeVec3(triangle.V0)
+				w.writeVec3(triangle.V1)
+				w.writeVec3(triangle.V2)
+			}
 		}
 	}
 
-	return h.Sum64()
+	for portalIndex, portal := range s.Portals {
+		w.writeFloat(float64(portalIndex))
+		w.writeFloat(float64(portal.RoomIndices[0]))
+		w.writeFloat(float64(portal.RoomIndices[1]))
+		_, _ = w.hash.Write([]byte(portal.State))
+
+		for _, vertex := range portal.Polygon {
+			w.writeVec3(vertex)
+		}
+	}
+}
+
+func (w *sceneHashWriter) writeFloat(value float64) {
+	binary.LittleEndian.PutUint64(w.buffer[:], math.Float64bits(value))
+	_, _ = w.hash.Write(w.buffer[:])
+}
+
+func (w *sceneHashWriter) writeVec3(value geometry.Vec3) {
+	w.writeFloat(value.X)
+	w.writeFloat(value.Y)
+	w.writeFloat(value.Z)
 }

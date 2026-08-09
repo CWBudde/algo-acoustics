@@ -17,12 +17,16 @@ paths are implemented; [PLAN.md](PLAN.md) records completed and future phases.
 
 ## Docs
 
-- [Architecture](docs/architecture.md)
-- [Scene format](docs/scene-format.md)
+- [Documentation index](docs/README.md)
+- [Scene authoring](docs/scene-authoring.md)
+- [HRTF usage](docs/hrtf-sofa.md)
+- [Directivity usage](docs/directivity-gll.md)
 - [Hybrid rendering](docs/hybrid-rendering.md)
-- [Directivity and GLL](docs/directivity-gll.md)
-- [HRTF and SOFA](docs/hrtf-sofa.md)
-- [Validation](docs/validation.md)
+- [Sound transmission between rooms](docs/sound-transmission.md)
+- [Regression workflow](docs/regression-workflow.md)
+- [Comparing against another tool](docs/compare-another-tool.md)
+
+Runnable Go and JSON examples are indexed in [examples/README.md](examples/README.md).
 
 ## Web Demo
 
@@ -49,6 +53,7 @@ details.
 | Package                                             | Role                                            |
 | --------------------------------------------------- | ----------------------------------------------- |
 | [`algo-dsp`](https://github.com/cwbudde/algo-dsp)   | Convolution, FFT, filtering, acoustic metrics   |
+| [`algo-fft`](https://github.com/cwbudde/algo-fft)   | FFT operations used by DSP and modal paths      |
 | [`algo-pde`](https://github.com/CWBudde/algo-pde)   | Low-frequency Helmholtz solves on regular grids |
 | [`gll-tools`](https://github.com/CWBudde/gll-tools) | Loudspeaker directivity balloon ingestion       |
 | [`wav`](https://github.com/cwbudde/wav)             | WAV file encoding/decoding for export           |

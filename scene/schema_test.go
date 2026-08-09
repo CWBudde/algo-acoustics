@@ -134,6 +134,76 @@ func TestSceneSchemaAcceptsMarshaledNearestNeighborMeasurementGrid(t *testing.T)
 	}
 }
 
+func TestSceneSchemaAcceptsMultiRoomPortalScene(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(validMultiRoomScene())
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("jsonschema.UnmarshalJSON() error = %v", err)
+	}
+
+	err = compileSceneSchema(t).Validate(instance)
+	if err != nil {
+		t.Fatalf("multi-room portal scene does not validate: %v", err)
+	}
+}
+
+func TestSceneSchemaRejectsInvalidRoomRepresentations(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{
+			name: "single entry rooms",
+			mutate: func(instance map[string]any) {
+				rooms := instance["rooms"].([]any)
+				instance["rooms"] = rooms[:1]
+				delete(instance, "portals")
+			},
+		},
+		{
+			name: "legacy room with portals",
+			mutate: func(instance map[string]any) {
+				rooms := instance["rooms"].([]any)
+				instance["room"] = rooms[0]
+				delete(instance, "rooms")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := json.Marshal(validMultiRoomScene())
+			if err != nil {
+				t.Fatalf("json.Marshal() error = %v", err)
+			}
+
+			var instance map[string]any
+
+			err = json.Unmarshal(data, &instance)
+			if err != nil {
+				t.Fatalf("json.Unmarshal() error = %v", err)
+			}
+
+			test.mutate(instance)
+
+			err = compileSceneSchema(t).Validate(instance)
+			if err == nil {
+				t.Fatal("schema.Validate() error = nil, want invalid room representation")
+			}
+		})
+	}
+}
+
 func compileSceneSchema(t *testing.T) *jsonschema.Schema {
 	t.Helper()
 

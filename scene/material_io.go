@@ -69,48 +69,108 @@ func LoadMaterialCSV(r io.Reader) (Material, error) {
 		header[strings.ToLower(strings.TrimSpace(column))] = i
 	}
 
-	idxBand, okBand := header["band"]
-	idxAbsorption, okAbsorption := header["absorption"]
+	columns := materialCSVColumns{}
+	var okBand, okAbsorption, okScattering bool
+	columns.band, okBand = header["band"]
+	columns.absorption, okAbsorption = header["absorption"]
 
-	idxScattering, okScattering := header["scattering"]
+	columns.scattering, okScattering = header["scattering"]
 	if !okBand || !okAbsorption || !okScattering {
 		return Material{}, errors.New("material CSV requires band, absorption, and scattering columns")
 	}
+
+	columns.transmission, columns.hasTransmission = header["transmission"]
+	columns.reduction, columns.hasReduction = header["sound_reduction_index"]
 
 	material := Material{
 		AbsorptionByBand: make([]float64, 0, len(records)-1),
 		ScatteringByBand: make([]float64, 0, len(records)-1),
 	}
 
+	if columns.hasTransmission {
+		material.TransmissionByBand = make([]float64, 0, len(records)-1)
+	}
+
+	if columns.hasReduction {
+		material.SoundReductionIndex = make([]float64, 0, len(records)-1)
+	}
+
 	for rowIndex, record := range records[1:] {
-		if idxBand >= len(record) || idxAbsorption >= len(record) || idxScattering >= len(record) {
-			return Material{}, fmt.Errorf("material CSV row %d is too short", rowIndex+1)
-		}
-
-		band, err := strconv.Atoi(strings.TrimSpace(record[idxBand]))
+		err := appendMaterialCSVRow(&material, record, rowIndex, columns)
 		if err != nil {
-			return Material{}, fmt.Errorf("parse band index on row %d: %w", rowIndex+1, err)
+			return Material{}, err
 		}
-
-		if band != rowIndex {
-			return Material{}, fmt.Errorf("material CSV row %d has band %d, want %d", rowIndex+1, band, rowIndex)
-		}
-
-		absorption, err := strconv.ParseFloat(strings.TrimSpace(record[idxAbsorption]), 64)
-		if err != nil {
-			return Material{}, fmt.Errorf("parse absorption on row %d: %w", rowIndex+1, err)
-		}
-
-		scattering, err := strconv.ParseFloat(strings.TrimSpace(record[idxScattering]), 64)
-		if err != nil {
-			return Material{}, fmt.Errorf("parse scattering on row %d: %w", rowIndex+1, err)
-		}
-
-		material.AbsorptionByBand = append(material.AbsorptionByBand, absorption)
-		material.ScatteringByBand = append(material.ScatteringByBand, scattering)
 	}
 
 	copy(material.Scattering[:], material.ScatteringByBand)
 
 	return material, nil
+}
+
+type materialCSVColumns struct {
+	band, absorption, scattering  int
+	transmission, reduction       int
+	hasTransmission, hasReduction bool
+}
+
+func appendMaterialCSVRow(material *Material, record []string, rowIndex int, columns materialCSVColumns) error {
+	required := max(columns.band, columns.absorption, columns.scattering)
+	if required >= len(record) {
+		return fmt.Errorf("material CSV row %d is too short", rowIndex+1)
+	}
+
+	band, err := strconv.Atoi(strings.TrimSpace(record[columns.band]))
+	if err != nil {
+		return fmt.Errorf("parse band index on row %d: %w", rowIndex+1, err)
+	}
+
+	if band != rowIndex {
+		return fmt.Errorf("material CSV row %d has band %d, want %d", rowIndex+1, band, rowIndex)
+	}
+
+	absorption, err := parseMaterialCSVFloat(record, columns.absorption, "absorption", rowIndex)
+	if err != nil {
+		return err
+	}
+
+	scattering, err := parseMaterialCSVFloat(record, columns.scattering, "scattering", rowIndex)
+	if err != nil {
+		return err
+	}
+
+	material.AbsorptionByBand = append(material.AbsorptionByBand, absorption)
+	material.ScatteringByBand = append(material.ScatteringByBand, scattering)
+
+	if columns.hasTransmission {
+		transmission, parseErr := parseMaterialCSVFloat(record, columns.transmission, "transmission", rowIndex)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		material.TransmissionByBand = append(material.TransmissionByBand, transmission)
+	}
+
+	if columns.hasReduction {
+		reduction, parseErr := parseMaterialCSVFloat(record, columns.reduction, "sound reduction index", rowIndex)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		material.SoundReductionIndex = append(material.SoundReductionIndex, reduction)
+	}
+
+	return nil
+}
+
+func parseMaterialCSVFloat(record []string, column int, property string, rowIndex int) (float64, error) {
+	if column >= len(record) {
+		return 0, fmt.Errorf("material CSV row %d is too short", rowIndex+1)
+	}
+
+	value, err := strconv.ParseFloat(strings.TrimSpace(record[column]), 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s on row %d: %w", property, rowIndex+1, err)
+	}
+
+	return value, nil
 }

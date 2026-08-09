@@ -54,10 +54,14 @@ export function downloadBytes(bytes, filename, mimeType) {
 }
 
 export function copyState(source, target) {
+  target.roomPreset = source.roomPreset;
+  target.materialPreset = source.materialPreset;
   target.room = structuredClone(source.room);
   target.materials = structuredClone(source.materials);
   target.source = structuredClone(source.source);
   target.receiver = structuredClone(source.receiver);
   target.render = structuredClone(source.render);
+  target.portal = structuredClone(source.portal);
+  target.irView = source.irView;
   target.reflections = source.reflections;
 }

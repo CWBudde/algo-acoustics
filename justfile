@@ -41,6 +41,15 @@ test-wasm:
     GOOS=js GOARCH=wasm go test -c -o /tmp/algo-acoustics-wasm.test ./web/wasm/
     env -i HOME="$HOME" PATH="$PATH" "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" /tmp/algo-acoustics-wasm.test -test.v -test.timeout 120s
 
+# Run end-to-end CLI smoke renders used by CI
+test-integration:
+    ./scripts/ci/render-smoke.sh
+
+# Exercise the regression harness and its checked-in corpus
+test-regression:
+    go test -v ./cmd/roombench
+    go run ./cmd/roombench run
+
 # Run tests with coverage
 test-coverage:
     go test -v -coverprofile=coverage.out ./...
@@ -57,9 +66,30 @@ build:
 	go build -o bin/roomplot ./cmd/roomplot
 	go build -o bin/roombench ./cmd/roombench
 
+# Build versioned CLI archives for GOOS/GOARCH (defaults to the host platform)
+release-cli:
+    ./scripts/release.sh cli
+
+# Build versioned browser-demo archives
+release-web:
+    ./scripts/release.sh web
+
+# Build versioned regression-fixture archives
+release-regression:
+    ./scripts/release.sh regression
+
+# Build all release archives. Set VERSION, GOOS, GOARCH, COMMIT, or BUILD_DATE to override metadata.
+release:
+    ./scripts/release.sh all
+
 # Build the browser WebAssembly demo
 build-web-demo:
     ./web/build-wasm.sh
+
+# Compile the complete browser demo and verify its generated runtime assets
+smoke-web-demo: build-web-demo
+    test -s web/algo_acoustics_demo.wasm
+    test -s web/wasm_exec.js
 
 # Serve the browser demo locally
 web-demo: build-web-demo

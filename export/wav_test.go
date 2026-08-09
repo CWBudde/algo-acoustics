@@ -127,3 +127,23 @@ func TestWriteStereoWAVRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestEncodeStereoWAVBytes(t *testing.T) {
+	t.Parallel()
+
+	left := &ir.Buffer{SampleRate: 8000, Samples: []float64{0.5, -0.25}}
+	right := &ir.Buffer{SampleRate: 8000, Samples: []float64{-0.5, 0.25}}
+
+	encoded, err := EncodeStereoWAVBytes(left, right)
+	if err != nil {
+		t.Fatalf("EncodeStereoWAVBytes() error = %v", err)
+	}
+
+	if len(encoded) <= 44 {
+		t.Fatalf("encoded length = %d, want WAV header and samples", len(encoded))
+	}
+
+	if got := string(encoded[:4]); got != "RIFF" {
+		t.Fatalf("header = %q, want RIFF", got)
+	}
+}

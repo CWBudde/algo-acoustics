@@ -10,6 +10,7 @@ import (
 	"syscall/js"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
+	"github.com/cwbudde/algo-acoustics/internal/buildinfo"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/metrics"
 	"github.com/cwbudde/algo-acoustics/scene"
@@ -106,6 +107,7 @@ func cloneIRBuffer(buffer *ir.Buffer) *ir.Buffer {
 
 func registerDemoAPI() {
 	api := js.Global().Get("Object").New()
+	api.Set("version", buildinfo.String())
 	api.Set("renderScene", js.FuncOf(renderSceneJS))
 	api.Set("createRoom", js.FuncOf(createRoomJS))
 	api.Set("setMaterial", js.FuncOf(setMaterialJS))

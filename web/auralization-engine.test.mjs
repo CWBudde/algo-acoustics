@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   AuralizationEngine,
   equalPowerFadeCurves,
+  portalCrossfadeWeight,
 } from "./auralization-engine.mjs";
 
 class FakeAudioParam {
@@ -186,6 +187,37 @@ test("an active IR replacement crossfades and retires the old convolver", () => 
   timers.runDelay(110);
   assert.deepEqual(engine.branches, [nextBranch]);
   assert.ok(oldBranch.convolver.disconnections.length > 0);
+});
+
+test("portal aperture follows the configured root curve", () => {
+  assert.equal(portalCrossfadeWeight(0), 0);
+  assert.equal(portalCrossfadeWeight(0.25, 2), 0.5);
+  assert.equal(portalCrossfadeWeight(1), 1);
+  assert.throws(() => portalCrossfadeWeight(Number.NaN), /finite/);
+  assert.throws(() => portalCrossfadeWeight(0.5, 0), /positive/);
+});
+
+test("portal responses remain cached while aperture updates branch gains", () => {
+  const { engine, context } = createEngine();
+  const closed = { duration: 1.1 };
+  const open = { duration: 1.3 };
+  const dry = { duration: 2 };
+
+  engine.setPortalResponses(closed, open, { aperture: 0.25, rootOrder: 2 });
+  engine.play(dry);
+
+  assert.equal(engine.branches.length, 2);
+  assert.equal(engine.branches[0].convolver.buffer, closed);
+  assert.equal(engine.branches[1].convolver.buffer, open);
+  assert.equal(engine.branches[0].gain.gain.value, 0.5);
+  assert.equal(engine.branches[1].gain.gain.value, 0.5);
+
+  context.currentTime = 0.1;
+  const convolverCount = context.convolvers.length;
+  assert.equal(engine.setPortalAperture(1), 1);
+  assert.equal(context.convolvers.length, convolverCount);
+  assert.equal(engine.branches[0].gain.gain.events.at(-1).value, 0);
+  assert.equal(engine.branches[1].gain.gain.events.at(-1).value, 1);
 });
 
 test("rapid updates keep only the newest convolver", () => {

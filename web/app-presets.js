@@ -41,6 +41,31 @@ export const MATERIALS = {
   },
 };
 
+// Transmission presets are kept separate from room-surface absorption
+// materials so an open doorway cannot accidentally be selected as a wall.
+export const PORTAL_MATERIALS = {
+  concretePartition: {
+    label: "Concrete partition",
+    soundReductionIndex: [50, 50, 50, 50, 50, 50],
+  },
+  plasterboard: {
+    label: "Plasterboard",
+    soundReductionIndex: [35, 35, 35, 35, 35, 35],
+  },
+  woodenDoor: {
+    label: "Wooden door",
+    soundReductionIndex: [25, 25, 25, 25, 25, 25],
+  },
+  glassPartition: {
+    label: "Glass partition",
+    soundReductionIndex: [30, 30, 30, 30, 30, 30],
+  },
+  openDoorway: {
+    label: "Open doorway",
+    soundReductionIndex: [0, 0, 0, 0, 0, 0],
+  },
+};
+
 export const ROOM_PRESETS = {
   custom: {
     label: "Custom",
@@ -179,6 +204,34 @@ export const ROOM_PRESETS = {
       renderMode: "early",
     },
   ),
+  twoRoom: makeShoeboxPreset(
+    "Two-room portal",
+    { width: 5.625, depth: 4, height: 4 },
+    {
+      x: 1.5,
+      y: 2,
+      z: 1.4,
+      gainDb: 0,
+      directivity: "omni",
+      azimuthDegrees: 0,
+      cardioidOrder: 1.1,
+    },
+    // Receiver coordinates are local to the adjacent room. The browser
+    // preview offsets that room along +X; the WASM adapter should do likewise.
+    { x: 4.1, y: 2, z: 1.4 },
+    {
+      materialPreset: "studio",
+      renderMode: "hybrid",
+      portal: {
+        enabled: true,
+        aperture: 0,
+        rootOrder: 2,
+        material: "woodenDoor",
+        receiverRoom: { width: 5.625, depth: 4, height: 4 },
+        opening: { width: 1.2, height: 2.1, bottom: 0 },
+      },
+    },
+  ),
   loft: makeMeshPreset(
     "Loft Atrium",
     { width: 8.6, depth: 6.4, height: 3.2 },
@@ -255,6 +308,10 @@ export const ROOM_PRESET_GROUPS = [
     presets: ["classroom", "library"],
   },
   {
+    label: "Connected Rooms",
+    presets: ["twoRoom"],
+  },
+  {
     label: "Large Rooms",
     presets: ["lectureHall", "chapel"],
   },
@@ -314,7 +371,14 @@ export function makeShoeboxPreset(label, room, source, receiver, options = {}) {
   };
 }
 
-export function makeMeshPreset(label, room, mesh, source, receiver, options = {}) {
+export function makeMeshPreset(
+  label,
+  room,
+  mesh,
+  source,
+  receiver,
+  options = {},
+) {
   return {
     label,
     kind: "mesh",
@@ -333,14 +397,46 @@ export function makeMeshPreset(label, room, mesh, source, receiver, options = {}
 export function makeTriangularPrismMesh(width, depth, height) {
   return {
     triangles: [
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width / 2, y: depth, z: 0 } },
-      { v0: { x: 0, y: 0, z: height }, v1: { x: width / 2, y: depth, z: height }, v2: { x: width, y: 0, z: height } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: height }, v2: { x: width, y: 0, z: 0 } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: 0, y: 0, z: height }, v2: { x: width, y: 0, z: height } },
-      { v0: { x: width, y: 0, z: 0 }, v1: { x: width / 2, y: depth, z: height }, v2: { x: width / 2, y: depth, z: 0 } },
-      { v0: { x: width, y: 0, z: 0 }, v1: { x: width, y: 0, z: height }, v2: { x: width / 2, y: depth, z: height } },
-      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: 0, y: 0, z: height }, v2: { x: 0, y: 0, z: 0 } },
-      { v0: { x: width / 2, y: depth, z: 0 }, v1: { x: width / 2, y: depth, z: height }, v2: { x: 0, y: 0, z: height } },
+      {
+        v0: { x: 0, y: 0, z: 0 },
+        v1: { x: width, y: 0, z: 0 },
+        v2: { x: width / 2, y: depth, z: 0 },
+      },
+      {
+        v0: { x: 0, y: 0, z: height },
+        v1: { x: width / 2, y: depth, z: height },
+        v2: { x: width, y: 0, z: height },
+      },
+      {
+        v0: { x: 0, y: 0, z: 0 },
+        v1: { x: width, y: 0, z: height },
+        v2: { x: width, y: 0, z: 0 },
+      },
+      {
+        v0: { x: 0, y: 0, z: 0 },
+        v1: { x: 0, y: 0, z: height },
+        v2: { x: width, y: 0, z: height },
+      },
+      {
+        v0: { x: width, y: 0, z: 0 },
+        v1: { x: width / 2, y: depth, z: height },
+        v2: { x: width / 2, y: depth, z: 0 },
+      },
+      {
+        v0: { x: width, y: 0, z: 0 },
+        v1: { x: width, y: 0, z: height },
+        v2: { x: width / 2, y: depth, z: height },
+      },
+      {
+        v0: { x: width / 2, y: depth, z: 0 },
+        v1: { x: 0, y: 0, z: height },
+        v2: { x: 0, y: 0, z: 0 },
+      },
+      {
+        v0: { x: width / 2, y: depth, z: 0 },
+        v1: { x: width / 2, y: depth, z: height },
+        v2: { x: 0, y: 0, z: height },
+      },
     ],
   };
 }
@@ -348,18 +444,66 @@ export function makeTriangularPrismMesh(width, depth, height) {
 export function makeSlopedRoofMesh(width, depth, lowHeight, highHeight) {
   return {
     triangles: [
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: depth, z: 0 } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: depth, z: 0 }, v2: { x: 0, y: depth, z: 0 } },
-      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: width, y: depth, z: highHeight }, v2: { x: width, y: 0, z: lowHeight } },
-      { v0: { x: 0, y: 0, z: lowHeight }, v1: { x: 0, y: depth, z: highHeight }, v2: { x: width, y: depth, z: highHeight } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: width, y: 0, z: 0 } },
-      { v0: { x: 0, y: 0, z: 0 }, v1: { x: 0, y: 0, z: lowHeight }, v2: { x: width, y: 0, z: lowHeight } },
-      { v0: { x: width, y: depth, z: 0 }, v1: { x: width, y: 0, z: 0 }, v2: { x: width, y: 0, z: lowHeight } },
-      { v0: { x: width, y: depth, z: 0 }, v1: { x: width, y: 0, z: lowHeight }, v2: { x: width, y: depth, z: highHeight } },
-      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: 0, z: lowHeight }, v2: { x: 0, y: 0, z: 0 } },
-      { v0: { x: 0, y: depth, z: 0 }, v1: { x: 0, y: depth, z: highHeight }, v2: { x: 0, y: 0, z: lowHeight } },
-      { v0: { x: 0, y: depth, z: 0 }, v1: { x: width, y: depth, z: 0 }, v2: { x: width, y: depth, z: highHeight } },
-      { v0: { x: 0, y: depth, z: 0 }, v1: { x: width, y: depth, z: highHeight }, v2: { x: 0, y: depth, z: highHeight } },
+      {
+        v0: { x: 0, y: 0, z: 0 },
+        v1: { x: width, y: 0, z: 0 },
+        v2: { x: width, y: depth, z: 0 },
+      },
+      {
+        v0: { x: 0, y: 0, z: 0 },
+        v1: { x: width, y: depth, z: 0 },
+        v2: { x: 0, y: depth, z: 0 },
+      },
+      {
+        v0: { x: 0, y: 0, z: lowHeight },
+        v1: { x: width, y: depth, z: highHeight },
+        v2: { x: width, y: 0, z: lowHeight },
+      },
+      {
+        v0: { x: 0, y: 0, z: lowHeight },
+        v1: { x: 0, y: depth, z: highHeight },
+        v2: { x: width, y: depth, z: highHeight },
+      },
+      {
+        v0: { x: 0, y: 0, z: 0 },
+        v1: { x: width, y: 0, z: lowHeight },
+        v2: { x: width, y: 0, z: 0 },
+      },
+      {
+        v0: { x: 0, y: 0, z: 0 },
+        v1: { x: 0, y: 0, z: lowHeight },
+        v2: { x: width, y: 0, z: lowHeight },
+      },
+      {
+        v0: { x: width, y: depth, z: 0 },
+        v1: { x: width, y: 0, z: 0 },
+        v2: { x: width, y: 0, z: lowHeight },
+      },
+      {
+        v0: { x: width, y: depth, z: 0 },
+        v1: { x: width, y: 0, z: lowHeight },
+        v2: { x: width, y: depth, z: highHeight },
+      },
+      {
+        v0: { x: 0, y: depth, z: 0 },
+        v1: { x: 0, y: 0, z: lowHeight },
+        v2: { x: 0, y: 0, z: 0 },
+      },
+      {
+        v0: { x: 0, y: depth, z: 0 },
+        v1: { x: 0, y: depth, z: highHeight },
+        v2: { x: 0, y: 0, z: lowHeight },
+      },
+      {
+        v0: { x: 0, y: depth, z: 0 },
+        v1: { x: width, y: depth, z: 0 },
+        v2: { x: width, y: depth, z: highHeight },
+      },
+      {
+        v0: { x: 0, y: depth, z: 0 },
+        v1: { x: width, y: depth, z: highHeight },
+        v2: { x: 0, y: depth, z: highHeight },
+      },
     ],
   };
 }

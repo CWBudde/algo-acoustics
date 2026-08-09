@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
 // Summary returns a normalized textual description of the scene.
@@ -15,24 +17,19 @@ func Summary(sc *Scene) string {
 	var b strings.Builder
 
 	b.WriteString("scene summary\n")
-	fmt.Fprintf(&b, "room: %s", sc.Room.Kind)
 
-	switch sc.Room.Kind {
-	case RoomKindShoebox:
-		if sc.Room.Shoebox != nil {
-			fmt.Fprintf(&b, " (%.3fm x %.3fm x %.3fm)", sc.Room.Shoebox.Width, sc.Room.Shoebox.Depth, sc.Room.Shoebox.Height)
-		}
-	case RoomKindMesh:
-		if sc.Room.MeshPath != "" {
-			fmt.Fprintf(&b, " (%s)", sc.Room.MeshPath)
+	if len(sc.Rooms) == 0 {
+		writeRoomSummary(&b, "room", sc.Room)
+	} else {
+		fmt.Fprintf(&b, "rooms: %d\n", len(sc.Rooms))
+
+		for index, room := range sc.Rooms {
+			writeRoomSummary(&b, fmt.Sprintf("room[%d]", index), room)
 		}
 
-		if sc.Room.Mesh != nil {
-			fmt.Fprintf(&b, " [%d triangles]", len(sc.Room.Mesh.Triangles))
-		}
+		fmt.Fprintf(&b, "portals: %d\n", len(sc.Portals))
 	}
 
-	b.WriteString("\n")
 	fmt.Fprintf(&b, "materials: %d", len(sc.Materials))
 
 	if len(sc.Materials) > 0 {
@@ -61,6 +58,31 @@ func Summary(sc *Scene) string {
 	b.WriteString(" Hz\n")
 
 	return b.String()
+}
+
+func writeRoomSummary(b *strings.Builder, label string, room Room) {
+	fmt.Fprintf(b, "%s: %s", label, room.Kind)
+
+	switch room.Kind {
+	case RoomKindShoebox:
+		if room.Shoebox != nil {
+			fmt.Fprintf(b, " (%.3fm x %.3fm x %.3fm)", room.Shoebox.Width, room.Shoebox.Depth, room.Shoebox.Height)
+
+			if room.Shoebox.Origin != (geometry.Vec3{}) {
+				fmt.Fprintf(b, " at (%.3f, %.3f, %.3f)", room.Shoebox.Origin.X, room.Shoebox.Origin.Y, room.Shoebox.Origin.Z)
+			}
+		}
+	case RoomKindMesh:
+		if room.MeshPath != "" {
+			fmt.Fprintf(b, " (%s)", room.MeshPath)
+		}
+
+		if room.Mesh != nil {
+			fmt.Fprintf(b, " [%d triangles]", len(room.Mesh.Triangles))
+		}
+	}
+
+	b.WriteString("\n")
 }
 
 func writeBandSummary(b *strings.Builder, centerFreqs []float64) {

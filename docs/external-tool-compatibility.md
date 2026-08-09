@@ -8,7 +8,12 @@
 - Units: meters for positions, room dimensions, and mesh coordinates.
 - Source positions: expressed in world coordinates; source orientation is stored as a quaternion.
 - Receiver positions: expressed in world coordinates; binaural receivers must preserve orientation and HRTF metadata.
-- Materials: use the same octave-band absorption and scattering layout as `scene.Material`, with 125 Hz to 4 kHz as the default 6-band set.
+- Materials: use the same octave-band absorption, scattering, and optional
+  transmission layout as `scene.Material`, with 125 Hz to 4 kHz as the default
+  6-band set. Transmission may alternatively use sound reduction indices in dB.
+- Multi-room scenes: export at least two `rooms`, preserve each shoebox
+  `origin`, and keep portal vertices in world coordinates with winding from
+  `roomIndices[0]` toward `roomIndices[1]`.
 - Mesh scenes: keep `meshPath` relative to the scene file when possible so external tools and the CLI can resolve the same asset graph.
 
 ## Recommended Workflow

@@ -1,6 +1,7 @@
 package export_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,8 +9,48 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/export"
+	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
+
+func TestSceneJSONOmitsResolvedMeshesFromMultiRoomScenes(t *testing.T) {
+	t.Parallel()
+
+	sc := scene.Scene{
+		Rooms: []scene.Room{{
+			Kind:     scene.RoomKindMesh,
+			MeshPath: "room.obj",
+			Mesh: &geometry.Mesh{Triangles: []geometry.Triangle{{
+				V0: geometry.Vec3{}, V1: geometry.Vec3{X: 1}, V2: geometry.Vec3{Y: 1},
+			}}},
+		}},
+		BandSpec:   acoustics.Octave6,
+		SampleRate: 48000,
+	}
+
+	data, err := export.SceneJSON(&sc)
+	if err != nil {
+		t.Fatalf("SceneJSON() error = %v", err)
+	}
+
+	var payload map[string]any
+
+	err = json.Unmarshal(data, &payload)
+	if err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	rooms := payload["rooms"].([]any)
+
+	room := rooms[0].(map[string]any)
+	if _, ok := room["mesh"]; ok {
+		t.Fatalf("SceneJSON() retained resolved mesh: %s", data)
+	}
+
+	if sc.Rooms[0].Mesh == nil {
+		t.Fatal("SceneJSON() mutated input scene")
+	}
+}
 
 func TestWriteSceneJSONWritesCanonicalScene(t *testing.T) {
 	t.Parallel()

@@ -23,6 +23,9 @@ var MaterialLibrary = map[string]Material{
 
 	materialGlass: {
 		Name: materialGlass,
+		SoundReductionIndex: []float64{
+			30, 30, 30, 30, 30, 30,
+		},
 		AbsorptionByBand: []float64{
 			0.03, // 125 Hz
 			0.03, // 250 Hz
@@ -43,6 +46,9 @@ var MaterialLibrary = map[string]Material{
 
 	"painted_concrete": {
 		Name: "painted_concrete",
+		SoundReductionIndex: []float64{
+			50, 50, 50, 50, 50, 50,
+		},
 		AbsorptionByBand: []float64{
 			0.01, // 125 Hz
 			0.02, // 250 Hz
@@ -63,6 +69,9 @@ var MaterialLibrary = map[string]Material{
 
 	"plasterboard": {
 		Name: "plasterboard",
+		SoundReductionIndex: []float64{
+			35, 35, 35, 35, 35, 35,
+		},
 		AbsorptionByBand: []float64{
 			0.08, // 125 Hz
 			0.09, // 250 Hz
@@ -105,6 +114,9 @@ var MaterialLibrary = map[string]Material{
 
 	"concrete_block": {
 		Name: "concrete_block",
+		SoundReductionIndex: []float64{
+			50, 50, 50, 50, 50, 50,
+		},
 		AbsorptionByBand: []float64{
 			0.04, // 125 Hz
 			0.05, // 250 Hz
@@ -143,6 +155,26 @@ var MaterialLibrary = map[string]Material{
 			0.08, // 2000 Hz
 			0.10, // 4000 Hz
 		},
+	},
+
+	"wooden_door": {
+		Name: "wooden_door",
+		SoundReductionIndex: []float64{
+			25, 25, 25, 25, 25, 25,
+		},
+		AbsorptionByBand: []float64{
+			0.10, 0.08, 0.07, 0.07, 0.08, 0.09,
+		},
+		Scattering: [NumBands]float64{
+			0.04, 0.05, 0.06, 0.07, 0.08, 0.10,
+		},
+	},
+
+	"open_doorway": {
+		Name:                "open_doorway",
+		AbsorptionByBand:    []float64{0, 0, 0, 0, 0, 0},
+		Scattering:          [NumBands]float64{},
+		SoundReductionIndex: []float64{0, 0, 0, 0, 0, 0},
 	},
 
 	"carpet_on_concrete": {
@@ -462,6 +494,8 @@ func (m *Material) FromLibrary(name string) (Material, bool) {
 
 	lib.AbsorptionByBand = append([]float64(nil), lib.AbsorptionByBand...)
 	lib.ScatteringByBand = append([]float64(nil), lib.ScatteringByBand...)
+	lib.TransmissionByBand = append([]float64(nil), lib.TransmissionByBand...)
+	lib.SoundReductionIndex = append([]float64(nil), lib.SoundReductionIndex...)
 
 	return lib, true
 }

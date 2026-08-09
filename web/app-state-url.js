@@ -26,6 +26,7 @@ export function encodeStateForUrl() {
       materials: state.materials,
       source: state.source,
       receiver: state.receiver,
+      portal: state.portal,
       render: state.render,
       irView: state.irView,
       reflections: state.reflections,
@@ -55,7 +56,11 @@ export function syncUrlState() {
   latestEncodedState = encoded;
   const url = new URL(window.location.href);
   url.searchParams.set("scene", encoded);
-  window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
+  window.history.replaceState(
+    null,
+    "",
+    `${url.pathname}?${url.searchParams.toString()}${url.hash}`,
+  );
 }
 
 export function buildRequest() {
@@ -65,6 +70,7 @@ export function buildRequest() {
     materials: state.materials,
     source: state.source,
     receiver: state.receiver,
+    portal: state.portal,
     render: state.render,
     irView: state.irView,
     reflections: state.reflections,

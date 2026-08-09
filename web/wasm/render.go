@@ -15,6 +15,7 @@ import (
 	"github.com/cwbudde/algo-acoustics/directivity"
 	"github.com/cwbudde/algo-acoustics/export"
 	"github.com/cwbudde/algo-acoustics/geometry"
+	"github.com/cwbudde/algo-acoustics/hrtf"
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/internal/pipeline"
 	"github.com/cwbudde/algo-acoustics/ir"
@@ -77,12 +78,36 @@ var materialLibrary = map[string]scene.Material{
 	},
 }
 
+var portalMaterialLibrary = map[string]scene.Material{
+	"concretePartition": {Name: "concretePartition", AbsorptionByBand: []float64{0.02}, SoundReductionIndex: []float64{50}},
+	"plasterboard":      {Name: "plasterboard", AbsorptionByBand: []float64{0.08}, SoundReductionIndex: []float64{35}},
+	"woodenDoor":        {Name: "woodenDoor", AbsorptionByBand: []float64{0.08}, SoundReductionIndex: []float64{25}},
+	"glassPartition":    {Name: "glassPartition", AbsorptionByBand: []float64{0.03}, SoundReductionIndex: []float64{30}},
+	"openDoorway":       {Name: "openDoorway", AbsorptionByBand: []float64{0}, SoundReductionIndex: []float64{0}},
+}
+
 type demoRequest struct {
 	Room      demoRoom      `json:"room"`
 	Materials demoMaterials `json:"materials"`
 	Source    demoSource    `json:"source"`
 	Receiver  demoReceiver  `json:"receiver"`
+	Portal    demoPortal    `json:"portal"`
 	Render    demoRender    `json:"render"`
+}
+
+type demoPortal struct {
+	Enabled      bool        `json:"enabled"`
+	Aperture     float64     `json:"aperture"`
+	RootOrder    float64     `json:"rootOrder"`
+	Material     string      `json:"material"`
+	ReceiverRoom demoRoom    `json:"receiverRoom"`
+	Opening      demoOpening `json:"opening"`
+}
+
+type demoOpening struct {
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	Bottom float64 `json:"bottom"`
 }
 
 type demoRoom struct {
@@ -157,6 +182,12 @@ type demoResult struct {
 	SPLHeatmap      demoSPLHeatmap
 	Samples         []float32
 	WAVBytes        []byte
+	PortalResponses *demoPortalResponses
+}
+
+type demoPortalResponses struct {
+	ClosedWAVBytes []byte
+	OpenWAVBytes   []byte
 }
 
 func defaultDemoRequest() demoRequest {
@@ -180,6 +211,12 @@ func defaultDemoRequest() demoRequest {
 			CardioidOrder:  1.15,
 		},
 		Receiver: demoReceiver{X: 4.85, Y: 2.9, Z: 1.2},
+		Portal: demoPortal{
+			RootOrder:    2,
+			Material:     "woodenDoor",
+			ReceiverRoom: demoRoom{Kind: "shoebox", Width: 6.4, Depth: 4.8, Height: 2.9},
+			Opening:      demoOpening{Width: 1.2, Height: 2.1},
+		},
 		Render: demoRender{
 			Mode:                 defaultDemoMode,
 			MaxOrder:             defaultDemoMaxOrder,
@@ -214,6 +251,9 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	}
 	if demoCancelled() {
 		return demoResult{}, errors.New("render cancelled")
+	}
+	if normalized.Portal.Enabled {
+		return runDemoPortalRender(normalized, started)
 	}
 
 	reportDemoProgress("scene", 10, "Building room scene")
@@ -362,6 +402,160 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	return result, nil
 }
 
+func runDemoPortalRender(request demoRequest, started time.Time) (demoResult, error) {
+	reportDemoProgress("scene", 8, "Building connected-room scene")
+	closedScene, err := buildDemoScene(request)
+	if err != nil {
+		return demoResult{}, err
+	}
+
+	reportDemoProgress("closed", 16, "Rendering closed-portal response")
+	closed, closedEvents, err := renderDemoPortalBRIR(closedScene, request)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("render closed portal: %w", err)
+	}
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
+	}
+
+	openScene := *closedScene
+	openScene.Portals = append([]scene.Portal(nil), closedScene.Portals...)
+	openScene.Portals[0].State = scene.PortalOpen
+
+	reportDemoProgress("open", 56, "Rendering open-portal response")
+	open, openEvents, err := renderDemoPortalBRIR(&openScene, request)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("render open portal: %w", err)
+	}
+	if demoCancelled() {
+		return demoResult{}, errors.New("render cancelled")
+	}
+
+	reportDemoProgress("blend", 88, "Applying aperture crossfade")
+	cache, err := hybrid.NewPortalBRIRCache(closed, open)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("cache portal responses: %w", err)
+	}
+	preview, err := cache.AtAperture(request.Portal.Aperture, request.Portal.RootOrder)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("interpolate portal response: %w", err)
+	}
+
+	reportDemoProgress("encode", 96, "Encoding binaural WAV responses")
+	closedWAV, err := export.EncodeStereoWAVBytes(closed.Left, closed.Right)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("encode closed portal WAV: %w", err)
+	}
+	openWAV, err := export.EncodeStereoWAVBytes(open.Left, open.Right)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("encode open portal WAV: %w", err)
+	}
+	previewWAV, err := export.EncodeStereoWAVBytes(preview.Left, preview.Right)
+	if err != nil {
+		return demoResult{}, fmt.Errorf("encode portal preview WAV: %w", err)
+	}
+
+	stats := ir.Stats(preview.Left)
+	floatSamples := make([]float32, len(preview.Left.Samples))
+	for index, sample := range preview.Left.Samples {
+		floatSamples[index] = float32(sample)
+	}
+
+	result := demoResult{
+		Mode:            request.Render.Mode,
+		SampleRate:      preview.Left.SampleRate,
+		DurationSeconds: request.Render.DurationSeconds,
+		EarlyEventCount: max(closedEvents, openEvents),
+		NumRays:         request.Render.NumRays,
+		PeakAmplitude:   stats.PeakAmplitude,
+		RMSAmplitude:    stats.RMSAmplitude,
+		FirstArrivalMs:  stats.FirstArrivalMs,
+		RenderMS:        float64(time.Since(started).Milliseconds()),
+		Samples:         floatSamples,
+		WAVBytes:        previewWAV,
+		PortalResponses: &demoPortalResponses{
+			ClosedWAVBytes: closedWAV,
+			OpenWAVBytes:   openWAV,
+		},
+	}
+	currentDemoAPIState.storeResult(result, preview.Left)
+	currentDemoAPIState.storeRequest(request)
+	reportDemoProgress("finish", 100, "Done")
+
+	return result, nil
+}
+
+func renderDemoPortalBRIR(sc *scene.Scene, request demoRequest) (hybrid.BRIR, int, error) {
+	renderCfg := ir.RenderConfig{
+		SampleRate:      sc.SampleRate,
+		DurationSeconds: request.Render.DurationSeconds,
+		BandSpec:        sc.BandSpec,
+	}
+	earlyCfg := pipeline.EarlyConfig{MaxOrder: request.Render.MaxOrder}
+	lateCfg := pipeline.LateConfig{
+		NumRays:            request.Render.NumRays,
+		MaxOrder:           request.Render.MaxOrder,
+		DurationSeconds:    request.Render.DurationSeconds,
+		ReceiverRadius:     defaultReceiverRadius,
+		BinDurationSeconds: defaultHistogramBinSecs,
+	}
+	receiver := sc.Receivers[0]
+
+	var earlyEvents []ir.Event
+	if request.Render.Mode != "late" {
+		var err error
+		earlyEvents, err = pipeline.SolveEarly(sc, earlyCfg)
+		if err != nil {
+			return hybrid.BRIR{}, 0, err
+		}
+	}
+
+	var earlyLeft, earlyRight *ir.Buffer
+	if request.Render.Mode != "late" {
+		headEvents := append([]ir.Event(nil), earlyEvents...)
+		for index := range headEvents {
+			headEvents[index].Direction = receiver.WorldToHeadDir(headEvents[index].Direction)
+		}
+		var err error
+		earlyLeft, earlyRight, err = ir.RenderBinaural(headEvents, receiver.HRTF, renderCfg)
+		if err != nil {
+			return hybrid.BRIR{}, 0, fmt.Errorf("render early binaural response: %w", err)
+		}
+	}
+
+	if request.Render.Mode == "early" {
+		return hybrid.BRIR{Left: earlyLeft, Right: earlyRight}, len(earlyEvents), nil
+	}
+
+	lateLeft, lateRight, err := pipeline.RenderLateBinaural(sc, receiver, lateCfg)
+	if err != nil {
+		return hybrid.BRIR{}, 0, err
+	}
+	if request.Render.Mode == "late" {
+		return hybrid.BRIR{Left: lateLeft, Right: lateRight}, 0, nil
+	}
+
+	hybridCfg := hybrid.HybridConfig{
+		CrossoverTimeSeconds: request.Render.CrossoverTimeSeconds,
+		CrossoverMode:        hybrid.TimeBased,
+		SmoothenCrossover:    true,
+		CrossoverWindow: hybrid.FadeWindowConfig{
+			Name:  request.Render.CrossoverWindow,
+			Alpha: request.Render.CrossoverWindowAlpha,
+		},
+	}
+	left, err := pipeline.RenderHybrid(earlyLeft, lateLeft, earlyEvents, hybridCfg)
+	if err != nil {
+		return hybrid.BRIR{}, 0, fmt.Errorf("blend left portal response: %w", err)
+	}
+	right, err := pipeline.RenderHybrid(earlyRight, lateRight, earlyEvents, hybridCfg)
+	if err != nil {
+		return hybrid.BRIR{}, 0, fmt.Errorf("blend right portal response: %w", err)
+	}
+
+	return hybrid.BRIR{Left: left, Right: right}, len(earlyEvents), nil
+}
+
 func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	defaults := defaultDemoRequest()
 
@@ -402,6 +596,45 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	}
 
 	request.Source.CardioidOrder = clamp(request.Source.CardioidOrder, 0.25, 2.5)
+
+	if request.Portal.RootOrder <= 0 || math.IsNaN(request.Portal.RootOrder) || math.IsInf(request.Portal.RootOrder, 0) {
+		request.Portal.RootOrder = defaults.Portal.RootOrder
+	}
+	request.Portal.RootOrder = clamp(request.Portal.RootOrder, 0.25, 8)
+	if math.IsNaN(request.Portal.Aperture) || math.IsInf(request.Portal.Aperture, 0) {
+		request.Portal.Aperture = defaults.Portal.Aperture
+	}
+	request.Portal.Aperture = clamp(request.Portal.Aperture, 0, 1)
+	if _, ok := portalMaterialLibrary[request.Portal.Material]; !ok {
+		request.Portal.Material = defaults.Portal.Material
+	}
+	if request.Portal.ReceiverRoom.Width <= 0 || math.IsNaN(request.Portal.ReceiverRoom.Width) || math.IsInf(request.Portal.ReceiverRoom.Width, 0) {
+		request.Portal.ReceiverRoom.Width = request.Room.Width
+	}
+	if request.Portal.ReceiverRoom.Depth <= 0 || math.IsNaN(request.Portal.ReceiverRoom.Depth) || math.IsInf(request.Portal.ReceiverRoom.Depth, 0) {
+		request.Portal.ReceiverRoom.Depth = request.Room.Depth
+	}
+	if request.Portal.ReceiverRoom.Height <= 0 || math.IsNaN(request.Portal.ReceiverRoom.Height) || math.IsInf(request.Portal.ReceiverRoom.Height, 0) {
+		request.Portal.ReceiverRoom.Height = request.Room.Height
+	}
+	request.Portal.ReceiverRoom.Kind = "shoebox"
+	sharedDepth := min(request.Room.Depth, request.Portal.ReceiverRoom.Depth)
+	sharedHeight := min(request.Room.Height, request.Portal.ReceiverRoom.Height)
+	if request.Portal.Opening.Width <= 0 || math.IsNaN(request.Portal.Opening.Width) || math.IsInf(request.Portal.Opening.Width, 0) {
+		request.Portal.Opening.Width = defaults.Portal.Opening.Width
+	}
+	if request.Portal.Opening.Height <= 0 || math.IsNaN(request.Portal.Opening.Height) || math.IsInf(request.Portal.Opening.Height, 0) {
+		request.Portal.Opening.Height = defaults.Portal.Opening.Height
+	}
+	if math.IsNaN(request.Portal.Opening.Bottom) || math.IsInf(request.Portal.Opening.Bottom, 0) {
+		request.Portal.Opening.Bottom = defaults.Portal.Opening.Bottom
+	}
+	request.Portal.Opening.Width = clamp(request.Portal.Opening.Width, 0.25, sharedDepth)
+	request.Portal.Opening.Height = clamp(request.Portal.Opening.Height, 0.25, sharedHeight)
+	request.Portal.Opening.Bottom = clamp(request.Portal.Opening.Bottom, 0, sharedHeight-request.Portal.Opening.Height)
+	if request.Portal.Enabled && request.Room.Kind != "shoebox" {
+		return demoRequest{}, errors.New("portal demo supports shoebox rooms only")
+	}
 
 	mode, err := normalizeMode(request.Render.Mode, defaults.Render.Mode)
 	if err != nil {
@@ -445,9 +678,13 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	request.Source.X = clamp(request.Source.X, positionMarginMeters, request.Room.Width-positionMarginMeters)
 	request.Source.Y = clamp(request.Source.Y, positionMarginMeters, request.Room.Depth-positionMarginMeters)
 	request.Source.Z = clamp(request.Source.Z, positionMarginMeters, request.Room.Height-positionMarginMeters)
-	request.Receiver.X = clamp(request.Receiver.X, positionMarginMeters, request.Room.Width-positionMarginMeters)
-	request.Receiver.Y = clamp(request.Receiver.Y, positionMarginMeters, request.Room.Depth-positionMarginMeters)
-	request.Receiver.Z = clamp(request.Receiver.Z, positionMarginMeters, request.Room.Height-positionMarginMeters)
+	receiverRoom := request.Room
+	if request.Portal.Enabled {
+		receiverRoom = request.Portal.ReceiverRoom
+	}
+	request.Receiver.X = clamp(request.Receiver.X, positionMarginMeters, receiverRoom.Width-positionMarginMeters)
+	request.Receiver.Y = clamp(request.Receiver.Y, positionMarginMeters, receiverRoom.Depth-positionMarginMeters)
+	request.Receiver.Z = clamp(request.Receiver.Z, positionMarginMeters, receiverRoom.Height-positionMarginMeters)
 
 	return request, nil
 }
@@ -518,12 +755,77 @@ func buildDemoScene(request demoRequest) (*scene.Scene, error) {
 		}},
 	}
 
+	if request.Portal.Enabled {
+		portalMaterial := portalMaterialLibrary[request.Portal.Material]
+		materials[request.Portal.Material] = portalMaterial
+		receiverRoom := scene.Room{
+			Kind: scene.RoomKindShoebox,
+			Shoebox: &scene.Shoebox{
+				Origin: geometry.Vec3{X: request.Room.Width},
+				Width:  request.Portal.ReceiverRoom.Width,
+				Depth:  request.Portal.ReceiverRoom.Depth,
+				Height: request.Portal.ReceiverRoom.Height,
+				WallMaterials: [6]string{
+					request.Materials.West,
+					request.Materials.East,
+					request.Materials.South,
+					request.Materials.North,
+					request.Materials.Floor,
+					request.Materials.Ceiling,
+				},
+			},
+		}
+		y0 := (min(request.Room.Depth, request.Portal.ReceiverRoom.Depth) - request.Portal.Opening.Width) / 2
+		z0 := request.Portal.Opening.Bottom
+		x := request.Room.Width
+		sc.Room = scene.Room{}
+		sc.Rooms = []scene.Room{room, receiverRoom}
+		sc.Portals = []scene.Portal{{
+			RoomIndices: [2]int{0, 1},
+			Polygon: []geometry.Vec3{
+				{X: x, Y: y0, Z: z0},
+				{X: x, Y: y0 + request.Portal.Opening.Width, Z: z0},
+				{X: x, Y: y0 + request.Portal.Opening.Width, Z: z0 + request.Portal.Opening.Height},
+				{X: x, Y: y0, Z: z0 + request.Portal.Opening.Height},
+			},
+			Material: request.Portal.Material,
+			State:    scene.PortalClosed,
+		}}
+		sc.Receivers[0] = scene.Receiver{
+			Position: geometry.Vec3{
+				X: request.Room.Width + request.Receiver.X,
+				Y: request.Receiver.Y,
+				Z: request.Receiver.Z,
+			},
+			Type: scene.ReceiverBinaural,
+			HRTF: demoHRTF(defaultDemoSampleRate),
+		}
+	}
+
 	err := scene.Validate(sc)
 	if err != nil {
 		return nil, fmt.Errorf("validate demo scene: %w", err)
 	}
 
 	return sc, nil
+}
+
+func demoHRTF(sampleRate int) hrtf.Dataset {
+	leftNear := []float64{1}
+	rightFar := make([]float64, 9)
+	rightFar[8] = 0.65
+	rightNear := []float64{1}
+	leftFar := make([]float64, 9)
+	leftFar[8] = 0.65
+
+	return hrtf.NearestNeighborDataset{
+		SampleRateHz: sampleRate,
+		Grid: &hrtf.MeasurementGrid{
+			Directions: []geometry.Vec3{{X: -1}, {X: 1}, {Y: -1}, {Y: 1}},
+			LeftHRIRs:  [][]float64{leftNear, leftFar, {1}, {1}},
+			RightHRIRs: [][]float64{rightFar, rightNear, {1}, {1}},
+		},
+	}
 }
 
 func buildDemoLoftMesh(width, depth, height float64) *geometry.Mesh {

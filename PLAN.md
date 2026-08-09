@@ -129,71 +129,71 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 20.1 Release artifacts
 
-- [ ] Add release targets for CLI binaries, web demo assets, and regression bundles
-- [ ] Publish versioned tarball/zip archives with example scenes and docs
-- [ ] Add build metadata to binaries (version, commit, build date)
+- [x] Add release targets for CLI binaries, web demo assets, and regression bundles
+- [x] Publish versioned tarball/zip archives with example scenes and docs
+- [x] Add build metadata to binaries (version, commit, build date)
 
-#### 18.2 CI and test coverage gaps
+#### 20.2 CI and test coverage gaps
 
-- [ ] Add CI jobs for all supported platforms (unit tests, integration tests, formatting checks)
-- [ ] Add dedicated regression job for `testdata/regression/` and `cmd/roombench`
-- [ ] Add smoke test for WASM demo build
-- [ ] Add smoke test rendering mono, stereo, and low-frequency scenes in CI
+- [x] Add CI jobs for all supported platforms (unit tests, integration tests, formatting checks)
+- [x] Add dedicated regression job for `testdata/regression/` and `cmd/roombench`
+- [x] Add smoke test for WASM demo build
+- [x] Add smoke test rendering mono, stereo, and low-frequency scenes in CI
 
-#### 18.3 Documentation and examples
+#### 20.3 Documentation and examples
 
-- [ ] Add pages for: scene authoring, HRTF usage, directivity usage, hybrid rendering, regression workflow
-- [ ] Add a "compare against another tool" guide
-- [ ] Keep example scenes in sync with current CLI flags and library interfaces
+- [x] Add pages for: scene authoring, HRTF usage, directivity usage, hybrid rendering, regression workflow
+- [x] Add a "compare against another tool" guide
+- [x] Keep example scenes in sync with current CLI flags and library interfaces
 
-#### 18.4 Maintenance budget
+#### 20.4 Maintenance budget
 
-- [ ] Quarterly dependency audit for `algo-dsp`, `algo-fft`, `algo-pde`, `gll-tools`, `wav`
-- [ ] Benchmark baseline update procedure
-- [ ] Track new format/solver features with small fixtures before expanding
+- [x] Quarterly dependency audit for `algo-dsp`, `algo-fft`, `algo-pde`, `gll-tools`, `wav`
+- [x] Benchmark baseline update procedure
+- [x] Track new format/solver features with small fixtures before expanding
 
 ---
 
 ### Phase 21 — Sound Transmission Between Rooms
 
-> Basic sound transmission through walls and portals between adjacent rooms. Implements the secondary source model from the RAVEN dissertation (Section 5). See `docs/raven2.md` Section 5.
+> Basic sound transmission through walls and portals between adjacent rooms. Implements the secondary source model from the RAVEN dissertation (Section 5). See `docs/raven.md` Section 5.
 
 #### 21.1 Material transmission coefficients (`scene/`)
 
-- [ ] Add `TransmissionByBand []float64` to `Material` struct
-- [ ] Add `SoundReductionIndex []float64` as alternative input (convert via `tau = 10^(-R/10)`)
-- [ ] Validation: `0 <= tau <= 1` and `alpha + tau <= 1` (energy conservation)
-- [ ] Add transmission data to materials library (concrete ~50 dB, plasterboard ~35 dB, wooden door ~25 dB, glass ~30 dB, open doorway 0 dB)
-- [ ] Unit test: round-trip between `SoundReductionIndex` and `TransmissionByBand`
+- [x] Add `TransmissionByBand []float64` to `Material` struct
+- [x] Add `SoundReductionIndex []float64` as alternative input (convert via `tau = 10^(-R/10)`)
+- [x] Validation: `0 <= tau <= 1` and `alpha + tau <= 1` (energy conservation)
+- [x] Add transmission data to materials library (concrete ~50 dB, plasterboard ~35 dB, wooden door ~25 dB, glass ~30 dB, open doorway 0 dB)
+- [x] Unit test: round-trip between `SoundReductionIndex` and `TransmissionByBand`
 
 #### 21.2 Multi-room scene definition (`scene/`)
 
-- [ ] Extend `Scene` to support `Rooms []Room` instead of single `Room`
-- [ ] Define `Portal` struct: two room indices, shared surface polygon, material reference, state (Open/Closed)
-- [ ] Add `Portals []Portal` to `Scene` with validation (valid room indices, coplanar walls, open = tau 1.0)
-- [ ] JSON serialization for multi-room scenes
-- [ ] Unit test: two adjacent shoeboxes sharing a wall with one portal
+- [x] Extend `Scene` to support `Rooms []Room` instead of single `Room`
+- [x] Define `Portal` struct: two room indices, shared surface polygon, material reference, state (Open/Closed)
+- [x] Add `Portals []Portal` to `Scene` with validation (valid room indices, coplanar walls, open = tau 1.0)
+- [x] JSON serialization for multi-room scenes
+- [x] Unit test: two adjacent shoeboxes sharing a wall with one portal
 
 #### 21.3 Secondary source model (`raytrace/`, `ism/`)
 
-- [ ] When ray tracer detects energy at a portal's surface receiver, spawn secondary point source at portal center on receiving-room side
-- [ ] Secondary source spectrum filtered by portal transmission: `SS = S * sum(H_S,x * H_x,y)`
-- [ ] ISM: mirror secondary source in receiving room with transmitted spectrum as initial energy
-- [ ] RT: launch particles from secondary source with energy proportional to transmitted histogram
-- [ ] Unit test: two identical rooms with portal — level difference matches `D_n = L_S - L_R + 10*log(S/A_R)` within 3 dB
+- [x] When ray tracer detects energy at a portal's surface receiver, spawn secondary point source at portal center on receiving-room side
+- [x] Secondary source spectrum filtered by portal transmission: `SS = S * sum(H_S,x * H_x,y)`
+- [x] ISM: mirror secondary source in receiving room with transmitted spectrum as initial energy
+- [x] RT: launch particles from secondary source with energy proportional to transmitted histogram
+- [x] Unit test: two identical rooms with portal — level difference matches `D_n = L_S - L_R + 10*log(S/A_R)` within 3 dB
 
 #### 21.4 Apparent sound reduction index (`metrics/`)
 
-- [ ] Implement `ApparentSoundReductionIndex(sourceLevel, receiverLevel, partitionArea, receiverAbsorptionArea float64) float64`
-- [ ] Flanking-aware variant: `R' = -10*log(sum(tau_ij))`
-- [ ] Validate: two 90 m^3 rooms, 16 m^2 partition — simulated R matches input within 2.5 dB (300 Hz-16 kHz)
+- [x] Implement `ApparentSoundReductionIndex(sourceLevel, receiverLevel, partitionArea, receiverAbsorptionArea float64) float64`
+- [x] Flanking-aware variant: `R' = -10*log(sum(tau_ij))`
+- [x] Validate: two 90 m^3 rooms, 16 m^2 partition — simulated R matches input within 2.5 dB (300 Hz-16 kHz)
 
 #### 21.5 Portal interaction for real-time/web demo (`hybrid/`)
 
-- [ ] Cache BRIRs for open and closed portal states
-- [ ] Crossfade function: `y(x) = x^(1/n)`, x in [0,1] mapping aperture to interpolation weight
-- [ ] Hard switch to merged room group BRIR once fully open
-- [ ] Unit test: crossfade produces monotonically increasing energy; no discontinuities
+- [x] Cache BRIRs for open and closed portal states
+- [x] Crossfade function: `y(x) = x^(1/n)`, x in [0,1] mapping aperture to interpolation weight
+- [x] Hard switch to merged room group BRIR once fully open
+- [x] Unit test: crossfade produces monotonically increasing energy; no discontinuities
 
 ---
 

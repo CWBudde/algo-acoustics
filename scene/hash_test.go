@@ -225,3 +225,31 @@ func TestGeometryHash_MeshDeterministic(t *testing.T) {
 		t.Fatalf("expected deterministic mesh hash, got %d and %d", h1, h2)
 	}
 }
+
+func TestRoomHash_ChangesWithShoeboxOriginAndPortal(t *testing.T) {
+	base := Scene{Rooms: []Room{
+		{Kind: RoomKindShoebox, Shoebox: &Shoebox{Width: 5, Depth: 4, Height: 3}},
+		{Kind: RoomKindShoebox, Shoebox: &Shoebox{Width: 5, Depth: 4, Height: 3, Origin: geometry.Vec3{X: 5}}},
+	}}
+
+	moved := base
+	moved.Rooms = append([]Room(nil), base.Rooms...)
+
+	moved.Rooms[1].Shoebox = &Shoebox{Width: 5, Depth: 4, Height: 3, Origin: geometry.Vec3{X: 6}}
+	if base.RoomHash() == moved.RoomHash() {
+		t.Fatal("RoomHash must differ when a room origin changes")
+	}
+
+	withPortal := base
+
+	withPortal.Portals = []Portal{{
+		RoomIndices: [2]int{0, 1},
+		Polygon: []geometry.Vec3{
+			{X: 5}, {X: 5, Y: 1}, {X: 5, Y: 1, Z: 1},
+		},
+		State: PortalClosed,
+	}}
+	if base.RoomHash() == withPortal.RoomHash() {
+		t.Fatal("RoomHash must differ when portal geometry is added")
+	}
+}

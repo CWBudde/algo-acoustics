@@ -15,25 +15,31 @@ const NumBands = 6
 //
 //nolint:recvcheck,tagliatelle // Mutable JSON receiver; camel-case tags preserve the public scene schema.
 type Material struct {
-	Name             string            `json:"name"`
-	AbsorptionByBand []float64         `json:"absorptionByBand,omitempty"`
-	Scattering       [NumBands]float64 `json:"scattering,omitempty"`
-	ScatteringByBand []float64         `json:"scatteringByBand,omitempty"`
+	Name                string            `json:"name"`
+	AbsorptionByBand    []float64         `json:"absorptionByBand,omitempty"`
+	Scattering          [NumBands]float64 `json:"scattering,omitempty"`
+	ScatteringByBand    []float64         `json:"scatteringByBand,omitempty"`
+	TransmissionByBand  []float64         `json:"transmissionByBand,omitempty"`
+	SoundReductionIndex []float64         `json:"soundReductionIndex,omitempty"`
 }
 
 //nolint:tagliatelle // This compatibility payload mirrors the public scene schema.
 type materialJSON struct {
-	Name             string    `json:"name"`
-	AbsorptionByBand []float64 `json:"absorptionByBand,omitempty"`
-	Scattering       []float64 `json:"scattering,omitempty"`
-	ScatteringByBand []float64 `json:"scatteringByBand,omitempty"`
+	Name                string    `json:"name"`
+	AbsorptionByBand    []float64 `json:"absorptionByBand,omitempty"`
+	Scattering          []float64 `json:"scattering,omitempty"`
+	ScatteringByBand    []float64 `json:"scatteringByBand,omitempty"`
+	TransmissionByBand  []float64 `json:"transmissionByBand,omitempty"`
+	SoundReductionIndex []float64 `json:"soundReductionIndex,omitempty"`
 }
 
 // MarshalJSON omits the fixed-size scattering field when all coefficients are 0.
 func (m Material) MarshalJSON() ([]byte, error) {
 	payload := materialJSON{
-		Name:             m.Name,
-		AbsorptionByBand: m.AbsorptionByBand,
+		Name:                m.Name,
+		AbsorptionByBand:    m.AbsorptionByBand,
+		TransmissionByBand:  m.TransmissionByBand,
+		SoundReductionIndex: m.SoundReductionIndex,
 	}
 
 	if hasNonZeroScattering(m.Scattering) {
@@ -64,6 +70,8 @@ func (m *Material) UnmarshalJSON(data []byte) error {
 
 	m.Name = payload.Name
 	m.AbsorptionByBand = append([]float64(nil), payload.AbsorptionByBand...)
+	m.TransmissionByBand = append([]float64(nil), payload.TransmissionByBand...)
+	m.SoundReductionIndex = append([]float64(nil), payload.SoundReductionIndex...)
 
 	m.ScatteringByBand = nil
 	for i := range m.Scattering {
@@ -83,6 +91,53 @@ func (m *Material) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+// TransmissionFromSoundReductionIndex converts a sound reduction index in dB
+// to its linear energy transmission coefficient.
+func TransmissionFromSoundReductionIndex(reductionDB float64) float64 {
+	return math.Pow(10, -reductionDB/10)
+}
+
+// SoundReductionIndexFromTransmission converts a linear energy transmission
+// coefficient to dB. A zero coefficient maps to positive infinity.
+func SoundReductionIndexFromTransmission(transmission float64) float64 {
+	return -10 * math.Log10(transmission)
+}
+
+// TransmissionAt returns the energy transmission coefficient for the
+// requested band. Explicit transmission coefficients take precedence over
+// sound reduction indices when both representations are present.
+func (m Material) TransmissionAt(bandIndex int) float64 {
+	if bandIndex < 0 {
+		return 0
+	}
+
+	if value, ok := coefficientAt(m.TransmissionByBand, bandIndex); ok {
+		return value
+	}
+
+	if reduction, ok := coefficientAt(m.SoundReductionIndex, bandIndex); ok {
+		return TransmissionFromSoundReductionIndex(reduction)
+	}
+
+	return 0
+}
+
+func coefficientAt(values []float64, bandIndex int) (float64, bool) {
+	if len(values) == 0 {
+		return 0, false
+	}
+
+	if len(values) == 1 {
+		return values[0], true
+	}
+
+	if bandIndex >= len(values) {
+		return 0, false
+	}
+
+	return values[bandIndex], true
 }
 
 // AbsorptionAt returns the absorption coefficient for the requested band.

@@ -11,8 +11,16 @@ permissions:
 
 jobs:
   unit-tests:
-    name: Unit Tests
+    name: Platform Tests
     uses: ./.github/workflows/test-unit.yml
+
+  regression:
+    name: Regression Tests
+    uses: ./.github/workflows/test-regression.yml
+
+  web:
+    name: Web Tests
+    uses: ./.github/workflows/test-web.yml
 
   lint:
     name: Lint

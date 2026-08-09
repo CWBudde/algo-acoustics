@@ -2,7 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "algo-acoustics scene schema",
   "type": "object",
-  "required": ["room", "bandSpec", "sampleRate"],
+  "required": ["bandSpec", "sampleRate"],
+  "oneOf": [
+    {
+      "required": ["room"],
+      "not": { "required": ["rooms"] }
+    },
+    {
+      "required": ["rooms"],
+      "not": { "required": ["room"] }
+    }
+  ],
+  "dependentRequired": {
+    "portals": ["rooms"]
+  },
   "properties": {
     "room": {
       "type": "object",
@@ -19,6 +32,7 @@
             "width": { "type": "number", "exclusiveMinimum": 0 },
             "depth": { "type": "number", "exclusiveMinimum": 0 },
             "height": { "type": "number", "exclusiveMinimum": 0 },
+            "origin": { "$ref": "#/$defs/vec3" },
             "wallMaterials": {
               "type": "array",
               "minItems": 6,
@@ -52,6 +66,34 @@
       ],
       "additionalProperties": false
     },
+    "rooms": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/properties/room" }
+    },
+    "portals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["roomIndices", "polygon", "material", "state"],
+        "properties": {
+          "roomIndices": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 0 }
+          },
+          "polygon": {
+            "type": "array",
+            "minItems": 3,
+            "items": { "$ref": "#/$defs/vec3" }
+          },
+          "material": { "type": "string", "minLength": 1 },
+          "state": { "type": "string", "enum": ["open", "closed"] }
+        },
+        "additionalProperties": false
+      }
+    },
     "materials": {
       "type": "object",
       "additionalProperties": {
@@ -71,6 +113,16 @@
           "scattering": {
             "type": "array",
             "items": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "transmissionByBand": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "soundReductionIndex": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "number", "minimum": 0 }
           }
         },
         "additionalProperties": true

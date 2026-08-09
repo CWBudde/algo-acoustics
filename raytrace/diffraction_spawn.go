@@ -72,10 +72,11 @@ func spawnDiffractionBranches(state RayState, ray geometry.Ray, hitPoint geometr
 			offset := dir.Scale(diffractionSpawnEpsilon)
 			origin := closestPoint.Add(offset)
 			branches = append(branches, RayState{
-				Ray:        geometry.NewRay(origin, dir),
-				Energy:     branchEnergy,
-				PathLength: state.PathLength + rayT + offset.Norm(),
-				Bounces:    state.Bounces + 1,
+				Ray:          geometry.NewRay(origin, dir),
+				Energy:       branchEnergy,
+				PathLength:   state.PathLength + rayT + offset.Norm(),
+				DelaySeconds: state.DelaySeconds,
+				Bounces:      state.Bounces + 1,
 			})
 		}
 

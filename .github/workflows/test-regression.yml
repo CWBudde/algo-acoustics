@@ -1,0 +1,37 @@
+name: Regression Tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Roombench Regression Corpus
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test regression harness
+        run: go test ./cmd/roombench
+
+      - name: Compare checked-in regression corpus
+        run: go run ./cmd/roombench run
+
+      - name: Generate benchmark report
+        run: go run ./cmd/roombench report --format markdown
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-report
+          path: bench_report.md
+          if-no-files-found: error

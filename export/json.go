@@ -47,7 +47,14 @@ func SceneJSON(sc *scene.Scene) ([]byte, error) {
 	}
 
 	canonical := *sc
-	if canonical.Room.MeshPath != "" {
+	if len(canonical.Rooms) > 0 {
+		canonical.Rooms = append([]scene.Room(nil), canonical.Rooms...)
+		for index := range canonical.Rooms {
+			if canonical.Rooms[index].MeshPath != "" {
+				canonical.Rooms[index].Mesh = nil
+			}
+		}
+	} else if canonical.Room.MeshPath != "" {
 		canonical.Room.Mesh = nil
 	}
 

@@ -2,13 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 import { MATERIALS } from "./app-presets.js";
-import {
-  average,
-  clamp,
-  cssNumber,
-  cssVar,
-  isWithin,
-} from "./app-utils.js";
+import { average, clamp, cssNumber, cssVar, isWithin } from "./app-utils.js";
 import { computeMeshReflectionPaths } from "./mesh-reflections.mjs";
 import { getReflectionPreviewConfig } from "./reflection-preview.mjs";
 import {
@@ -210,36 +204,75 @@ export function updateSceneView() {
   const height = sceneState.room.height;
   const palette = scenePalette();
 
-  if (sceneState.room.kind === "mesh" && sceneState.room.mesh?.triangles?.length) {
+  if (
+    sceneState.room.kind === "mesh" &&
+    sceneState.room.mesh?.triangles?.length
+  ) {
     const meshPreview = createMeshRoomPreview(sceneState.room.mesh, palette);
     roomGroup.add(meshPreview.mesh);
     roomGroup.add(meshPreview.edges);
     sceneView.roomSurfaces = [meshPreview.mesh];
   } else {
     const walls = [
-      createWallMesh("west", depth, height, sceneState.materials.west, (mesh) => {
-        mesh.rotation.y = Math.PI / 2;
-        mesh.position.set(0, height / 2, depth / 2);
-      }),
-      createWallMesh("east", depth, height, sceneState.materials.east, (mesh) => {
-        mesh.rotation.y = -Math.PI / 2;
-        mesh.position.set(width, height / 2, depth / 2);
-      }),
-      createWallMesh("south", width, height, sceneState.materials.south, (mesh) => {
-        mesh.position.set(width / 2, height / 2, 0);
-      }),
-      createWallMesh("north", width, height, sceneState.materials.north, (mesh) => {
-        mesh.rotation.y = Math.PI;
-        mesh.position.set(width / 2, height / 2, depth);
-      }),
-      createWallMesh("floor", width, depth, sceneState.materials.floor, (mesh) => {
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(width / 2, 0, depth / 2);
-      }),
-      createWallMesh("ceiling", width, depth, sceneState.materials.ceiling, (mesh) => {
-        mesh.rotation.x = Math.PI / 2;
-        mesh.position.set(width / 2, height, depth / 2);
-      }),
+      createWallMesh(
+        "west",
+        depth,
+        height,
+        sceneState.materials.west,
+        (mesh) => {
+          mesh.rotation.y = Math.PI / 2;
+          mesh.position.set(0, height / 2, depth / 2);
+        },
+      ),
+      createWallMesh(
+        "east",
+        depth,
+        height,
+        sceneState.materials.east,
+        (mesh) => {
+          mesh.rotation.y = -Math.PI / 2;
+          mesh.position.set(width, height / 2, depth / 2);
+        },
+      ),
+      createWallMesh(
+        "south",
+        width,
+        height,
+        sceneState.materials.south,
+        (mesh) => {
+          mesh.position.set(width / 2, height / 2, 0);
+        },
+      ),
+      createWallMesh(
+        "north",
+        width,
+        height,
+        sceneState.materials.north,
+        (mesh) => {
+          mesh.rotation.y = Math.PI;
+          mesh.position.set(width / 2, height / 2, depth);
+        },
+      ),
+      createWallMesh(
+        "floor",
+        width,
+        depth,
+        sceneState.materials.floor,
+        (mesh) => {
+          mesh.rotation.x = -Math.PI / 2;
+          mesh.position.set(width / 2, 0, depth / 2);
+        },
+      ),
+      createWallMesh(
+        "ceiling",
+        width,
+        depth,
+        sceneState.materials.ceiling,
+        (mesh) => {
+          mesh.rotation.x = Math.PI / 2;
+          mesh.position.set(width / 2, height, depth / 2);
+        },
+      ),
     ];
 
     walls.forEach((wall) => roomGroup.add(wall));
@@ -255,17 +288,39 @@ export function updateSceneView() {
     );
     edgeBox.position.set(width / 2, height / 2, depth / 2);
     roomGroup.add(edgeBox);
+
+    if (sceneState.portal?.enabled) {
+      const receiverRoomPreview = createReceiverRoomPreview(
+        sceneState,
+        palette,
+      );
+      roomGroup.add(receiverRoomPreview.volume);
+      roomGroup.add(receiverRoomPreview.edges);
+      roomGroup.add(receiverRoomPreview.door);
+    }
   }
 
   const reflections = getReflectionPreviewConfig(sceneState.reflections);
-  const sourceMarker = createMarkerSphere(sceneState.source, 0xff6b4a, 0.12, "source");
-  const receiverMarker = createMarkerSphere(sceneState.receiver, 0x0f9d92, 0.14, "receiver");
+  const sourceMarker = createMarkerSphere(
+    displaySourcePosition(sceneState),
+    0xff6b4a,
+    0.12,
+    "source",
+  );
+  const receiverMarker = createMarkerSphere(
+    displayReceiverPosition(sceneState),
+    0x0f9d92,
+    0.14,
+    "receiver",
+  );
   const directPath = createDirectPathLine(sceneState, palette);
   directPath.visible = reflections.showDirectPath;
   pathGroup.add(directPath);
   sceneView.animatedPathMaterials.push(directPath.material);
 
-  const rayPaths = createRayPathOverlay(sceneState, palette);
+  const rayPaths = sceneState.portal?.enabled
+    ? []
+    : createRayPathOverlay(sceneState, palette);
   rayPaths.forEach((pathLine) => {
     pathGroup.add(pathLine);
     sceneView.animatedPathMaterials.push(pathLine.material);
@@ -327,8 +382,16 @@ function onScenePointerMove(event) {
     sceneState.source.x = clamp(point.x, 0.15, sceneState.room.width - 0.15);
     sceneState.source.y = clamp(point.z, 0.15, sceneState.room.depth - 0.15);
   } else if (dragState.target === "receiver") {
-    sceneState.receiver.x = clamp(point.x, 0.15, sceneState.room.width - 0.15);
-    sceneState.receiver.y = clamp(point.z, 0.15, sceneState.room.depth - 0.15);
+    const receiverRoom = sceneState.portal?.enabled
+      ? sceneState.portal.receiverRoom
+      : sceneState.room;
+    const roomOffset = sceneState.portal?.enabled ? sceneState.room.width : 0;
+    sceneState.receiver.x = clamp(
+      point.x - roomOffset,
+      0.15,
+      receiverRoom.width - 0.15,
+    );
+    sceneState.receiver.y = clamp(point.z, 0.15, receiverRoom.depth - 0.15);
   }
 
   sceneChangeHandler?.();
@@ -361,7 +424,10 @@ function pickDragTarget(event) {
   scenePointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   scenePointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
   sceneRaycaster.setFromCamera(scenePointer, sceneView.camera);
-  const hits = sceneRaycaster.intersectObjects(sceneView.interactiveObjects, false);
+  const hits = sceneRaycaster.intersectObjects(
+    sceneView.interactiveObjects,
+    false,
+  );
   if (!hits.length) {
     return null;
   }
@@ -374,7 +440,8 @@ function projectScenePointerToPlane(event, planeY) {
   scenePointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   scenePointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
   sceneRaycaster.setFromCamera(scenePointer, sceneView.camera);
-  const plane = sceneDragPlane ?? new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+  const plane =
+    sceneDragPlane ?? new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
   plane.constant = -planeY;
   const point = new THREE.Vector3();
   const hit = sceneRaycaster.ray.intersectPlane(plane, point);
@@ -418,7 +485,10 @@ function createMeshRoomPreview(meshSpec, palette) {
     }
   }
 
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
   geometry.computeVertexNormals();
 
   const heatmapSamples = activeHeatmapSamples("mesh");
@@ -497,9 +567,11 @@ function createMarkerSphere(position, color, radius, target) {
 }
 
 function createDirectPathLine(state, palette) {
+  const source = displaySourcePosition(state);
+  const receiver = displayReceiverPosition(state);
   const geometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(state.source.x, state.source.z, state.source.y),
-    new THREE.Vector3(state.receiver.x, state.receiver.z, state.receiver.y),
+    new THREE.Vector3(source.x, source.z, source.y),
+    new THREE.Vector3(receiver.x, receiver.z, receiver.y),
   ]);
   const line = new THREE.Line(
     geometry,
@@ -515,6 +587,73 @@ function createDirectPathLine(state, palette) {
   return line;
 }
 
+function createReceiverRoomPreview(state, palette) {
+  const room = state.portal.receiverRoom;
+  const volume = new THREE.Mesh(
+    new THREE.BoxGeometry(room.width, room.height, room.depth),
+    new THREE.MeshPhysicalMaterial({
+      color: MATERIALS.defaultMaterial.color,
+      transparent: true,
+      opacity: 0.06,
+      roughness: 0.55,
+      side: THREE.DoubleSide,
+    }),
+  );
+  volume.position.set(
+    state.room.width + room.width / 2,
+    room.height / 2,
+    room.depth / 2,
+  );
+
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(
+      new THREE.BoxGeometry(room.width, room.height, room.depth),
+    ),
+    new THREE.LineBasicMaterial({
+      color: palette.edge,
+      transparent: true,
+      opacity: 0.82,
+    }),
+  );
+  edges.position.copy(volume.position);
+
+  const opening = state.portal.opening;
+  const door = new THREE.Mesh(
+    new THREE.PlaneGeometry(opening.width, opening.height),
+    new THREE.MeshPhysicalMaterial({
+      color: 0xff8a5c,
+      transparent: true,
+      opacity: 0.62,
+      roughness: 0.5,
+      side: THREE.DoubleSide,
+    }),
+  );
+  door.position.set(
+    state.room.width,
+    opening.bottom + opening.height / 2,
+    state.room.depth / 2,
+  );
+  door.rotation.y = (Math.PI / 2) * (1 - state.portal.aperture);
+
+  return { volume, edges, door };
+}
+
+function displaySourcePosition(state) {
+  return state.source;
+}
+
+function displayReceiverPosition(state) {
+  if (!state.portal?.enabled) {
+    return state.receiver;
+  }
+
+  return {
+    x: state.room.width + state.receiver.x,
+    y: state.receiver.y,
+    z: state.receiver.z,
+  };
+}
+
 function createRayPathOverlay(state, palette) {
   const reflections = getReflectionPreviewConfig(state.reflections);
   if (!reflections.reflectionOrders.length) {
@@ -522,11 +661,19 @@ function createRayPathOverlay(state, palette) {
   }
 
   if (state.room.kind === "shoebox") {
-    return createShoeboxReflectionPaths(state, reflections.reflectionOrders, palette);
+    return createShoeboxReflectionPaths(
+      state,
+      reflections.reflectionOrders,
+      palette,
+    );
   }
 
   if (state.room.kind === "mesh" && state.room.mesh?.triangles?.length) {
-    return createMeshReflectionPaths(state, reflections.reflectionOrders, palette);
+    return createMeshReflectionPaths(
+      state,
+      reflections.reflectionOrders,
+      palette,
+    );
   }
 
   return [];
@@ -541,7 +688,11 @@ function createMeshReflectionPaths(state, reflectionOrders, palette) {
   );
 
   return paths.map(({ order, points }) =>
-    makePathLine(points.map(toScenePoint), palette.ray, order === 1 ? 0.72 : 0.58),
+    makePathLine(
+      points.map(toScenePoint),
+      palette.ray,
+      order === 1 ? 0.72 : 0.58,
+    ),
   );
 }
 
@@ -596,14 +747,23 @@ function buildReflectionPath(state, sequence, walls) {
   const receiver = toAcousticPoint(state.receiver);
   const images = [source];
   for (const wallIndex of sequence) {
-    images.push(reflectAcousticPointAcrossWall(images[images.length - 1], walls[wallIndex]));
+    images.push(
+      reflectAcousticPointAcrossWall(
+        images[images.length - 1],
+        walls[wallIndex],
+      ),
+    );
   }
 
   const hitsReverse = [];
   let currentReceiver = receiver;
   for (let index = sequence.length - 1; index >= 0; index -= 1) {
     const wall = walls[sequence[index]];
-    const hit = intersectAcousticSegmentWithWall(currentReceiver, images[index + 1], wall);
+    const hit = intersectAcousticSegmentWithWall(
+      currentReceiver,
+      images[index + 1],
+      wall,
+    );
     if (!hit) {
       return null;
     }
@@ -622,15 +782,56 @@ function buildReflectionPath(state, sequence, walls) {
 
 function buildShoeboxWalls(state) {
   return [
-    { axis: "x", coord: 0, minA: 0, maxA: state.room.depth, minB: 0, maxB: state.room.height },
-    { axis: "x", coord: state.room.width, minA: 0, maxA: state.room.depth, minB: 0, maxB: state.room.height },
-    { axis: "y", coord: 0, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.height },
-    { axis: "y", coord: state.room.depth, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.height },
-    { axis: "z", coord: 0, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.depth },
-    { axis: "z", coord: state.room.height, minA: 0, maxA: state.room.width, minB: 0, maxB: state.room.depth },
+    {
+      axis: "x",
+      coord: 0,
+      minA: 0,
+      maxA: state.room.depth,
+      minB: 0,
+      maxB: state.room.height,
+    },
+    {
+      axis: "x",
+      coord: state.room.width,
+      minA: 0,
+      maxA: state.room.depth,
+      minB: 0,
+      maxB: state.room.height,
+    },
+    {
+      axis: "y",
+      coord: 0,
+      minA: 0,
+      maxA: state.room.width,
+      minB: 0,
+      maxB: state.room.height,
+    },
+    {
+      axis: "y",
+      coord: state.room.depth,
+      minA: 0,
+      maxA: state.room.width,
+      minB: 0,
+      maxB: state.room.height,
+    },
+    {
+      axis: "z",
+      coord: 0,
+      minA: 0,
+      maxA: state.room.width,
+      minB: 0,
+      maxB: state.room.depth,
+    },
+    {
+      axis: "z",
+      coord: state.room.height,
+      minA: 0,
+      maxA: state.room.width,
+      minB: 0,
+      maxB: state.room.depth,
+    },
   ];
 }
-
 
 function toAcousticPoint(point) {
   return { x: point.x, y: point.y, z: point.z };
@@ -674,15 +875,24 @@ function intersectAcousticSegmentWithWall(start, end, wall) {
   };
 
   if (wall.axis === "x") {
-    if (!isWithin(hit.y, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
+    if (
+      !isWithin(hit.y, wall.minA, wall.maxA) ||
+      !isWithin(hit.z, wall.minB, wall.maxB)
+    ) {
       return null;
     }
   } else if (wall.axis === "y") {
-    if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.z, wall.minB, wall.maxB)) {
+    if (
+      !isWithin(hit.x, wall.minA, wall.maxA) ||
+      !isWithin(hit.z, wall.minB, wall.maxB)
+    ) {
       return null;
     }
   } else if (wall.axis === "z") {
-    if (!isWithin(hit.x, wall.minA, wall.maxA) || !isWithin(hit.y, wall.minB, wall.maxB)) {
+    if (
+      !isWithin(hit.x, wall.minA, wall.maxA) ||
+      !isWithin(hit.y, wall.minB, wall.maxB)
+    ) {
       return null;
     }
   }

@@ -55,13 +55,21 @@ type Renderer struct {
 	// RaytraceEngine. Configure either LateBuffer or Late, never both.
 	LateBuffer LateBufferEngine
 	LowFreq    LowFreqEngine
-	Hybrid     hybrid.HybridConfig
+	// Transmission handles scenes whose source and receiver are in different
+	// directly adjacent rooms. It cannot be combined with the single-room
+	// Early/Late/LowFreq fields.
+	Transmission CrossRoomEngine
+	Hybrid       hybrid.HybridConfig
 }
 
 // RenderMono renders a scene into a mono buffer using the configured engines.
 func (r Renderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, error) {
 	if sc == nil {
 		return nil, errors.New("scene is nil")
+	}
+
+	if sc.RoomCount() > 1 {
+		return r.renderCrossRoomMono(sc, cfg)
 	}
 
 	earlyEvents, lateEvents, err := r.generateEvents(sc, cfg)
@@ -109,6 +117,10 @@ func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, righ
 		return nil, nil, err
 	}
 
+	if sc.RoomCount() > 1 {
+		return r.renderCrossRoomStereo(sc, receiver, cfg)
+	}
+
 	earlyEvents, lateEvents, err := r.generateEvents(sc, cfg)
 	if err != nil {
 		return nil, nil, err
@@ -150,6 +162,52 @@ func (r Renderer) RenderStereo(sc *scene.Scene, cfg ir.RenderConfig) (left, righ
 	}
 
 	return append([]float64(nil), leftBuf.Samples...), append([]float64(nil), rightBuf.Samples...), nil
+}
+
+func (r Renderer) renderCrossRoomMono(sc *scene.Scene, cfg ir.RenderConfig) ([]float64, error) {
+	if r.Transmission == nil {
+		return nil, errors.New("multi-room scene requires a transmission engine")
+	}
+
+	if r.Early != nil || r.Late != nil || r.LateBuffer != nil || r.LowFreq != nil {
+		return nil, errors.New("cross-room transmission cannot be combined with single-room engines")
+	}
+
+	buffer, err := r.Transmission.RenderMono(sc, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("render cross-room transmission: %w", err)
+	}
+
+	if buffer == nil {
+		return nil, errors.New("cross-room transmission returned nil mono buffer")
+	}
+
+	return append([]float64(nil), buffer.Samples...), nil
+}
+
+func (r Renderer) renderCrossRoomStereo(
+	sc *scene.Scene,
+	receiver scene.Receiver,
+	cfg ir.RenderConfig,
+) (left, right []float64, err error) {
+	if r.Transmission == nil {
+		return nil, nil, errors.New("multi-room scene requires a transmission engine")
+	}
+
+	if r.Early != nil || r.Late != nil || r.LateBuffer != nil || r.LowFreq != nil {
+		return nil, nil, errors.New("cross-room transmission cannot be combined with single-room engines")
+	}
+
+	leftBuffer, rightBuffer, renderErr := r.Transmission.RenderBinaural(sc, receiver, cfg)
+	if renderErr != nil {
+		return nil, nil, fmt.Errorf("render binaural cross-room transmission: %w", renderErr)
+	}
+
+	if leftBuffer == nil || rightBuffer == nil {
+		return nil, nil, errors.New("cross-room transmission returned a nil binaural buffer")
+	}
+
+	return append([]float64(nil), leftBuffer.Samples...), append([]float64(nil), rightBuffer.Samples...), nil
 }
 
 func (r Renderer) generateEvents(sc *scene.Scene, cfg ir.RenderConfig) (early, late []ir.Event, err error) {

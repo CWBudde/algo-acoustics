@@ -69,6 +69,19 @@ func demoResultToJS(result demoResult) js.Value {
 	output.Set("splHeatmap", demoSPLHeatmapToJS(result.SPLHeatmap))
 	output.Set("samples", samples)
 	output.Set("wavBytes", wavBytes)
+	if result.PortalResponses != nil {
+		responses := js.Global().Get("Object").New()
+		responses.Set("closedWavBytes", byteSliceToJS(result.PortalResponses.ClosedWAVBytes))
+		responses.Set("openWavBytes", byteSliceToJS(result.PortalResponses.OpenWAVBytes))
+		output.Set("portalResponses", responses)
+	}
+
+	return output
+}
+
+func byteSliceToJS(data []byte) js.Value {
+	output := js.Global().Get("Uint8Array").New(len(data))
+	js.CopyBytesToJS(output, data)
 
 	return output
 }

@@ -8,8 +8,15 @@ permissions:
 
 jobs:
   test:
-    name: Test (Go 1.25)
-    runs-on: ubuntu-latest
+    name: Unit (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,15 +25,19 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: Test
-        run: go test ./...
+      - name: Test portable packages
+        shell: bash
+        run: |
+          mapfile -t packages < <(go list ./... | grep -v '/gpu/worker$')
+          go test "${packages[@]}"
 
       - name: Smoke test roomir validate
         run: go run ./cmd/roomir validate testdata/rooms/shoebox_simple.json
 
-  web-tests:
-    name: Web and WASM Tests
+  linux-gpu-host:
+    name: Unit (Linux GPU host adapter)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,24 +47,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - name: Test GPU host adapter
+        run: go test ./gpu/worker
 
-      - name: Test web JavaScript
-        run: node --test web/*.test.mjs
-
-      - name: Compile WASM tests
-        run: GOOS=js GOARCH=wasm go test -c -o /tmp/algo-acoustics-wasm.test ./web/wasm/
-
-      - name: Run WASM tests
-        run: env -i HOME="$HOME" PATH="$PATH" "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" /tmp/algo-acoustics-wasm.test -test.v -test.timeout 120s
-
-  roombench-run:
-    name: Roombench Regression Run
-    runs-on: ubuntu-latest
+  integration:
+    name: Integration (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,29 +69,9 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version-file: go.mod
+          cache: true
 
-      - name: Run roombench
-        run: go run ./cmd/roombench run
-
-  roombench-report:
-    name: Roombench Corpus Report
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-
-      - name: Generate benchmark report
-        run: go run ./cmd/roombench report --format markdown
-
-      - name: Upload benchmark report
-        uses: actions/upload-artifact@v4
-        with:
-          name: bench-report
-          path: bench_report.md
-          if-no-files-found: error
+      - name: Smoke test CLI renders
+        shell: bash
+        run: ./scripts/ci/render-smoke.sh

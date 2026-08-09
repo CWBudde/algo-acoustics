@@ -45,21 +45,41 @@ func LoadSceneFile(path string) (*Scene, error) {
 }
 
 func resolveRoomMesh(sc *Scene, baseDir string) error {
-	if sc == nil || !sc.Room.IsMesh() || sc.Room.Mesh != nil || sc.Room.MeshPath == "" {
+	if sc == nil {
 		return nil
 	}
 
-	meshPath := sc.Room.MeshPath
+	for index := range sc.RoomCount() {
+		room, ok := sc.RoomAt(index)
+		if !ok {
+			continue
+		}
+
+		err := resolveMesh(room, baseDir)
+		if err != nil {
+			return fmt.Errorf("resolve room[%d] mesh: %w", index, err)
+		}
+	}
+
+	return nil
+}
+
+func resolveMesh(room *Room, baseDir string) error {
+	if room == nil || !room.IsMesh() || room.Mesh != nil || room.MeshPath == "" {
+		return nil
+	}
+
+	meshPath := room.MeshPath
 	if baseDir != "" && !filepath.IsAbs(meshPath) {
 		meshPath = filepath.Join(baseDir, meshPath)
 	}
 
 	mesh, err := geometry.LoadOBJ(meshPath)
 	if err != nil {
-		return fmt.Errorf("load room mesh %q: %w", sc.Room.MeshPath, err)
+		return fmt.Errorf("load room mesh %q: %w", room.MeshPath, err)
 	}
 
-	sc.Room.Mesh = mesh
+	room.Mesh = mesh
 
 	return nil
 }

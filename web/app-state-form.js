@@ -33,12 +33,26 @@ export function populateMaterialSelects() {
   });
 }
 
+export function populatePortalMaterialSelect() {
+  const { refs, PORTAL_MATERIALS } = requireCtx();
+  refs.portalMaterial.innerHTML = Object.entries(PORTAL_MATERIALS)
+    .map(
+      ([value, material]) =>
+        `<option value="${value}">${material.label}</option>`,
+    )
+    .join("");
+}
+
 export function populatePresetSelects() {
-  const { refs, ROOM_PRESET_GROUPS, ROOM_PRESETS, MATERIAL_PRESETS } = requireCtx();
+  const { refs, ROOM_PRESET_GROUPS, ROOM_PRESETS, MATERIAL_PRESETS } =
+    requireCtx();
   const roomOptions = ROOM_PRESET_GROUPS.map(({ label, presets }) => {
     const options = presets
       .filter((value) => value in ROOM_PRESETS)
-      .map((value) => `<option value="${value}">${ROOM_PRESETS[value].label}</option>`)
+      .map(
+        (value) =>
+          `<option value="${value}">${ROOM_PRESETS[value].label}</option>`,
+      )
       .join("");
     return `<optgroup label="${label}">${options}</optgroup>`;
   }).join("");
@@ -48,7 +62,9 @@ export function populatePresetSelects() {
     ${roomOptions}
   `;
   refs.materialPreset.innerHTML = Object.entries(MATERIAL_PRESETS)
-    .map(([value, preset]) => `<option value="${value}">${preset.label}</option>`)
+    .map(
+      ([value, preset]) => `<option value="${value}">${preset.label}</option>`,
+    )
     .join("");
 }
 
@@ -71,8 +87,10 @@ export function updateMaterialSummary() {
 
 export function syncPresetSelects() {
   const { refs, state, ROOM_PRESETS, MATERIAL_PRESETS } = requireCtx();
-  refs.roomPreset.value = state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
-  refs.materialPreset.value = state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
+  refs.roomPreset.value =
+    state.roomPreset in ROOM_PRESETS ? state.roomPreset : "custom";
+  refs.materialPreset.value =
+    state.materialPreset in MATERIAL_PRESETS ? state.materialPreset : "custom";
 }
 
 export function syncFormFromState() {
@@ -98,6 +116,10 @@ export function syncFormFromState() {
   refs.receiverX.value = state.receiver.x.toFixed(2);
   refs.receiverY.value = state.receiver.y.toFixed(2);
   refs.receiverZ.value = state.receiver.z.toFixed(2);
+  refs.portalEnabled.checked = state.portal.enabled;
+  refs.portalAperture.value = String(state.portal.aperture);
+  refs.portalApertureValue.textContent = `${Math.round(state.portal.aperture * 100)}%`;
+  refs.portalMaterial.value = state.portal.material;
 
   refs.wallWest.value = state.materials.west;
   refs.wallEast.value = state.materials.east;
@@ -122,6 +144,13 @@ export function syncFormFromState() {
 
   syncModeButtons();
   syncDirectivityAvailability();
+  syncPortalAvailability();
+}
+
+export function syncPortalAvailability() {
+  const { refs, state } = requireCtx();
+  refs.portalAperture.disabled = !state.portal.enabled;
+  refs.portalMaterial.disabled = !state.portal.enabled;
 }
 
 export function syncDirectivityAvailability() {
@@ -167,13 +196,16 @@ export function syncIrViewButtons() {
 
 export function syncPositionConstraints() {
   const { refs, state, POSITION_MARGIN } = requireCtx();
+  const receiverRoom = state.portal.enabled
+    ? state.portal.receiverRoom
+    : state.room;
   const fields = [
     [refs.sourceX, state.room.width],
-    [refs.receiverX, state.room.width],
+    [refs.receiverX, receiverRoom.width],
     [refs.sourceY, state.room.depth],
-    [refs.receiverY, state.room.depth],
+    [refs.receiverY, receiverRoom.depth],
     [refs.sourceZ, state.room.height],
-    [refs.receiverZ, state.room.height],
+    [refs.receiverZ, receiverRoom.height],
   ];
   fields.forEach(([element, maxValue]) => {
     element.max = String(Math.max(POSITION_MARGIN, maxValue - POSITION_MARGIN));
@@ -182,6 +214,9 @@ export function syncPositionConstraints() {
 
 export function normalizeSpatialState() {
   const { state, POSITION_MARGIN } = requireCtx();
+  const receiverRoom = state.portal.enabled
+    ? state.portal.receiverRoom
+    : state.room;
   state.source.x = clamp(
     state.source.x,
     POSITION_MARGIN,
@@ -200,23 +235,24 @@ export function normalizeSpatialState() {
   state.receiver.x = clamp(
     state.receiver.x,
     POSITION_MARGIN,
-    state.room.width - POSITION_MARGIN,
+    receiverRoom.width - POSITION_MARGIN,
   );
   state.receiver.y = clamp(
     state.receiver.y,
     POSITION_MARGIN,
-    state.room.depth - POSITION_MARGIN,
+    receiverRoom.depth - POSITION_MARGIN,
   );
   state.receiver.z = clamp(
     state.receiver.z,
     POSITION_MARGIN,
-    state.room.height - POSITION_MARGIN,
+    receiverRoom.height - POSITION_MARGIN,
   );
 }
 
 export function applyRoomPreset(presetName, options = {}) {
   const {
     state,
+    DEFAULT_STATE,
     ROOM_PRESETS,
     MATERIAL_PRESETS,
     updateSceneView,
@@ -260,22 +296,28 @@ export function applyRoomPreset(presetName, options = {}) {
   if (preset.renderMode) {
     state.render.mode = preset.renderMode;
   }
+  state.portal = structuredClone(preset.portal ?? DEFAULT_STATE.portal);
 
   syncFormFromState();
   updateSceneView();
-  drawWaveform(refs.waveformCanvas, requireCtx().getLastRender?.()?.samples ?? null, {
-    irView: state.irView,
-    renderMode: state.render.mode,
-    durationSeconds: state.render.durationSeconds,
-    crossoverTimeSeconds: state.render.crossoverTimeSeconds,
-  });
+  drawWaveform(
+    refs.waveformCanvas,
+    requireCtx().getLastRender?.()?.samples ?? null,
+    {
+      irView: state.irView,
+      renderMode: state.render.mode,
+      durationSeconds: state.render.durationSeconds,
+      crossoverTimeSeconds: state.render.crossoverTimeSeconds,
+    },
+  );
   if (!options.skipUrlSync) {
     scheduleUrlSync();
   }
 }
 
 export function applyMaterialPreset(presetName, options = {}) {
-  const { state, MATERIAL_PRESETS, updateMaterialSummary, updateSceneView } = requireCtx();
+  const { state, MATERIAL_PRESETS, updateMaterialSummary, updateSceneView } =
+    requireCtx();
   const preset = MATERIAL_PRESETS[presetName] ?? MATERIAL_PRESETS.custom;
   state.materialPreset = presetName in MATERIAL_PRESETS ? presetName : "custom";
 
@@ -319,11 +361,17 @@ export function applySerializedState(input) {
   copyState(DEFAULT_STATE, state);
 
   if (input && typeof input === "object") {
-    if (typeof input.roomPreset === "string" && input.roomPreset in ROOM_PRESETS) {
+    if (
+      typeof input.roomPreset === "string" &&
+      input.roomPreset in ROOM_PRESETS
+    ) {
       state.roomPreset = input.roomPreset;
       applyRoomPreset(input.roomPreset, { skipUrlSync: true });
     }
-    if (typeof input.materialPreset === "string" && input.materialPreset in MATERIAL_PRESETS) {
+    if (
+      typeof input.materialPreset === "string" &&
+      input.materialPreset in MATERIAL_PRESETS
+    ) {
       state.materialPreset = input.materialPreset;
       applyMaterialPreset(input.materialPreset, { skipUrlSync: true });
     }
@@ -332,12 +380,16 @@ export function applySerializedState(input) {
     assignMaterialState(input.materials);
     assignSourceState(input.source);
     assignReceiverState(input.receiver);
+    assignPortalState(input.portal);
     assignRenderState(input.render);
 
     if (typeof input.irView === "string" && input.irView) {
       state.irView = input.irView;
     }
-    if (typeof input.reflections === "number" && Number.isFinite(input.reflections)) {
+    if (
+      typeof input.reflections === "number" &&
+      Number.isFinite(input.reflections)
+    ) {
       state.reflections = input.reflections;
     }
   }
@@ -405,10 +457,16 @@ export function assignSourceState(source) {
   if (typeof source.directivity === "string" && source.directivity) {
     state.source.directivity = source.directivity;
   }
-  if (typeof source.azimuthDegrees === "number" && Number.isFinite(source.azimuthDegrees)) {
+  if (
+    typeof source.azimuthDegrees === "number" &&
+    Number.isFinite(source.azimuthDegrees)
+  ) {
     state.source.azimuthDegrees = source.azimuthDegrees;
   }
-  if (typeof source.cardioidOrder === "number" && Number.isFinite(source.cardioidOrder)) {
+  if (
+    typeof source.cardioidOrder === "number" &&
+    Number.isFinite(source.cardioidOrder)
+  ) {
     state.source.cardioidOrder = source.cardioidOrder;
   }
 }
@@ -429,6 +487,41 @@ export function assignReceiverState(receiver) {
   }
 }
 
+export function assignPortalState(portal) {
+  const { state, PORTAL_MATERIALS } = requireCtx();
+  if (!portal || typeof portal !== "object") {
+    return;
+  }
+
+  if (typeof portal.enabled === "boolean") {
+    state.portal.enabled = portal.enabled;
+  }
+  if (typeof portal.aperture === "number" && Number.isFinite(portal.aperture)) {
+    state.portal.aperture = portal.aperture;
+  }
+  if (
+    typeof portal.rootOrder === "number" &&
+    Number.isFinite(portal.rootOrder)
+  ) {
+    state.portal.rootOrder = portal.rootOrder;
+  }
+  if (
+    typeof portal.material === "string" &&
+    portal.material in PORTAL_MATERIALS
+  ) {
+    state.portal.material = portal.material;
+  }
+
+  for (const field of ["receiverRoom", "opening"]) {
+    if (portal[field] && typeof portal[field] === "object") {
+      state.portal[field] = {
+        ...state.portal[field],
+        ...structuredClone(portal[field]),
+      };
+    }
+  }
+}
+
 export function assignRenderState(render) {
   const { state } = requireCtx();
   if (!render || typeof render !== "object") {
@@ -443,10 +536,16 @@ export function assignRenderState(render) {
   if (typeof render.numRays === "number" && Number.isFinite(render.numRays)) {
     state.render.numRays = render.numRays;
   }
-  if (typeof render.durationSeconds === "number" && Number.isFinite(render.durationSeconds)) {
+  if (
+    typeof render.durationSeconds === "number" &&
+    Number.isFinite(render.durationSeconds)
+  ) {
     state.render.durationSeconds = render.durationSeconds;
   }
-  if (typeof render.crossoverTimeSeconds === "number" && Number.isFinite(render.crossoverTimeSeconds)) {
+  if (
+    typeof render.crossoverTimeSeconds === "number" &&
+    Number.isFinite(render.crossoverTimeSeconds)
+  ) {
     state.render.crossoverTimeSeconds = render.crossoverTimeSeconds;
   }
   if (typeof render.crossoverWindow === "string" && render.crossoverWindow) {
@@ -470,9 +569,18 @@ export function normalizeSceneState() {
     0.03,
     state.render.durationSeconds * 0.85,
   );
+  state.portal.aperture = clamp(state.portal.aperture, 0, 1);
+  state.portal.rootOrder = clamp(state.portal.rootOrder, 0.25, 8);
+  if (!(state.portal.material in requireCtx().PORTAL_MATERIALS)) {
+    state.portal.material = "woodenDoor";
+  }
   normalizeSpatialState();
-  state.roomPreset = state.roomPreset in requireCtx().ROOM_PRESETS ? state.roomPreset : "custom";
-  state.materialPreset = state.materialPreset in requireCtx().MATERIAL_PRESETS ? state.materialPreset : "custom";
+  state.roomPreset =
+    state.roomPreset in requireCtx().ROOM_PRESETS ? state.roomPreset : "custom";
+  state.materialPreset =
+    state.materialPreset in requireCtx().MATERIAL_PRESETS
+      ? state.materialPreset
+      : "custom";
   state.reflections = normalizeReflectionOrder(state.reflections);
   if (state.room.kind === "mesh" && !state.room.mesh) {
     state.room.kind = "shoebox";
