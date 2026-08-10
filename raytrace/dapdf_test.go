@@ -108,6 +108,30 @@ func TestDAPDFIntegralMatchesQuadratureAcrossPiecewiseCases(t *testing.T) {
 	}
 }
 
+func TestDAPDFDetectorEnergySmoothAcrossViewShadowTransition(t *testing.T) {
+	const (
+		b                 = 1.0
+		detectorHalfAngle = 0.025
+		step              = 0.001
+		maximumJump       = 0.005
+	)
+	joinAngle := DAPDFV0 / (2 * b)
+
+	previous := DAPDFIntegral(joinAngle-0.05-detectorHalfAngle, joinAngle-0.05+detectorHalfAngle, b)
+	for center := joinAngle - 0.05 + step; center <= joinAngle+0.05+1e-12; center += step {
+		energy := DAPDFIntegral(center-detectorHalfAngle, center+detectorHalfAngle, b)
+		if math.IsNaN(energy) || math.IsInf(energy, 0) || energy < 0 {
+			t.Fatalf("detector energy at epsilon=%g = %g, want finite non-negative value", center, energy)
+		}
+
+		if jump := math.Abs(energy - previous); jump > maximumJump {
+			t.Fatalf("DAPDF detector energy jumped %g across adjacent view/shadow samples at epsilon=%g", jump, center)
+		}
+
+		previous = energy
+	}
+}
+
 func TestDeflectionCylinderRadius(t *testing.T) {
 	dc := NewDeflectionCylinder(3, geometry.DiffractionEdge{}, 0.5)
 	if dc.ID != 3 || dc.Radius != 3.5 {

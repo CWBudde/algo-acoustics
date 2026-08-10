@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "blocked_no_official_numeric_output",
+  "status": "validated",
   "reference": {
     "model": "Svensson Edge Diffraction Toolbox EDB2",
     "release_date": "2015-04-24",
@@ -40,7 +40,15 @@
       "magnitude_db"
     ]
   },
-  "generator": null,
-  "generated_csv_sha256": null,
-  "blocker": "The official archives contain source and setup examples but no numeric output for this case; MATLAB and GNU Octave are unavailable in the current environment."
+  "generator": {
+    "file": "generate_svensson_edb2.m",
+    "sha256": "cc5b8bc7e6524b603b7fd5e7596934914da23264aa433d6eae5d0b7bc862c705",
+    "runtime": "GNU Octave 9.4.0",
+    "platform": "linux/amd64 container",
+    "container_image": "gnuoctave/octave:9.4.0",
+    "container_digest": "sha256:f8be6269b4783a9828cf2141a4388fd194f8f0be8a8e193c3ec388a6318be973",
+    "compatibility_adjustment": "The generator raises Octave quadgk MaxIntervalCount to 10000 in a temporary copy of EDB2wedge1st_fd.m; the official EDB2 integrand and requested RelTol remain unchanged."
+  },
+  "generated_csv_sha256": "f7d8d3d98121e74ef2e27ce3991de90078b28f3f64c0f6ed8f7723fac6f05dce",
+  "blocker": null
 }

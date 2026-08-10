@@ -208,6 +208,62 @@ func TestSecondOrderDiffractionSceneFixtures(t *testing.T) {
 	}
 }
 
+func TestSecondOrderDiffractionRaisesLRoomShadowLevelByOneToThreeDB(t *testing.T) {
+	bandSpec := acoustics.BandSpec{
+		CenterFreqs: []float64{50},
+		LowerEdges:  []float64{35},
+		UpperEdges:  []float64{71},
+	}
+	source := scene.Source{Position: geometry.Vec3{X: -8, Y: -4, Z: 1}}
+	receiver := scene.Receiver{Position: geometry.Vec3{X: 2.5, Y: 6, Z: 3}, Type: scene.ReceiverOmni}
+	edges := []geometry.DiffractionEdge{
+		testVerticalDiffractionEdge(geometry.Vec3{}),
+		testVerticalDiffractionEdge(geometry.Vec3{X: 2, Y: 2}),
+	}
+
+	mesh := lRoomShadowWall()
+	if geometry.SegmentVisible(mesh, source.Position, receiver.Position) {
+		t.Fatal("L-room validation source and receiver must be in geometric shadow")
+	}
+
+	firstOrder := DiffractionEvents(source, receiver, edges, mesh, bandSpec, acoustics.SpeedOfSound)
+	secondOrderPaths := geometry.EnumerateSecondOrderDiffractionPaths(source.Position, receiver.Position, edges, mesh)
+
+	secondOrder := secondOrderDiffractionEvents(source, receiver, secondOrderPaths, bandSpec, acoustics.SpeedOfSound)
+	if len(firstOrder) == 0 || len(secondOrder) == 0 {
+		t.Fatalf("L-room validation needs both diffraction orders, got first=%d second=%d", len(firstOrder), len(secondOrder))
+	}
+
+	firstOrderEnergy := diffractionEventEnergy(firstOrder)
+	combinedEnergy := firstOrderEnergy + diffractionEventEnergy(secondOrder)
+
+	improvementDB := 10 * math.Log10(combinedEnergy/firstOrderEnergy)
+	if improvementDB < 1 || improvementDB > 3 {
+		t.Fatalf("second-order L-room shadow-zone improvement = %.6f dB, want 1..3 dB", improvementDB)
+	}
+}
+
+func diffractionEventEnergy(events []ir.Event) float64 {
+	energy := 0.0
+	for _, event := range events {
+		energy += event.Amplitude * event.Amplitude
+	}
+
+	return energy
+}
+
+func lRoomShadowWall() *geometry.Mesh {
+	bottomLeft := geometry.Vec3{X: -10, Z: -10}
+	bottomRight := geometry.Vec3{Z: -10}
+	topRight := geometry.Vec3{Z: 10}
+	topLeft := geometry.Vec3{X: -10, Z: 10}
+
+	return &geometry.Mesh{Triangles: []geometry.Triangle{
+		{V0: bottomLeft, V1: bottomRight, V2: topRight},
+		{V0: bottomLeft, V1: topRight, V2: topLeft},
+	}}
+}
+
 func testVerticalDiffractionEdge(start geometry.Vec3) geometry.DiffractionEdge {
 	end := start.Add(geometry.Vec3{Z: 4})
 

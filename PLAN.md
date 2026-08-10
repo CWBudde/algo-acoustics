@@ -208,7 +208,7 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 - [x] `MaxDiffractionOrder int` config (default: 1; set to 2 to enable)
 - [x] Contribution culling: skip pairs below -60 dB
 - [x] Unit tests: L-shaped corridor (two corners), double-doorway
-- [ ] Validation against RAVEN BTME reference
+- [x] Validation against RAVEN BTME reference
 
 #### 22.2 Combined reflection-diffraction paths (`ism/`)
 
@@ -232,9 +232,9 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 22.5 Validation
 
-- [ ] Single finite wedge: compare against Svensson Edge Diffraction Toolbox at 50 Hz, 500 Hz, 5 kHz, 10 kHz
-- [ ] View/shadow zone transition smoothness for both IS (BTME) and RT (DAPDF)
-- [ ] L-shaped room: second-order improves shadow-zone by 1-3 dB
+- [x] Single finite wedge: compare against Svensson Edge Diffraction Toolbox at 50 Hz, 500 Hz, 5 kHz, 10 kHz
+- [x] View/shadow zone transition smoothness for both IS (BTME) and RT (DAPDF)
+- [x] L-shaped room: second-order improves shadow-zone by 1-3 dB
 - [x] Regression: existing first-order tests still pass at `MaxDiffractionOrder = 1`
 
 ---
