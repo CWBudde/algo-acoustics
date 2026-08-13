@@ -72,7 +72,8 @@ func reflectionDiffractionEvents(
 	bandSpec acoustics.BandSpec,
 	speedOfSound float64,
 ) []ir.Event {
-	images := GenerateMeshImageSources(source.Position, mesh, MeshISMConfig{MaxOrder: 1})
+	ppm := geometry.BuildPlanePolygonMap(mesh)
+	images := GenerateMeshImageSources(source.Position, mesh, MeshISMConfig{MaxOrder: 1, PPM: ppm})
 	paths := make([]mixedDiffractionPath, 0)
 
 	for _, image := range images {
@@ -80,12 +81,12 @@ func reflectionDiffractionEvents(
 			continue
 		}
 
-		if _, visible := meshReflectionPath(image, receiver.Position, mesh, bvh); visible {
+		if _, visible := meshReflectionPath(image, receiver.Position, mesh, bvh, ppm); visible {
 			continue
 		}
 
 		for _, candidate := range geometry.EnumerateDiffractionPaths(image.Position, receiver.Position, edges, nil) {
-			reflectionPath, ok := meshReflectionPath(image, candidate.Point, mesh, bvh)
+			reflectionPath, ok := meshReflectionPath(image, candidate.Point, mesh, bvh, ppm)
 			if !ok || len(reflectionPath) != 1 || !geometry.SegmentVisible(mesh, source.Position, reflectionPath[0].Point) ||
 				!geometry.SegmentVisible(mesh, candidate.Point, receiver.Position) {
 				continue
@@ -118,7 +119,8 @@ func diffractionReflectionEvents(
 	bandSpec acoustics.BandSpec,
 	speedOfSound float64,
 ) []ir.Event {
-	images := GenerateMeshImageSources(receiver.Position, mesh, MeshISMConfig{MaxOrder: 1})
+	ppm := geometry.BuildPlanePolygonMap(mesh)
+	images := GenerateMeshImageSources(receiver.Position, mesh, MeshISMConfig{MaxOrder: 1, PPM: ppm})
 	paths := make([]mixedDiffractionPath, 0)
 
 	for _, image := range images {
@@ -126,12 +128,12 @@ func diffractionReflectionEvents(
 			continue
 		}
 
-		if _, visible := meshReflectionPath(image, source.Position, mesh, bvh); visible {
+		if _, visible := meshReflectionPath(image, source.Position, mesh, bvh, ppm); visible {
 			continue
 		}
 
 		for _, candidate := range geometry.EnumerateDiffractionPaths(source.Position, image.Position, edges, nil) {
-			reflectionPath, ok := meshReflectionPath(image, candidate.Point, mesh, bvh)
+			reflectionPath, ok := meshReflectionPath(image, candidate.Point, mesh, bvh, ppm)
 			if !ok || len(reflectionPath) != 1 || !geometry.SegmentVisible(mesh, source.Position, candidate.Point) ||
 				!geometry.SegmentVisible(mesh, reflectionPath[0].Point, receiver.Position) {
 				continue

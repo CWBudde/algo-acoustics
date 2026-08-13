@@ -134,7 +134,8 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 			}
 
 			if !rainCovered {
-				if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit {
+				if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit &&
+					DetectionAllowedHybrid(state, r.Config.HybridDetection) {
 					arrivalTime := (pathLength + tHit) / r.Config.SpeedOfSound
 					if arrivalTime <= r.Config.MaxTimeSeconds {
 						hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit)
@@ -169,6 +170,12 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 						groupIndex := ClassifyDirection(r.DirectivityGroups, deposit.ArrivalDir)
 						r.DirectivityGroups[groupIndex].Histogram.Add(deposit.ArrivalTime, energy)
 					}
+				}
+
+				if len(deposits) > 0 {
+					// The particle passed a deflection cylinder: it counts as
+					// diffracted from here on and must not be detected directly.
+					advanceStateAfterDiffraction(&state)
 				}
 			}
 
@@ -216,17 +223,31 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				currentRay = geometry.NewRay(hitPoint.Add(nextDir.Scale(wallEpsilon)), nextDir)
 				state.Energy = remainingEnergy
 				rainCovered = r.Config.DiffuseRain
+
+				advanceStateAfterReflection(&state, scatterCoeff > 0)
 			case ReflectionStrategyRussianRoulette:
 				specBranch, ok := russianRouletteEnergy(specEnergy, energyThreshold, rng)
 				if ok {
 					specRay := geometry.NewRay(hitPoint.Add(specularDir.Scale(wallEpsilon)), specularDir)
-					states = append(states, RayState{Ray: specRay, Energy: specBranch, PathLength: pathLength, Bounces: bounce + 1})
+					specState := reflectedChildState(state, false)
+					specState.RainCovered = false
+					specState.Ray = specRay
+					specState.Energy = specBranch
+					specState.PathLength = pathLength
+					specState.Bounces = bounce + 1
+					states = append(states, specState)
 				}
 
 				diffBranch, ok := russianRouletteEnergy(diffuseEnergy, energyThreshold, rng)
 				if ok {
 					diffRay := geometry.NewRay(hitPoint.Add(diffuseDir.Scale(wallEpsilon)), diffuseDir)
-					states = append(states, RayState{Ray: diffRay, Energy: diffBranch, PathLength: pathLength, Bounces: bounce + 1, RainCovered: r.Config.DiffuseRain})
+					diffState := reflectedChildState(state, true)
+					diffState.Ray = diffRay
+					diffState.Energy = diffBranch
+					diffState.PathLength = pathLength
+					diffState.Bounces = bounce + 1
+					diffState.RainCovered = r.Config.DiffuseRain
+					states = append(states, diffState)
 				}
 
 				currentRay = geometry.Ray{}
@@ -241,6 +262,8 @@ func (r *RayTracer) Trace() (*EnergyHistogram, error) {
 				} else {
 					rainCovered = false
 				}
+
+				advanceStateAfterReflection(&state, diffuse)
 			}
 
 			if len(state.Energy) > 0 && maxEnergy(state.Energy) <= energyThreshold {

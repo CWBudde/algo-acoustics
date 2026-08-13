@@ -10,10 +10,7 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-const (
-	meshCoplanarEpsilon = 1e-6
-	meshRayOffset       = 1e-6
-)
+const meshRayOffset = 1e-6
 
 // meshReflectionPoint records one validated reflection on a mesh triangle.
 type meshReflectionPoint struct {
@@ -35,6 +32,7 @@ func solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 	}
 
 	bvh := geometry.BuildBVH(sc.Room.Mesh)
+	ppm := geometry.BuildPlanePolygonMap(sc.Room.Mesh)
 	material := meshMaterial(sc)
 	receiver := sc.Receivers[0]
 
@@ -49,6 +47,7 @@ func solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 		imgCfg := MeshISMConfig{
 			MaxOrder:    cfg.MaxOrder,
 			MaxDistance: meshMaxDistance(sc, speedOfSound),
+			PPM:         ppm,
 		}
 
 		imageSources := GenerateMeshImageSources(source.Position, sc.Room.Mesh, imgCfg)
@@ -58,7 +57,7 @@ func solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 				continue
 			}
 
-			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, material, bandSpec, speedOfSound)
+			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, material, bandSpec, speedOfSound)
 			if ok {
 				events = append(events, event)
 			}
@@ -90,6 +89,7 @@ func meshSpecularEvent(
 	imgSrc MeshImageSource,
 	mesh *geometry.Mesh,
 	bvh *geometry.BVHNode,
+	ppm *geometry.PlanePolygonMap,
 	material scene.Material,
 	bandSpec acoustics.BandSpec,
 	speedOfSound float64,
@@ -99,7 +99,7 @@ func meshSpecularEvent(
 		return ir.Event{}, false
 	}
 
-	path, ok := meshReflectionPath(imgSrc, receiver.Position, mesh, bvh)
+	path, ok := meshReflectionPath(imgSrc, receiver.Position, mesh, bvh, ppm)
 	if !ok {
 		return ir.Event{}, false
 	}
@@ -149,10 +149,15 @@ func meshReflectionPath(
 	receiver geometry.Vec3,
 	mesh *geometry.Mesh,
 	bvh *geometry.BVHNode,
+	ppm *geometry.PlanePolygonMap,
 ) ([]meshReflectionPoint, bool) {
 	order := imgSrc.Order
-	if order == 0 || len(imgSrc.TriangleHits) != order {
+	if order == 0 || len(imgSrc.TriangleHits) != order || len(imgSrc.PlaneHits) != order {
 		return nil, false
+	}
+
+	if ppm == nil {
+		ppm = geometry.BuildPlanePolygonMap(mesh)
 	}
 
 	points := make([]meshReflectionPoint, 0, order)
@@ -177,12 +182,22 @@ func meshReflectionPath(
 			return nil, false
 		}
 
-		expectedTri := imgSrc.TriangleHits[i]
-		if !meshTrianglesCoplanar(mesh, triIdx, expectedTri) {
+		// The hit triangle must lie on the plane this image source was
+		// mirrored across.
+		expectedPlane := imgSrc.PlaneHits[i]
+		if ppm.PlaneOf(triIdx) != expectedPlane {
 			return nil, false
 		}
 
 		hitPoint := ray.At(hitT)
+
+		// Point-in-polygon audibility test on the coplanar polygon set
+		// (docs/raven.md section 2.4): the reflection point must fall on one
+		// of the polygons that actually make up the plane.
+		if !ppm.ContainsPoint(mesh, expectedPlane, hitPoint) {
+			return nil, false
+		}
+
 		normal := mesh.Triangles[triIdx].Normal()
 
 		points = append(points, meshReflectionPoint{
@@ -235,29 +250,6 @@ func meshPathReflectance(path []meshReflectionPoint, source geometry.Vec3, mater
 	}
 
 	return pressure
-}
-
-// meshTrianglesCoplanar reports whether triangles a and b share the same
-// geometric plane (same normal direction and same signed distance from origin).
-func meshTrianglesCoplanar(mesh *geometry.Mesh, a, b int) bool {
-	if a == b {
-		return true
-	}
-
-	triA := mesh.Triangles[a]
-	triB := mesh.Triangles[b]
-
-	nA := triA.Normal()
-	nB := triB.Normal()
-
-	if math.Abs(nA.Dot(nB)-1) > meshCoplanarEpsilon {
-		return false
-	}
-
-	dA := nA.Dot(triA.V0)
-	dB := nB.Dot(triB.V0)
-
-	return math.Abs(dA-dB) < meshCoplanarEpsilon
 }
 
 // meshMaterial looks up the mesh material from the scene, falling back to

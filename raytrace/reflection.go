@@ -29,6 +29,14 @@ type RayState struct {
 	DelaySeconds float64
 	Bounces      int
 	RainCovered  bool // true when this ray's energy was already deposited by diffuse rain
+
+	// Hybrid IS+RT bookkeeping (see hybrid_detection.go).
+	HasDiffuseHistory bool // at least one scattered reflection in history
+	AllowDetection    bool // reset after scatter/diffraction, set after specular
+	ReflectionOrder   int  // total reflections (Bounces stays the loop counter)
+	PreEDReflOrder    int  // reflections before the first edge diffraction
+	EDReflOrder       int  // reflections after the first edge diffraction
+	EDOrder           int  // number of edge diffractions
 }
 
 func splitReflectionEnergy(in, absorption, scattering []float64) (specular, diffuse, remaining []float64) {

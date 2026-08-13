@@ -35,6 +35,9 @@ type LaunchConfig struct {
 	DiffractionAngularThreshold float64
 	DiffractionConeSamples      int
 	DiffuseRain                 bool
+	// HybridDetection gates detections against image-source coverage. The zero
+	// value is disabled and leaves detection behaviour unchanged.
+	HybridDetection HybridDetectionConfig
 }
 
 func (c LaunchConfig) effectiveDiffractionMode() DiffractionMode {

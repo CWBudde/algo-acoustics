@@ -144,6 +144,10 @@ func (r *RayTracer) TraceSurfaces(detectors []SurfaceReceiver) ([]*EnergyHistogr
 						histograms[deposit.SurfaceIndex].Add(deposit.ArrivalTime, oneBandEnergy(bandCount, deposit.BandIndex, deposit.Energy))
 					}
 				}
+
+				if len(deposits) > 0 {
+					advanceStateAfterDiffraction(&state)
+				}
 			}
 
 			pathLength += segmentLength
@@ -182,17 +186,31 @@ func (r *RayTracer) TraceSurfaces(detectors []SurfaceReceiver) ([]*EnergyHistogr
 				currentRay = geometry.NewRay(hitPoint.Add(nextDirection.Scale(wallEpsilon)), nextDirection)
 				state.Energy = remainingEnergy
 				rainCovered = r.Config.DiffuseRain
+
+				advanceStateAfterReflection(&state, scatterCoefficient > 0)
 			case ReflectionStrategyRussianRoulette:
 				specularBranch, survives := russianRouletteEnergy(specEnergy, energyThreshold, rng)
 				if survives {
 					specularRay := geometry.NewRay(hitPoint.Add(specularDirection.Scale(wallEpsilon)), specularDirection)
-					states = append(states, RayState{Ray: specularRay, Energy: specularBranch, PathLength: pathLength, Bounces: bounce + 1})
+					specularState := reflectedChildState(state, false)
+					specularState.RainCovered = false
+					specularState.Ray = specularRay
+					specularState.Energy = specularBranch
+					specularState.PathLength = pathLength
+					specularState.Bounces = bounce + 1
+					states = append(states, specularState)
 				}
 
 				diffuseBranch, survives := russianRouletteEnergy(diffuseEnergy, energyThreshold, rng)
 				if survives {
 					diffuseRay := geometry.NewRay(hitPoint.Add(diffuseDirection.Scale(wallEpsilon)), diffuseDirection)
-					states = append(states, RayState{Ray: diffuseRay, Energy: diffuseBranch, PathLength: pathLength, Bounces: bounce + 1, RainCovered: r.Config.DiffuseRain})
+					diffuseState := reflectedChildState(state, true)
+					diffuseState.Ray = diffuseRay
+					diffuseState.Energy = diffuseBranch
+					diffuseState.PathLength = pathLength
+					diffuseState.Bounces = bounce + 1
+					diffuseState.RainCovered = r.Config.DiffuseRain
+					states = append(states, diffuseState)
 				}
 
 				currentRay = geometry.Ray{}
@@ -202,6 +220,7 @@ func (r *RayTracer) TraceSurfaces(detectors []SurfaceReceiver) ([]*EnergyHistogr
 				state.Energy = nextEnergy
 				currentRay = geometry.NewRay(hitPoint.Add(nextDirection.Scale(wallEpsilon)), nextDirection)
 				rainCovered = diffuse && r.Config.DiffuseRain
+				advanceStateAfterReflection(&state, diffuse)
 			}
 
 			if len(state.Energy) > 0 && maxEnergy(state.Energy) <= energyThreshold {

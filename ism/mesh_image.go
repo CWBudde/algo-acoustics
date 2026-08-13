@@ -1,7 +1,6 @@
 package ism
 
 import (
-	"math"
 	"sort"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
@@ -14,53 +13,23 @@ type MeshISMConfig struct {
 	MaxOrder      int
 	MaxDistance   float64
 	MaxCandidates int // 0 = default (500_000)
+
+	// PPM is an optional pre-built plane-polygon map for the mesh. Callers
+	// that render several sources in the same room can build it once and
+	// reuse it. When nil it is built internally.
+	PPM *geometry.PlanePolygonMap
 }
 
 // MeshImageSource describes one image source for a mesh room.
 type MeshImageSource struct {
-	Position     geometry.Vec3
-	Order        int
-	TriangleHits []int // triangle indices hit at each reflection (length == Order)
-}
-
-// meshUniquePlane groups a plane with the triangle indices that lie on it.
-type meshUniquePlane struct {
-	plane    geometry.Plane
-	triIndex int // representative triangle index
-}
-
-// meshUniquePlanes deduplicates triangles that share the same geometric plane.
-// Two triangles share a plane when their normals are parallel and they have the
-// same signed distance from the origin.
-func meshUniquePlanes(mesh *geometry.Mesh) []meshUniquePlane {
-	const normalEps = 1e-6
-	const distEps = 1e-6
-
-	planes := make([]meshUniquePlane, 0, len(mesh.Triangles))
-
-	for i, tri := range mesh.Triangles {
-		n := tri.Normal()
-		d := n.Dot(tri.V0)
-		p := geometry.Plane{Normal: n, Distance: d}
-
-		duplicate := false
-
-		for _, existing := range planes {
-			// Parallel normals: dot product close to 1 (same direction).
-			if math.Abs(existing.plane.Normal.Dot(n)-1) < normalEps &&
-				math.Abs(existing.plane.Distance-d) < distEps {
-				duplicate = true
-
-				break
-			}
-		}
-
-		if !duplicate {
-			planes = append(planes, meshUniquePlane{plane: p, triIndex: i})
-		}
-	}
-
-	return planes
+	Position geometry.Vec3
+	Order    int
+	// TriangleHits holds a representative triangle index of the plane hit at
+	// each reflection (length == Order).
+	TriangleHits []int
+	// PlaneHits holds the plane index (into the PlanePolygonMap) hit at each
+	// reflection (length == Order).
+	PlaneHits []int
 }
 
 // GenerateMeshImageSources enumerates mesh image sources up to the configured limits.
@@ -74,13 +43,17 @@ func GenerateMeshImageSources(src geometry.Vec3, mesh *geometry.Mesh, cfg MeshIS
 		maxCandidates = defaultMaxCandidates
 	}
 
-	planes := meshUniquePlanes(mesh)
+	ppm := cfg.PPM
+	if ppm == nil {
+		ppm = geometry.BuildPlanePolygonMap(mesh)
+	}
 
 	// Order-0 source is the original position.
 	result := []MeshImageSource{{
 		Position:     src,
 		Order:        0,
 		TriangleHits: nil,
+		PlaneHits:    nil,
 	}}
 
 	if cfg.MaxOrder == 0 {
@@ -92,9 +65,10 @@ func GenerateMeshImageSources(src geometry.Vec3, mesh *geometry.Mesh, cfg MeshIS
 		pos          geometry.Vec3
 		order        int
 		triangleHits []int
+		planeHits    []int
 	}
 
-	queue := []candidate{{pos: src, order: 0, triangleHits: nil}}
+	queue := []candidate{{pos: src, order: 0, triangleHits: nil, planeHits: nil}}
 
 	for len(queue) > 0 && len(result) < maxCandidates {
 		current := queue[0]
@@ -106,13 +80,13 @@ func GenerateMeshImageSources(src geometry.Vec3, mesh *geometry.Mesh, cfg MeshIS
 
 		nextOrder := current.order + 1
 
-		for _, up := range planes {
+		for planeIndex, plane := range ppm.Planes {
 			// Only mirror if the source is on the normal side of the plane.
-			if up.plane.SideOf(current.pos) <= pathEpsilon {
+			if plane.SideOf(current.pos) <= pathEpsilon {
 				continue
 			}
 
-			mirrored := up.plane.ReflectPoint(current.pos)
+			mirrored := plane.ReflectPoint(current.pos)
 
 			// Prune by distance from original source.
 			if cfg.MaxDistance > 0 && mirrored.Distance(src) > cfg.MaxDistance {
@@ -123,14 +97,27 @@ func GenerateMeshImageSources(src geometry.Vec3, mesh *geometry.Mesh, cfg MeshIS
 				break
 			}
 
+			// Representative triangle of the plane, kept for consumers that
+			// work with triangle indices.
+			representative := planeIndex
+
+			if tris := ppm.TrianglesOn(planeIndex); len(tris) > 0 {
+				representative = tris[0]
+			}
+
 			hits := make([]int, len(current.triangleHits)+1)
 			copy(hits, current.triangleHits)
-			hits[len(hits)-1] = up.triIndex
+			hits[len(hits)-1] = representative
+
+			planeHits := make([]int, len(current.planeHits)+1)
+			copy(planeHits, current.planeHits)
+			planeHits[len(planeHits)-1] = planeIndex
 
 			imgSrc := MeshImageSource{
 				Position:     mirrored,
 				Order:        nextOrder,
 				TriangleHits: hits,
+				PlaneHits:    planeHits,
 			}
 
 			result = append(result, imgSrc)
@@ -140,6 +127,7 @@ func GenerateMeshImageSources(src geometry.Vec3, mesh *geometry.Mesh, cfg MeshIS
 					pos:          mirrored,
 					order:        nextOrder,
 					triangleHits: hits,
+					planeHits:    planeHits,
 				})
 			}
 		}

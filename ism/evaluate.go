@@ -120,6 +120,7 @@ func EvaluateMesh(sources []MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]
 	}
 
 	bvh := geometry.BuildBVH(sc.Room.Mesh)
+	ppm := geometry.BuildPlanePolygonMap(sc.Room.Mesh)
 	material := meshMaterial(sc)
 	receiver := sc.Receivers[0]
 
@@ -136,7 +137,7 @@ func EvaluateMesh(sources []MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]
 				continue
 			}
 
-			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, material, bandSpec, speedOfSound)
+			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, material, bandSpec, speedOfSound)
 			if ok {
 				events = append(events, event)
 			}

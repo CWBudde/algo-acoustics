@@ -245,19 +245,19 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 23.1 Plane-Polygon Map (`ism/`, `geometry/`)
 
-- [ ] `PlanePolygonMap`: group triangles by plane equivalence (normal + distance tolerance)
-- [ ] Modify `GenerateMeshImageSources()` to mirror across planes rather than individual triangles
-- [ ] Point-in-polygon test on coplanar set during audibility checks
-- [ ] Unit test: 12 polygons on 8 planes -> 8 distinct planes
-- [ ] Performance test: 4th-order IS generation ~4x fewer image sources with PPM
+- [x] `PlanePolygonMap`: group triangles by plane equivalence (normal + distance tolerance)
+- [x] Modify `GenerateMeshImageSources()` to mirror across planes rather than individual triangles
+- [x] Point-in-polygon test on coplanar set during audibility checks
+- [x] Unit test: 12 polygons on 8 planes -> 8 distinct planes
+- [x] Performance test: 4th-order IS generation ~4x fewer image sources with PPM
 
 #### 23.2 Per-particle hybrid detection logic (`raytrace/`)
 
-- [ ] Add tracking fields to `RayState`: `HasDiffuseHistory`, `PreEDReflOrder`, `EDReflOrder`, `EDOrder`
-- [ ] Update tracking in reflection/scatter/diffraction handlers
-- [ ] Implement `DetectionAllowedHybrid(state, config)` replacing time/order-based crossover
-- [ ] Unit tests: specular particle at order 3 with MaxISOrder=3 not detected (order 4 is); scattered particle at order 2 is detected
-- [ ] Energy conservation test: IS + RT total equals source energy minus absorption within 2%
+- [x] Add tracking fields to `RayState`: `HasDiffuseHistory`, `PreEDReflOrder`, `EDReflOrder`, `EDOrder`
+- [x] Update tracking in reflection/scatter/diffraction handlers
+- [x] Implement `DetectionAllowedHybrid(state, config)` replacing time/order-based crossover
+- [x] Unit tests: specular particle at order 3 with MaxISOrder=3 not detected (order 4 is); scattered particle at order 2 is detected
+- [x] Energy conservation test: IS + RT total equals source energy minus absorption within 2%
 
 ---
 

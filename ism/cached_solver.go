@@ -41,6 +41,7 @@ type CachedISMSolver struct {
 	lastMesh         *geometry.Mesh
 	lastSourcePosMsh []geometry.Vec3
 	lastMeshMaxDist  float64
+	meshPPM          *geometry.PlanePolygonMap
 
 	// Shared state.
 	lastRoomHash uint64
@@ -110,6 +111,7 @@ func (c *CachedISMSolver) Invalidate() {
 	c.lastMesh = nil
 	c.lastSourcePosMsh = nil
 	c.lastMeshMaxDist = 0
+	c.meshPPM = nil
 	c.lastRoomHash = 0
 	c.lastMaxOrder = 0
 	c.lastRoomKind = ""
@@ -164,9 +166,17 @@ func (c *CachedISMSolver) solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event,
 		speedOfSound = acoustics.SpeedOfSound
 	}
 
+	// The plane-polygon map depends only on the mesh, so reuse it whenever
+	// the room geometry is unchanged.
+	ppm := c.meshPPM
+	if ppm == nil || c.lastRoomKind != scene.RoomKindMesh || c.lastRoomHash != roomHash || c.lastMesh != sc.Room.Mesh {
+		ppm = geometry.BuildPlanePolygonMap(sc.Room.Mesh)
+	}
+
 	imgCfg := MeshISMConfig{
 		MaxOrder:    cfg.MaxOrder,
 		MaxDistance: meshMaxDistance(sc, speedOfSound),
+		PPM:         ppm,
 	}
 
 	roomUnchanged := c.lastRoomKind == scene.RoomKindMesh &&
@@ -197,11 +207,12 @@ func (c *CachedISMSolver) solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event,
 	c.lastMesh = sc.Room.Mesh
 	c.lastSourcePosMsh = sourcePositions
 	c.lastMeshMaxDist = imgCfg.MaxDistance
+	c.meshPPM = ppm
 	c.shoeboxCache = nil
 	c.lastShoeboxDims = nil
 	c.lastSourcePosSbx = nil
 
-	return evaluateMeshMultiSource(c.meshCache, sc, cfg)
+	return evaluateMeshMultiSource(c.meshCache, sc, cfg, ppm)
 }
 
 func collectSourcePositions(sc *scene.Scene) []geometry.Vec3 {
@@ -264,7 +275,12 @@ func evaluateShoeboxMultiSource(perSource [][]ImageSource, sc *scene.Scene, cfg 
 
 // evaluateMeshMultiSource produces ir.Events from per-source cached mesh
 // image sources.
-func evaluateMeshMultiSource(perSource [][]MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
+func evaluateMeshMultiSource(
+	perSource [][]MeshImageSource,
+	sc *scene.Scene,
+	cfg ISMConfig,
+	ppm *geometry.PlanePolygonMap,
+) ([]ir.Event, error) {
 	if len(perSource) != len(sc.Sources) {
 		return nil, fmt.Errorf("mesh image source cache length %d does not match source count %d", len(perSource), len(sc.Sources))
 	}
@@ -280,6 +296,11 @@ func evaluateMeshMultiSource(perSource [][]MeshImageSource, sc *scene.Scene, cfg
 	}
 
 	bvh := geometry.BuildBVH(sc.Room.Mesh)
+
+	if ppm == nil {
+		ppm = geometry.BuildPlanePolygonMap(sc.Room.Mesh)
+	}
+
 	material := meshMaterial(sc)
 	receiver := sc.Receivers[0]
 
@@ -296,7 +317,7 @@ func evaluateMeshMultiSource(perSource [][]MeshImageSource, sc *scene.Scene, cfg
 				continue
 			}
 
-			event, evOK := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, material, bandSpec, speedOfSound)
+			event, evOK := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, material, bandSpec, speedOfSound)
 			if evOK {
 				events = append(events, event)
 			}

@@ -119,7 +119,8 @@ func (r *RayTracer) TraceSecondary(emissions []ir.EnergyEmission) (*EnergyHistog
 			}
 
 			if !rainCovered {
-				if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit {
+				if tHit, hit := receiver.Intersects(currentRay, wallEpsilon, segmentLength); hit &&
+					DetectionAllowedHybrid(state, r.Config.HybridDetection) {
 					arrivalTime := state.DelaySeconds + (pathLength+tHit)/r.Config.SpeedOfSound
 					if arrivalTime <= r.Config.MaxTimeSeconds {
 						hitEnergy := attenuateEnergyByAir(state.Energy, r.Scene.BandSpec.CenterFreqs, tHit)
@@ -148,6 +149,10 @@ func (r *RayTracer) TraceSecondary(emissions []ir.EnergyEmission) (*EnergyHistog
 						groupIndex := ClassifyDirection(r.DirectivityGroups, deposit.ArrivalDir)
 						r.DirectivityGroups[groupIndex].Histogram.Add(deposit.ArrivalTime, energy)
 					}
+				}
+
+				if len(deposits) > 0 {
+					advanceStateAfterDiffraction(&state)
 				}
 			}
 
@@ -194,17 +199,33 @@ func (r *RayTracer) TraceSecondary(emissions []ir.EnergyEmission) (*EnergyHistog
 				currentRay = geometry.NewRay(hitPoint.Add(nextDirection.Scale(wallEpsilon)), nextDirection)
 				state.Energy = remainingEnergy
 				rainCovered = r.Config.DiffuseRain
+
+				advanceStateAfterReflection(&state, scatterCoefficient > 0)
 			case ReflectionStrategyRussianRoulette:
 				specularBranch, survives := russianRouletteEnergy(specEnergy, energyThreshold, rng)
 				if survives {
 					specularRay := geometry.NewRay(hitPoint.Add(specularDirection.Scale(wallEpsilon)), specularDirection)
-					states = append(states, RayState{Ray: specularRay, Energy: specularBranch, PathLength: pathLength, DelaySeconds: state.DelaySeconds, Bounces: bounce + 1})
+					specularState := reflectedChildState(state, false)
+					specularState.RainCovered = false
+					specularState.Ray = specularRay
+					specularState.Energy = specularBranch
+					specularState.PathLength = pathLength
+					specularState.DelaySeconds = state.DelaySeconds
+					specularState.Bounces = bounce + 1
+					states = append(states, specularState)
 				}
 
 				diffuseBranch, survives := russianRouletteEnergy(diffuseEnergy, energyThreshold, rng)
 				if survives {
 					diffuseRay := geometry.NewRay(hitPoint.Add(diffuseDirection.Scale(wallEpsilon)), diffuseDirection)
-					states = append(states, RayState{Ray: diffuseRay, Energy: diffuseBranch, PathLength: pathLength, DelaySeconds: state.DelaySeconds, Bounces: bounce + 1, RainCovered: r.Config.DiffuseRain})
+					diffuseState := reflectedChildState(state, true)
+					diffuseState.Ray = diffuseRay
+					diffuseState.Energy = diffuseBranch
+					diffuseState.PathLength = pathLength
+					diffuseState.DelaySeconds = state.DelaySeconds
+					diffuseState.Bounces = bounce + 1
+					diffuseState.RainCovered = r.Config.DiffuseRain
+					states = append(states, diffuseState)
 				}
 
 				currentRay = geometry.Ray{}
@@ -214,6 +235,7 @@ func (r *RayTracer) TraceSecondary(emissions []ir.EnergyEmission) (*EnergyHistog
 				state.Energy = nextEnergy
 				currentRay = geometry.NewRay(hitPoint.Add(nextDirection.Scale(wallEpsilon)), nextDirection)
 				rainCovered = diffuse && r.Config.DiffuseRain
+				advanceStateAfterReflection(&state, diffuse)
 			}
 
 			if len(state.Energy) > 0 && maxEnergy(state.Energy) <= energyThreshold {
