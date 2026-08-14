@@ -130,7 +130,7 @@ func TestNormalizeDemoPortalRequestUsesBrowserMaterialKeysAndDefaults(t *testing
 		request.Portal.Material = material
 		request.Portal.Opening = demoOpening{}
 
-		normalized, err := normalizeDemoRequest(request)
+		normalized, _, err := normalizeDemoRequest(request)
 		if err != nil {
 			t.Fatalf("normalizeDemoRequest(%s) error = %v", material, err)
 		}

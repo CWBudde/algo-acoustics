@@ -96,3 +96,34 @@ test("controller rejects initialization errors reported as worker messages", asy
   assert.deepEqual(errors, ["failed to instantiate WASM"]);
   assert.equal(controller.ready, false);
 });
+
+test("memory budget fields on a result reach the message handler intact", async () => {
+  const worker = new FakeWorker();
+  const received = [];
+  const controller = new RenderWorkerController({
+    createWorker: () => worker,
+    onMessage: (event) => received.push(event.data),
+  });
+
+  const started = controller.start();
+  worker.emit("message", { data: { type: "ready" } });
+  await started;
+
+  // The Go side attaches `memory` and `warnings` to every render result; they
+  // must survive the worker boundary so the page can report a downgrade.
+  const result = {
+    mode: "hybrid",
+    warnings: ["memory budget: connected-room render reduced rays from 16384 to 4096"],
+    memory: {
+      heapBytes: 3_200_000,
+      sysBytes: 128_000_000,
+      peakSysBytes: 141_000_000,
+      budgetBytes: 536_870_912,
+      estimateBytes: 210_000_000,
+    },
+  };
+  worker.emit("message", { data: { type: "result", requestId: 7, result } });
+
+  assert.deepEqual(received.at(-1).result.warnings, result.warnings);
+  assert.deepEqual(received.at(-1).result.memory, result.memory);
+});

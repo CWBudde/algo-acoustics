@@ -3,11 +3,14 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
+	"math"
 	"syscall/js"
 )
 
 func main() {
+	configureDemoMemory()
 	registerDemoAPI()
 	js.Global().Set("algoAcousticsDemoReady", true)
 	js.Global().Call("dispatchEvent", js.Global().Get("Event").New("algo-acoustics-demo-ready"))
@@ -49,10 +52,7 @@ func extractPayload(args []js.Value) (string, error) {
 
 func demoResultToJS(result demoResult) js.Value {
 	output := js.Global().Get("Object").New()
-	samples := js.Global().Get("Float32Array").New(len(result.Samples))
-	for index, sample := range result.Samples {
-		samples.SetIndex(index, sample)
-	}
+	samples := float32SliceToJS(result.Samples)
 
 	wavBytes := js.Global().Get("Uint8Array").New(len(result.WAVBytes))
 	js.CopyBytesToJS(wavBytes, result.WAVBytes)
@@ -76,7 +76,36 @@ func demoResultToJS(result demoResult) js.Value {
 		output.Set("portalResponses", responses)
 	}
 
+	warnings := js.Global().Get("Array").New(len(result.Warnings))
+	for index, warning := range result.Warnings {
+		warnings.SetIndex(index, warning)
+	}
+	output.Set("warnings", warnings)
+
+	memory := js.Global().Get("Object").New()
+	memory.Set("heapBytes", float64(result.Memory.HeapBytes))
+	memory.Set("sysBytes", float64(result.Memory.SysBytes))
+	memory.Set("peakSysBytes", float64(result.Memory.PeakSysBytes))
+	memory.Set("budgetBytes", float64(result.Memory.BudgetBytes))
+	memory.Set("estimateBytes", float64(result.Memory.EstimateBytes))
+	output.Set("memory", memory)
+
 	return output
+}
+
+// float32SliceToJS copies samples into a JS Float32Array in one bridge call.
+// Setting them individually costs one call per sample, which for a three-second
+// response at 48 kHz is 144,000 crossings.
+func float32SliceToJS(samples []float32) js.Value {
+	bytes := make([]byte, len(samples)*4)
+	for index, sample := range samples {
+		binary.LittleEndian.PutUint32(bytes[index*4:], math.Float32bits(sample))
+	}
+
+	buffer := js.Global().Get("Uint8Array").New(len(bytes))
+	js.CopyBytesToJS(buffer, bytes)
+
+	return js.Global().Get("Float32Array").New(buffer.Get("buffer"), 0, len(samples))
 }
 
 func byteSliceToJS(data []byte) js.Value {

@@ -33,6 +33,8 @@ for the output you need.
 - [Architecture](architecture.md): rendering pipeline and package boundaries.
 - [Profiling baseline](profiling-baseline.md) and
   [GPU profiling](profiling-gpu-kernels.md): performance measurement.
+- [WASM memory budget](wasm-memory-budget.md): the browser demo's 512 MiB peak
+  target, what enforces it, and the measurements behind the request envelope.
 
 ## Reference
 

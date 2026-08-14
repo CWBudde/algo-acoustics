@@ -64,13 +64,23 @@ func (s *demoAPIState) storeRequest(request demoRequest) {
 	s.request = cloneDemoRequest(request)
 }
 
+// storeResult retains just enough of a render to answer getParameters: the
+// impulse response itself and the three scalars taken from it. The sample,
+// WAV, and heatmap payloads are dropped, because holding them would keep every
+// render's output resident until the next one replaces it — and in WASM that
+// retention shows up directly as linear memory the tab never gets back.
 func (s *demoAPIState) storeResult(result demoResult, buffer *ir.Buffer) {
 	if s == nil {
 		return
 	}
 
+	result.Samples = nil
+	result.WAVBytes = nil
+	result.SPLHeatmap = demoSPLHeatmap{}
+	result.PortalResponses = nil
+
 	s.lastResult = &result
-	s.lastBuffer = cloneIRBuffer(buffer)
+	s.lastBuffer = buffer
 }
 
 func cloneDemoRequest(request demoRequest) demoRequest {
@@ -89,19 +99,6 @@ func cloneDemoMesh(mesh *demoMesh) *demoMesh {
 
 	cloned := &demoMesh{Triangles: make([]demoTriangle, len(mesh.Triangles))}
 	copy(cloned.Triangles, mesh.Triangles)
-	return cloned
-}
-
-func cloneIRBuffer(buffer *ir.Buffer) *ir.Buffer {
-	if buffer == nil {
-		return nil
-	}
-
-	cloned := &ir.Buffer{
-		SampleRate: buffer.SampleRate,
-		Samples:    make([]float64, len(buffer.Samples)),
-	}
-	copy(cloned.Samples, buffer.Samples)
 	return cloned
 }
 
@@ -164,6 +161,12 @@ func setMaterialJS(this js.Value, args []js.Value) any {
 	scattering := parseFloatArrayArg(args, 2)
 	if len(scattering) == 0 {
 		scattering = []float64{0}
+	}
+
+	if _, exists := materialLibrary[surfaceID]; !exists && len(materialLibrary) >= maxDemoMaterials {
+		return js.ValueOf(map[string]any{"error": fmt.Sprintf(
+			"material library is full (%d entries); reuse an existing surface ID", maxDemoMaterials,
+		)})
 	}
 
 	bandCount := acoustics.Octave6.BandCount()
@@ -231,12 +234,7 @@ func simulateJS(this js.Value, args []js.Value) any {
 		return js.ValueOf(map[string]any{"error": err.Error()})
 	}
 
-	samples := js.Global().Get("Float32Array").New(len(result.Samples))
-	for index, sample := range result.Samples {
-		samples.SetIndex(index, sample)
-	}
-
-	return samples
+	return float32SliceToJS(result.Samples)
 }
 
 func getParametersJS(this js.Value, _ []js.Value) any {

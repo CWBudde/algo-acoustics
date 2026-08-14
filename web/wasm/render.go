@@ -35,6 +35,33 @@ const (
 	positionMarginMeters     = 0.15
 )
 
+// Request envelope. The quality knobs are clamped to these bounds and may be
+// reduced further by applyDemoMemoryBudget; the structural limits are hard,
+// because shrinking geometry would change the room rather than its fidelity.
+const (
+	minDemoNumRays      = 128
+	maxDemoNumRays      = 16384
+	minDemoMaxOrder     = 1
+	maxDemoMaxOrder     = 12
+	minDemoDurationSecs = 0.25
+	maxDemoDurationSecs = 3
+
+	// minDemoRoomMeters and maxDemoRoomMeters bound room dimensions. The UI
+	// sliders are far tighter (index.html caps width and depth at 16 m); this
+	// bounds the raw API, which the page does not go through.
+	minDemoRoomMeters = 2.0
+	maxDemoRoomMeters = 50.0
+
+	// maxDemoMeshTriangles bounds an uploaded room mesh. Beyond this the BVH,
+	// the per-triangle image sources, and the per-vertex heatmap probes all
+	// grow past what the budget allows.
+	maxDemoMeshTriangles = 20000
+
+	// maxDemoMaterials bounds the material library, which setMaterial would
+	// otherwise grow without limit across a session.
+	maxDemoMaterials = 128
+)
+
 var materialLibrary = map[string]scene.Material{
 	"defaultMaterial": {
 		Name:             "defaultMaterial",
@@ -183,6 +210,8 @@ type demoResult struct {
 	Samples         []float32
 	WAVBytes        []byte
 	PortalResponses *demoPortalResponses
+	Warnings        []string
+	Memory          demoMemoryStats
 }
 
 type demoPortalResponses struct {
@@ -245,7 +274,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	started := time.Now()
 	reportDemoProgress("prepare", 2, "Preparing demo request")
 
-	normalized, err := normalizeDemoRequest(request)
+	normalized, warnings, err := normalizeDemoRequest(request)
 	if err != nil {
 		return demoResult{}, err
 	}
@@ -253,7 +282,7 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		return demoResult{}, errors.New("render cancelled")
 	}
 	if normalized.Portal.Enabled {
-		return runDemoPortalRender(normalized, started)
+		return runDemoPortalRender(normalized, warnings, started)
 	}
 
 	reportDemoProgress("scene", 10, "Building room scene")
@@ -354,7 +383,10 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	if demoCancelled() {
 		return demoResult{}, errors.New("render cancelled")
 	}
-	currentDemoAPIState.storeResult(demoResult{}, buffer)
+
+	// The tracing stages above are the churn-heavy ones; collect before the
+	// heatmap adds its own so the heap goal does not carry their peak forward.
+	releaseDemoMemory()
 
 	reportDemoProgress("heatmap", 91, "Sampling surface SPL")
 	splHeatmap, err := buildDemoSPLHeatmap(sc)
@@ -395,14 +427,18 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		SPLHeatmap:      splHeatmap,
 		Samples:         floatSamples,
 		WAVBytes:        wavBytes,
+		Warnings:        warnings,
 	}
 	currentDemoAPIState.storeResult(result, buffer)
 	currentDemoAPIState.storeRequest(normalized)
 
+	releaseDemoMemory()
+	result.Memory = demoMemorySnapshot(estimateDemoMemoryBytes(normalized))
+
 	return result, nil
 }
 
-func runDemoPortalRender(request demoRequest, started time.Time) (demoResult, error) {
+func runDemoPortalRender(request demoRequest, warnings []string, started time.Time) (demoResult, error) {
 	reportDemoProgress("scene", 8, "Building connected-room scene")
 	closedScene, err := buildDemoScene(request)
 	if err != nil {
@@ -418,6 +454,11 @@ func runDemoPortalRender(request demoRequest, started time.Time) (demoResult, er
 		return demoResult{}, errors.New("render cancelled")
 	}
 
+	// Each portal response is roughly 700 MiB of churn against a live set of a
+	// few MiB. Collecting between them keeps the second response from inheriting
+	// the heap goal the first one reached.
+	releaseDemoMemory()
+
 	openScene := *closedScene
 	openScene.Portals = append([]scene.Portal(nil), closedScene.Portals...)
 	openScene.Portals[0].State = scene.PortalOpen
@@ -430,6 +471,8 @@ func runDemoPortalRender(request demoRequest, started time.Time) (demoResult, er
 	if demoCancelled() {
 		return demoResult{}, errors.New("render cancelled")
 	}
+
+	releaseDemoMemory()
 
 	reportDemoProgress("blend", 88, "Applying aperture crossfade")
 	cache, err := hybrid.NewPortalBRIRCache(closed, open)
@@ -477,10 +520,14 @@ func runDemoPortalRender(request demoRequest, started time.Time) (demoResult, er
 			ClosedWAVBytes: closedWAV,
 			OpenWAVBytes:   openWAV,
 		},
+		Warnings: warnings,
 	}
 	currentDemoAPIState.storeResult(result, preview.Left)
 	currentDemoAPIState.storeRequest(request)
 	reportDemoProgress("finish", 100, "Done")
+
+	releaseDemoMemory()
+	result.Memory = demoMemorySnapshot(estimateDemoMemoryBytes(request))
 
 	return result, nil
 }
@@ -556,7 +603,7 @@ func renderDemoPortalBRIR(sc *scene.Scene, request demoRequest) (hybrid.BRIR, in
 	return hybrid.BRIR{Left: left, Right: right}, len(earlyEvents), nil
 }
 
-func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
+func normalizeDemoRequest(request demoRequest) (demoRequest, []string, error) {
 	defaults := defaultDemoRequest()
 
 	switch strings.TrimSpace(request.Room.Kind) {
@@ -578,6 +625,17 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 
 	if request.Room.Height <= 0 {
 		request.Room.Height = defaults.Room.Height
+	}
+
+	request.Room.Width = clamp(request.Room.Width, minDemoRoomMeters, maxDemoRoomMeters)
+	request.Room.Depth = clamp(request.Room.Depth, minDemoRoomMeters, maxDemoRoomMeters)
+	request.Room.Height = clamp(request.Room.Height, minDemoRoomMeters, maxDemoRoomMeters)
+
+	if mesh := request.Room.Mesh; mesh != nil && len(mesh.Triangles) > maxDemoMeshTriangles {
+		return demoRequest{}, nil, fmt.Errorf(
+			"room mesh has %d triangles, which exceeds the demo limit of %d",
+			len(mesh.Triangles), maxDemoMeshTriangles,
+		)
 	}
 
 	request.Materials.West = normalizeMaterialName(request.Materials.West, defaults.Materials.West)
@@ -633,12 +691,12 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	request.Portal.Opening.Height = clamp(request.Portal.Opening.Height, 0.25, sharedHeight)
 	request.Portal.Opening.Bottom = clamp(request.Portal.Opening.Bottom, 0, sharedHeight-request.Portal.Opening.Height)
 	if request.Portal.Enabled && request.Room.Kind != "shoebox" {
-		return demoRequest{}, errors.New("portal demo supports shoebox rooms only")
+		return demoRequest{}, nil, errors.New("portal demo supports shoebox rooms only")
 	}
 
 	mode, err := normalizeMode(request.Render.Mode, defaults.Render.Mode)
 	if err != nil {
-		return demoRequest{}, err
+		return demoRequest{}, nil, err
 	}
 
 	request.Render.Mode = mode
@@ -647,17 +705,17 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 		request.Render.MaxOrder = defaults.Render.MaxOrder
 	}
 
-	request.Render.MaxOrder = clampInt(request.Render.MaxOrder, 1, 12)
+	request.Render.MaxOrder = clampInt(request.Render.MaxOrder, minDemoMaxOrder, maxDemoMaxOrder)
 	if request.Render.NumRays <= 0 {
 		request.Render.NumRays = defaults.Render.NumRays
 	}
 
-	request.Render.NumRays = clampInt(request.Render.NumRays, 128, 16384)
+	request.Render.NumRays = clampInt(request.Render.NumRays, minDemoNumRays, maxDemoNumRays)
 	if request.Render.DurationSeconds <= 0 {
 		request.Render.DurationSeconds = defaults.Render.DurationSeconds
 	}
 
-	request.Render.DurationSeconds = clamp(request.Render.DurationSeconds, 0.25, 3)
+	request.Render.DurationSeconds = clamp(request.Render.DurationSeconds, minDemoDurationSecs, maxDemoDurationSecs)
 	if request.Render.CrossoverTimeSeconds <= 0 {
 		request.Render.CrossoverTimeSeconds = defaults.Render.CrossoverTimeSeconds
 	}
@@ -672,7 +730,7 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 		Alpha: request.Render.CrossoverWindowAlpha,
 	})
 	if err != nil {
-		return demoRequest{}, fmt.Errorf("invalid crossover window: %w", err)
+		return demoRequest{}, nil, fmt.Errorf("invalid crossover window: %w", err)
 	}
 
 	request.Source.X = clamp(request.Source.X, positionMarginMeters, request.Room.Width-positionMarginMeters)
@@ -686,7 +744,9 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, error) {
 	request.Receiver.Y = clamp(request.Receiver.Y, positionMarginMeters, receiverRoom.Depth-positionMarginMeters)
 	request.Receiver.Z = clamp(request.Receiver.Z, positionMarginMeters, receiverRoom.Height-positionMarginMeters)
 
-	return request, nil
+	request, warnings := applyDemoMemoryBudget(request)
+
+	return request, warnings, nil
 }
 
 func buildDemoScene(request demoRequest) (*scene.Scene, error) {

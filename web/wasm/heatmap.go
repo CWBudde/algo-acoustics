@@ -18,6 +18,11 @@ const (
 	heatmapRows    = 5
 	heatmapFloorDB = -30.0
 	heatmapInset   = 0.03
+
+	// maxMeshHeatmapProbes caps how many vertices of a mesh room are sampled.
+	// A shoebox uses 6*7*5 = 210 probes; this keeps a mesh room in the same
+	// range instead of scaling with the uploaded geometry.
+	maxMeshHeatmapProbes = 256
 )
 
 type demoSPLHeatmap struct {
@@ -169,23 +174,36 @@ func gridHeatmapProbes(surfaceID string, rows, columns int, build func(row, colu
 	return probes
 }
 
+// meshHeatmapProbes samples the mesh's vertices. Every probe costs a full
+// image-source solve, so a dense mesh is subsampled to maxMeshHeatmapProbes
+// rather than allowed to scale the render with its vertex count.
 func meshHeatmapProbes(mesh *geometry.Mesh, source geometry.Vec3) []heatmapProbe {
 	seen := make(map[geometry.Vec3]struct{})
-	probes := make([]heatmapProbe, 0, len(mesh.Triangles)*3)
+	vertices := make([]geometry.Vec3, 0, len(mesh.Triangles)*3)
 	for _, triangle := range mesh.Triangles {
 		for _, vertex := range [...]geometry.Vec3{triangle.V0, triangle.V1, triangle.V2} {
 			if _, ok := seen[vertex]; ok {
 				continue
 			}
 			seen[vertex] = struct{}{}
-
-			towardSource := source.Sub(vertex).Normalize()
-			probes = append(probes, heatmapProbe{
-				surfaceID: "mesh",
-				display:   vertex,
-				receiver:  vertex.Add(towardSource.Scale(heatmapInset)),
-			})
+			vertices = append(vertices, vertex)
 		}
+	}
+
+	stride := 1
+	if len(vertices) > maxMeshHeatmapProbes {
+		stride = (len(vertices) + maxMeshHeatmapProbes - 1) / maxMeshHeatmapProbes
+	}
+
+	probes := make([]heatmapProbe, 0, min(len(vertices), maxMeshHeatmapProbes))
+	for index := 0; index < len(vertices); index += stride {
+		vertex := vertices[index]
+		towardSource := source.Sub(vertex).Normalize()
+		probes = append(probes, heatmapProbe{
+			surfaceID: "mesh",
+			display:   vertex,
+			receiver:  vertex.Add(towardSource.Scale(heatmapInset)),
+		})
 	}
 
 	return probes

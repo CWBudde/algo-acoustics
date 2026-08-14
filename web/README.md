@@ -12,6 +12,23 @@ terminates that worker, starts a fresh worker, waits for its ready message, and
 ignores results from the retired generation. Cancellation therefore stops the
 computation rather than merely hiding a late result.
 
+## Memory budget
+
+The demo targets a peak of 512 MiB of WASM linear memory. A Go/WASM heap only
+grows, so the highest point any render reaches is the footprint the tab keeps
+until its worker is replaced. Requests that would exceed the budget have their
+quality settings reduced automatically, and each reduction is reported on
+`result.warnings`, in the browser console, and in the on-page render log.
+Connected-room (portal) renders carry a tighter envelope than mono ones because
+they trace two full binaural responses.
+
+Every result also carries a `memory` object (`peakSysBytes`, `budgetBytes`, and
+friends), logged to the console and exposed on
+`window.algoAcousticsDemoLastRender`.
+
+See [docs/wasm-memory-budget.md](../docs/wasm-memory-budget.md) for the measured
+envelope and the reasoning behind the limits.
+
 ## Local run
 
 ```bash

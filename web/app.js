@@ -352,11 +352,35 @@ function publishRenderResult(requestId, result) {
     mode: result.mode,
     sampleCount: result.samples?.length ?? 0,
     wavByteLength: result.wavBytes?.length ?? 0,
+    memory: result.memory ?? null,
+    warnings: result.warnings ?? [],
   };
+  reportRenderMemory(result);
   window.dispatchEvent(
     new CustomEvent("algo-acoustics-demo-render", {
       detail: window.algoAcousticsDemoLastRender,
     }),
+  );
+}
+
+// A Go/WASM heap only grows, so the peak a worker reaches is the footprint the
+// tab keeps. Log it after every render to make drift visible without adding
+// chrome to the page.
+function reportRenderMemory(result) {
+  for (const warning of result?.warnings ?? []) {
+    console.warn(`[algo-acoustics] ${warning}`);
+  }
+
+  const memory = result?.memory;
+  if (!memory) {
+    return;
+  }
+
+  const mib = (bytes) => (Number(bytes ?? 0) / (1024 * 1024)).toFixed(1);
+  console.info(
+    `[algo-acoustics] memory: peak ${mib(memory.peakSysBytes)} MiB of a ` +
+      `${mib(memory.budgetBytes)} MiB budget ` +
+      `(live ${mib(memory.heapBytes)} MiB, projected ${mib(memory.estimateBytes)} MiB)`,
   );
 }
 
@@ -956,6 +980,11 @@ function updateRenderLog(result) {
       0,
       `Portal: ${PORTAL_MATERIALS[state.portal.material].label} | Aperture: ${Math.round(state.portal.aperture * 100)}%`,
     );
+  }
+  // Settings the memory budget reduced are reported here, because the sliders
+  // still show what was asked for rather than what was rendered.
+  for (const warning of result.warnings ?? []) {
+    lines.push(warning);
   }
   refs.renderLog.textContent = lines.join("\n");
 }

@@ -101,7 +101,7 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 19.2 Go/WASM API surface — remaining
 
-- [ ] Memory budget: target < 512 MB peak for broad device compatibility
+- [x] Memory budget: target < 512 MB peak for broad device compatibility
 
 #### 19.4 Three.js visualization — remaining
 
