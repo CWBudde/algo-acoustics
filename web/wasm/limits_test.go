@@ -4,8 +4,51 @@ package main
 
 import (
 	"strings"
+	"syscall/js"
 	"testing"
 )
+
+// The page sizes its sliders from this object (web/demo-limits.mjs), so both the
+// key names and the values are a contract, not an implementation detail.
+func TestDemoLimitsToJSPublishesTheEnvelope(t *testing.T) {
+	t.Parallel()
+
+	limits := demoLimitsToJS()
+
+	tests := []struct {
+		key  string
+		want float64
+	}{
+		{key: "sampleRate", want: demoSampleRate},
+		{key: "maxSurfaces", want: maxDemoSurfaces},
+		{key: "maxMeshTriangles", want: maxDemoMeshTriangles},
+		{key: "maxMaterials", want: maxDemoMaterials},
+		{key: "minNumRays", want: minDemoNumRays},
+		{key: "maxNumRays", want: maxDemoNumRays},
+		{key: "minMaxOrder", want: minDemoMaxOrder},
+		{key: "maxMaxOrder", want: maxDemoMaxOrder},
+		{key: "minDurationSeconds", want: minDemoDurationSecs},
+		{key: "maxDurationSeconds", want: maxDemoDurationSecs},
+		{key: "minRoomMeters", want: minDemoRoomMeters},
+		{key: "maxRoomMeters", want: maxDemoRoomMeters},
+		{key: "renderTimeoutSeconds", want: demoRenderTimeout.Seconds()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			t.Parallel()
+
+			value := limits.Get(tt.key)
+			if value.Type() != js.TypeNumber {
+				t.Fatalf("limits.%s is %v, want a number", tt.key, value.Type())
+			}
+
+			if got := value.Float(); got != tt.want {
+				t.Errorf("limits.%s = %v, want %v", tt.key, got, tt.want)
+			}
+		})
+	}
+}
 
 // subdividedWallMesh returns a single flat wall cut into 2*n² triangles. It is
 // the case the surface limit must not be fooled by: many triangles, one plane.

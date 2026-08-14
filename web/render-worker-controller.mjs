@@ -6,6 +6,9 @@ export class RenderWorkerController {
     this.worker = null;
     this.generation = 0;
     this.ready = false;
+    // The request envelope the WASM module enforces, published on the ready
+    // message. Null until a worker has reported in.
+    this.limits = null;
   }
 
   start() {
@@ -40,6 +43,7 @@ export class RenderWorkerController {
 
         if (event.data?.type === "ready") {
           this.ready = true;
+          this.limits = event.data.limits ?? null;
           resolve();
           return;
         }

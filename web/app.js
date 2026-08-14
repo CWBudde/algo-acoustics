@@ -18,6 +18,15 @@ import {
   dbToLinear,
 } from "./app-utils.js";
 import { normalizeReflectionOrder } from "./reflection-preview.mjs";
+import { applyRangeBounds, rangeBoundsFromLimits } from "./demo-limits.mjs";
+import {
+  describeEstimatedRt60,
+  describePreviewTier,
+  findTimeoutWarning,
+  formatEstimatedRt60,
+  readPreviewTier,
+  readStatisticalTier,
+} from "./render-tiers.mjs";
 import { RenderWorkerController } from "./render-worker-controller.mjs";
 
 const MATERIALS = presets.MATERIALS;
@@ -198,6 +207,7 @@ const refs = {
   audioGainValue: document.getElementById("audio-gain-value"),
   playAuralization: document.getElementById("play-auralization"),
   exportAuralization: document.getElementById("export-auralization"),
+  metricEstimatedRt60: document.getElementById("metric-estimated-rt60"),
   metricFirstArrival: document.getElementById("metric-first-arrival"),
   metricPeak: document.getElementById("metric-peak"),
   metricEvents: document.getElementById("metric-events"),
@@ -277,6 +287,9 @@ appState.setAppStateContext({
 
 let sceneView = null;
 let lastRender = null;
+// The most recent progressive preview. It is held only so the waveform survives
+// a redraw between the preview arriving and the full render replacing it.
+let previewTier = null;
 let lastAudioURL = null;
 let currentRenderId = 0;
 
@@ -312,6 +325,7 @@ async function initWasm() {
     setEngineStatus("Loading WASM", "loading");
     renderWorkerController = createRenderWorkerController();
     await renderWorkerController.start();
+    applyEngineLimits(renderWorkerController.limits);
     setEngineStatus("WASM ready", "ready");
     setRenderBadge("Waiting for render", "ready");
     setPageReady(true);
@@ -321,6 +335,23 @@ async function initWasm() {
     setRenderBadge("Engine error", "error");
     refs.renderLog.textContent = `${error}`;
   }
+}
+
+// applyEngineLimits sizes the render sliders from the envelope the WASM module
+// enforces, so the controls and the engine cannot disagree about what the demo
+// accepts (PLAN.md 19.7).
+function applyEngineLimits(limits) {
+  const clamped = applyRangeBounds(document, rangeBoundsFromLimits(limits));
+  if (clamped.length === 0) {
+    return;
+  }
+
+  // A stored or shared URL can carry a setting the current build no longer
+  // accepts; pull the state back to what the slider now shows.
+  state.render.numRays = Number(refs.renderRays.value);
+  state.render.maxOrder = Number(refs.renderOrder.value);
+  state.render.durationSeconds = Number(refs.renderDuration.value);
+  syncFormFromState();
 }
 
 function createRenderWorkerController() {
@@ -400,6 +431,15 @@ function handleWorkerMessage(event) {
     return;
   }
 
+  if (type === "tier") {
+    if (!renderSession || requestId !== renderSession.requestId) {
+      return;
+    }
+
+    applyRenderTier(event.data);
+    return;
+  }
+
   if (type === "cancelled") {
     if (!renderSession || requestId !== renderSession.requestId) {
       return;
@@ -449,6 +489,8 @@ function handleWorkerMessage(event) {
       wavBytes,
       portalResponses,
     };
+    // The finished render supersedes any preview that was on screen.
+    previewTier = null;
     publishRenderResult(requestId, lastRender);
 
     // Sync the actual mode used back into state (mesh rooms are forced to "late").
@@ -456,15 +498,24 @@ function handleWorkerMessage(event) {
       state.render.mode = lastRender.mode;
       syncModeButtons();
     }
-    setRenderBadge("Render complete", "ready");
+    // A render the timeout cut short is still a usable response, but it is a
+    // coarser one than was asked for, so it must not be reported as complete.
+    // The warning itself is already appended to the render log.
+    const timedOut = findTimeoutWarning(lastRender.warnings);
+    const badge = timedOut ? "Partial render" : "Render complete";
+
+    setRenderBadge(badge, "ready");
     updateMetrics(lastRender);
     installSPLHeatmap(lastRender.splHeatmap);
     updateAudio(lastRender.wavBytes, lastRender.portalResponses);
     updateRenderLog(lastRender);
-    redrawWaveform(samples);
+    redrawWaveform(samples, {
+      durationSeconds:
+        lastRender.durationSeconds ?? state.render.durationSeconds,
+    });
     refs.downloadWav.disabled = false;
     finalizeRenderSession("Render room", "ready");
-    setRenderBadge("Render complete", "ready");
+    setRenderBadge(badge, "ready");
     scheduleUrlSync();
   }
 }
@@ -832,6 +883,7 @@ function startRender() {
 
   const requestId = ++currentRenderId;
   const request = buildRequest();
+  previewTier = null;
   renderSession = {
     requestId,
     startedAt: performance.now(),
@@ -953,6 +1005,42 @@ function updateRenderButton(title, subtitle, progress) {
   if (refs.renderButtonSubtitle) {
     refs.renderButtonSubtitle.textContent = subtitle;
   }
+}
+
+// applyRenderTier shows a progressive tier while the render is still running
+// (PLAN.md 19.7). Tiers are informational: they never touch lastRender, the
+// download, or the auralization, all of which stay bound to the render that
+// finishes. What they do is stop the page looking frozen — the statistical tier
+// puts a decay time on screen within milliseconds, and the preview tier puts a
+// real waveform there before the accurate render is a fraction done.
+function applyRenderTier({ tier, payload }) {
+  if (tier === "statistical") {
+    const statistics = readStatisticalTier(payload);
+    if (statistics) {
+      refs.metricEstimatedRt60.textContent = formatEstimatedRt60(statistics);
+      refs.metricEstimatedRt60.title = describeEstimatedRt60(statistics);
+    }
+    return;
+  }
+
+  if (tier !== "preview") {
+    return;
+  }
+
+  const preview = readPreviewTier(payload);
+  if (!preview) {
+    return;
+  }
+
+  previewTier = preview;
+  redrawWaveform(preview.samples, {
+    durationSeconds: preview.durationSeconds,
+    crossoverTimeSeconds: Math.min(
+      state.render.crossoverTimeSeconds,
+      preview.durationSeconds,
+    ),
+  });
+  refs.renderLog.textContent = describePreviewTier(preview);
 }
 
 function updateMetrics(result) {
@@ -1440,9 +1528,13 @@ function drawWaveform(canvas, samples = null, state = {}) {
 // time axis has to come from the tier that produced the samples rather than from
 // the sliders, or the waveform would be drawn against a scale it does not span.
 function redrawWaveform(
-  samples = lastRender?.samples ?? null,
+  // While only a preview exists, an unrelated redraw (a zoom or a view switch)
+  // must keep showing it rather than blanking the canvas.
+  samples = lastRender?.samples ?? previewTier?.samples ?? null,
   {
-    durationSeconds = state.render.durationSeconds,
+    durationSeconds = lastRender
+      ? state.render.durationSeconds
+      : (previewTier?.durationSeconds ?? state.render.durationSeconds),
     crossoverTimeSeconds = state.render.crossoverTimeSeconds,
   } = {},
 ) {

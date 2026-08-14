@@ -13,7 +13,13 @@ self.addEventListener("message", async (event) => {
   if (message.type === "init") {
     try {
       await initWasm();
-      postMessage({ type: "ready" });
+      // The request envelope is defined once, in Go (web/wasm/limits.go). It
+      // travels with the ready message so the page sizes its sliders from the
+      // limits that are actually enforced instead of repeating them in HTML.
+      postMessage({
+        type: "ready",
+        limits: self.algoAcousticsDemo?.limits ?? null,
+      });
     } catch (error) {
       postMessage({ type: "error", message: String(error) });
     }
