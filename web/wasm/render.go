@@ -35,32 +35,10 @@ const (
 	positionMarginMeters     = 0.15
 )
 
-// Request envelope. The quality knobs are clamped to these bounds and may be
-// reduced further by applyDemoMemoryBudget; the structural limits are hard,
-// because shrinking geometry would change the room rather than its fidelity.
-const (
-	minDemoNumRays      = 128
-	maxDemoNumRays      = 16384
-	minDemoMaxOrder     = 1
-	maxDemoMaxOrder     = 12
-	minDemoDurationSecs = 0.25
-	maxDemoDurationSecs = 3
-
-	// minDemoRoomMeters and maxDemoRoomMeters bound room dimensions. The UI
-	// sliders are far tighter (index.html caps width and depth at 16 m); this
-	// bounds the raw API, which the page does not go through.
-	minDemoRoomMeters = 2.0
-	maxDemoRoomMeters = 50.0
-
-	// maxDemoMeshTriangles bounds an uploaded room mesh. Beyond this the BVH,
-	// the per-triangle image sources, and the per-vertex heatmap probes all
-	// grow past what the budget allows.
-	maxDemoMeshTriangles = 20000
-
-	// maxDemoMaterials bounds the material library, which setMaterial would
-	// otherwise grow without limit across a session.
-	maxDemoMaterials = 128
-)
+// The request envelope lives in limits.go: the quality knobs are clamped to it
+// and may be reduced further by applyDemoMemoryBudget, while the structural
+// limits are hard, because shrinking geometry would change the room rather than
+// its fidelity.
 
 var materialLibrary = map[string]scene.Material{
 	"defaultMaterial": {
@@ -272,6 +250,15 @@ func runDemoRenderJSON(payload string) (demoResult, error) {
 
 func runDemoRender(request demoRequest) (demoResult, error) {
 	started := time.Now()
+
+	return runDemoRenderWithDeadline(request, started, newRenderDeadline(started))
+}
+
+// runDemoRenderWithDeadline is runDemoRender with the wall-clock budget passed
+// in, so tests can drive the timeout path without waiting out the real budget.
+func runDemoRenderWithDeadline(
+	request demoRequest, started time.Time, deadline renderDeadline,
+) (demoResult, error) {
 	reportDemoProgress("prepare", 2, "Preparing demo request")
 
 	normalized, warnings, err := normalizeDemoRequest(request)
@@ -279,32 +266,81 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		return demoResult{}, err
 	}
 	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
+		return demoResult{}, errRenderCancelled
 	}
 	if normalized.Portal.Enabled {
-		return runDemoPortalRender(normalized, warnings, started)
+		return runDemoPortalRender(normalized, warnings, started, deadline)
 	}
 
-	reportDemoProgress("scene", 10, "Building room scene")
+	reportDemoProgress("scene", 6, "Building room scene")
 	sc, err := buildDemoScene(normalized)
 	if err != nil {
 		return demoResult{}, err
 	}
 	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
+		return demoResult{}, errRenderCancelled
+	}
+
+	reportDemoTierStatistics(sc, started)
+
+	preview := renderDemoPreviewTier(sc, normalized, started)
+
+	// The deadline may already have passed while the preview ran. Starting the
+	// full render anyway would blow the budget by its entire duration, which at
+	// the top of the envelope is far longer than the budget itself.
+	if deadline.exceeded() && preview != nil {
+		return finishDemoResult(sc, previewTierRequest(normalized), preview, warnings, started,
+			timeoutWarning(tierPreview, time.Since(started)))
+	}
+
+	buffer, earlyEvents, err := renderDemoMono(sc, normalized, deadline)
+	if err != nil {
+		if errors.Is(err, errRenderDeadlineExceeded) && preview != nil {
+			return finishDemoResult(sc, previewTierRequest(normalized), preview, warnings, started,
+				timeoutWarning(tierPreview, time.Since(started)))
+		}
+
+		return demoResult{}, err
+	}
+
+	return finishDemoResult(sc, normalized, &demoTierBuffer{
+		buffer:          buffer,
+		earlyEventCount: len(earlyEvents),
+	}, warnings, started, "")
+}
+
+// demoTierBuffer is a rendered tier: the impulse response plus the one figure
+// that cannot be recovered from it afterwards.
+type demoTierBuffer struct {
+	buffer          *ir.Buffer
+	earlyEventCount int
+}
+
+// renderDemoMono runs the mono render for one set of quality knobs.
+//
+// Both the preview tier and the full render go through here, so the only thing
+// separating them is request.Render — the scene, and therefore the room being
+// simulated, is shared.
+func renderDemoMono(sc *scene.Scene, request demoRequest, deadline renderDeadline) (*ir.Buffer, []ir.Event, error) {
+	// Checked up front as well as between stages: "late" runs a single solver
+	// call with no interior boundary, so without this an already-spent budget
+	// would only be noticed once the whole trace had finished.
+	err := checkDemoRenderAborted(deadline)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	renderCfg := ir.RenderConfig{
 		SampleRate:      sc.SampleRate,
-		DurationSeconds: normalized.Render.DurationSeconds,
+		DurationSeconds: request.Render.DurationSeconds,
 		BandSpec:        sc.BandSpec,
 	}
 
-	earlyCfg := pipeline.EarlyConfig{MaxOrder: normalized.Render.MaxOrder}
+	earlyCfg := pipeline.EarlyConfig{MaxOrder: request.Render.MaxOrder}
 	lateCfg := pipeline.LateConfig{
-		NumRays:            normalized.Render.NumRays,
-		MaxOrder:           normalized.Render.MaxOrder,
-		DurationSeconds:    normalized.Render.DurationSeconds,
+		NumRays:            request.Render.NumRays,
+		MaxOrder:           request.Render.MaxOrder,
+		DurationSeconds:    request.Render.DurationSeconds,
 		ReceiverRadius:     defaultReceiverRadius,
 		BinDurationSeconds: defaultHistogramBinSecs,
 	}
@@ -314,78 +350,157 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 		earlyEvents []ir.Event
 	)
 
-	switch normalized.Render.Mode {
+	switch request.Render.Mode {
 	case "early":
 		reportDemoProgress("early", 25, "Tracing early reflections")
 		earlyEvents, err = pipeline.SolveEarly(sc, earlyCfg)
 		if err != nil {
-			return demoResult{}, err
+			return nil, nil, err
 		}
-		if demoCancelled() {
-			return demoResult{}, errors.New("render cancelled")
+		if err = checkDemoRenderAborted(deadline); err != nil {
+			return nil, nil, err
 		}
 
 		reportDemoProgress("render", 45, "Rendering early impulse response")
 		buffer, err = ir.RenderMono(earlyEvents, renderCfg)
 		if err != nil {
-			return demoResult{}, fmt.Errorf("render early impulse response: %w", err)
+			return nil, nil, fmt.Errorf("render early impulse response: %w", err)
 		}
 	case "late":
 		reportDemoProgress("late", 35, "Tracing late field")
 		buffer, err = pipeline.RenderLateBuffer(sc, lateCfg)
 		if err != nil {
-			return demoResult{}, err
+			return nil, nil, err
 		}
 	case "hybrid":
 		reportDemoProgress("early", 22, "Tracing early reflections")
 		earlyEvents, err = pipeline.SolveEarly(sc, earlyCfg)
 		if err != nil {
-			return demoResult{}, err
+			return nil, nil, err
 		}
-		if demoCancelled() {
-			return demoResult{}, errors.New("render cancelled")
+		if err = checkDemoRenderAborted(deadline); err != nil {
+			return nil, nil, err
 		}
 
 		reportDemoProgress("render", 38, "Rendering early impulse response")
 		earlyBuffer, renderErr := ir.RenderMono(earlyEvents, renderCfg)
 		if renderErr != nil {
-			return demoResult{}, fmt.Errorf("render early impulse response: %w", renderErr)
+			return nil, nil, fmt.Errorf("render early impulse response: %w", renderErr)
 		}
 
 		reportDemoProgress("late", 58, "Tracing late field")
 		lateBuffer, renderErr := pipeline.RenderLateBuffer(sc, lateCfg)
 		if renderErr != nil {
-			return demoResult{}, renderErr
+			return nil, nil, renderErr
 		}
-		if demoCancelled() {
-			return demoResult{}, errors.New("render cancelled")
+		if err = checkDemoRenderAborted(deadline); err != nil {
+			return nil, nil, err
 		}
 
 		reportDemoProgress("blend", 84, "Blending early and late responses")
 		hybridCfg := hybrid.HybridConfig{
-			CrossoverTimeSeconds: normalized.Render.CrossoverTimeSeconds,
+			CrossoverTimeSeconds: request.Render.CrossoverTimeSeconds,
 			CrossoverMode:        hybrid.TimeBased,
 			SmoothenCrossover:    true,
 			CrossoverWindow: hybrid.FadeWindowConfig{
-				Name:  normalized.Render.CrossoverWindow,
-				Alpha: normalized.Render.CrossoverWindowAlpha,
+				Name:  request.Render.CrossoverWindow,
+				Alpha: request.Render.CrossoverWindowAlpha,
 			},
 		}
 
 		buffer, err = pipeline.RenderHybrid(earlyBuffer, lateBuffer, earlyEvents, hybridCfg)
 		if err != nil {
-			return demoResult{}, err
+			return nil, nil, err
 		}
 	default:
-		return demoResult{}, fmt.Errorf("unsupported render mode %q", normalized.Render.Mode)
+		return nil, nil, fmt.Errorf("unsupported render mode %q", request.Render.Mode)
 	}
 
-	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
+	if err = checkDemoRenderAborted(deadline); err != nil {
+		return nil, nil, err
 	}
 
-	// The tracing stages above are the churn-heavy ones; collect before the
-	// heatmap adds its own so the heap goal does not carry their peak forward.
+	return buffer, earlyEvents, nil
+}
+
+// renderDemoPreviewTier renders the coarse tier and pushes it to the page.
+//
+// It returns nil when a preview would not pay for itself or when it fails. A
+// failed preview is deliberately not fatal: it is an optimisation of what the
+// user sees, and the accurate render is still ahead.
+//
+// The preview is not subject to the render deadline. Its cost is bounded by
+// construction — at most previewTierNumRays rays, previewTierMaxOrder
+// reflections, and previewTierMaxDurationSecs of response — and it is the very
+// result the deadline falls back to, so aborting it would leave the timeout with
+// nothing to return. A user cancel still stops it, because cancellation and the
+// deadline are separate conditions.
+func renderDemoPreviewTier(sc *scene.Scene, request demoRequest, started time.Time) *demoTierBuffer {
+	if !worthPreviewing(request) {
+		return nil
+	}
+
+	previewRequest := previewTierRequest(request)
+
+	reportDemoProgress("preview", 12, "Rendering preview")
+	buffer, earlyEvents, err := renderDemoMono(sc, previewRequest, renderDeadline{})
+	if err != nil || buffer == nil {
+		return nil
+	}
+
+	tier := &demoTierBuffer{buffer: buffer, earlyEventCount: len(earlyEvents)}
+	reportDemoTier(demoTierPayload{
+		Tier:            tierPreview,
+		ElapsedMS:       float64(time.Since(started).Milliseconds()),
+		SampleRate:      buffer.SampleRate,
+		DurationSeconds: previewRequest.Render.DurationSeconds,
+		NumRays:         previewRequest.Render.NumRays,
+		MaxOrder:        previewRequest.Render.MaxOrder,
+		EarlyEventCount: tier.earlyEventCount,
+		Samples:         bufferToFloat32(buffer),
+	})
+
+	// The preview's churn is charged to the same heap the full render is about
+	// to use, so collect before handing it over.
+	releaseDemoMemory()
+
+	return tier
+}
+
+// reportDemoTierStatistics pushes Phase 18's Tier 1 estimates to the page. They
+// need no simulation, so the user sees a decay time within milliseconds of
+// pressing render.
+func reportDemoTierStatistics(sc *scene.Scene, started time.Time) {
+	statistics, ok := computeDemoStatistics(sc)
+	if !ok {
+		return
+	}
+
+	reportDemoTier(demoTierPayload{
+		Tier:       tierStatistical,
+		ElapsedMS:  float64(time.Since(started).Milliseconds()),
+		Statistics: &statistics,
+	})
+}
+
+// finishDemoResult turns a rendered buffer into the result the page consumes:
+// surface heatmap, encoded WAV, waveform samples, and statistics.
+//
+// timeoutNotice is empty for a complete render and carries the explanation when
+// the deadline forced a fall back to the preview tier. The stages here run past
+// an expired deadline on purpose — abandoning a finished impulse response
+// because encoding it would overshoot by a few hundred milliseconds would throw
+// away the very result the fallback exists to deliver.
+func finishDemoResult(
+	sc *scene.Scene,
+	request demoRequest,
+	tier *demoTierBuffer,
+	warnings []string,
+	started time.Time,
+	timeoutNotice string,
+) (demoResult, error) {
+	// The tracing stages are the churn-heavy ones; collect before the heatmap
+	// adds its own so the heap goal does not carry their peak forward.
 	releaseDemoMemory()
 
 	reportDemoProgress("heatmap", 91, "Sampling surface SPL")
@@ -395,55 +510,70 @@ func runDemoRender(request demoRequest) (demoResult, error) {
 	}
 
 	reportDemoProgress("encode", 96, "Encoding WAV")
-	wavBytes, err := export.EncodeMonoWAVBytes(buffer)
+	wavBytes, err := export.EncodeMonoWAVBytes(tier.buffer)
 	if err != nil {
 		return demoResult{}, err
 	}
 	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
+		return demoResult{}, errRenderCancelled
 	}
 
-	stats := ir.Stats(buffer)
-	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
-	}
+	stats := ir.Stats(tier.buffer)
 	reportDemoProgress("finish", 100, "Done")
 
-	floatSamples := make([]float32, len(buffer.Samples))
-	for index, sample := range buffer.Samples {
-		floatSamples[index] = float32(sample)
+	if timeoutNotice != "" {
+		warnings = append(warnings, timeoutNotice)
 	}
 
 	result := demoResult{
-		Mode:            normalized.Render.Mode,
-		SampleRate:      buffer.SampleRate,
-		DurationSeconds: normalized.Render.DurationSeconds,
-		EarlyEventCount: len(earlyEvents),
-		NumRays:         normalized.Render.NumRays,
+		Mode:            request.Render.Mode,
+		SampleRate:      tier.buffer.SampleRate,
+		DurationSeconds: request.Render.DurationSeconds,
+		EarlyEventCount: tier.earlyEventCount,
+		NumRays:         request.Render.NumRays,
 		PeakAmplitude:   stats.PeakAmplitude,
 		RMSAmplitude:    stats.RMSAmplitude,
 		FirstArrivalMs:  stats.FirstArrivalMs,
 		RenderMS:        float64(time.Since(started).Milliseconds()),
 		SPLHeatmap:      splHeatmap,
-		Samples:         floatSamples,
+		Samples:         bufferToFloat32(tier.buffer),
 		WAVBytes:        wavBytes,
 		Warnings:        warnings,
 	}
-	currentDemoAPIState.storeResult(result, buffer)
-	currentDemoAPIState.storeRequest(normalized)
+	currentDemoAPIState.storeResult(result, tier.buffer)
+	currentDemoAPIState.storeRequest(request)
 
 	releaseDemoMemory()
-	result.Memory = demoMemorySnapshot(estimateDemoMemoryBytes(normalized))
+	result.Memory = demoMemorySnapshot(estimateDemoMemoryBytes(request))
 
 	return result, nil
 }
 
-func runDemoPortalRender(request demoRequest, warnings []string, started time.Time) (demoResult, error) {
+// bufferToFloat32 narrows an impulse response for the browser, which draws and
+// plays float32.
+func bufferToFloat32(buffer *ir.Buffer) []float32 {
+	if buffer == nil {
+		return nil
+	}
+
+	samples := make([]float32, len(buffer.Samples))
+	for index, sample := range buffer.Samples {
+		samples[index] = float32(sample)
+	}
+
+	return samples
+}
+
+func runDemoPortalRender(
+	request demoRequest, warnings []string, started time.Time, deadline renderDeadline,
+) (demoResult, error) {
 	reportDemoProgress("scene", 8, "Building connected-room scene")
 	closedScene, err := buildDemoScene(request)
 	if err != nil {
 		return demoResult{}, err
 	}
+
+	reportDemoTierStatistics(closedScene, started)
 
 	reportDemoProgress("closed", 16, "Rendering closed-portal response")
 	closed, closedEvents, err := renderDemoPortalBRIR(closedScene, request)
@@ -451,7 +581,7 @@ func runDemoPortalRender(request demoRequest, warnings []string, started time.Ti
 		return demoResult{}, fmt.Errorf("render closed portal: %w", err)
 	}
 	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
+		return demoResult{}, errRenderCancelled
 	}
 
 	// Each portal response is roughly 700 MiB of churn against a live set of a
@@ -459,17 +589,35 @@ func runDemoPortalRender(request demoRequest, warnings []string, started time.Ti
 	// the heap goal the first one reached.
 	releaseDemoMemory()
 
-	openScene := *closedScene
-	openScene.Portals = append([]scene.Portal(nil), closedScene.Portals...)
-	openScene.Portals[0].State = scene.PortalOpen
+	// A connected-room render has no cheap preview tier — both endpoints are
+	// full binaural renders — so the timeout falls back to the one endpoint that
+	// did finish, used for both. The aperture crossfade then interpolates
+	// between identical responses and becomes inert, which the warning says
+	// plainly; a usable stereo response with an inert control still beats a
+	// blocked worker and nothing to listen to.
+	open, openEvents := closed, closedEvents
+	timeoutNotice := ""
 
-	reportDemoProgress("open", 56, "Rendering open-portal response")
-	open, openEvents, err := renderDemoPortalBRIR(&openScene, request)
-	if err != nil {
-		return demoResult{}, fmt.Errorf("render open portal: %w", err)
-	}
-	if demoCancelled() {
-		return demoResult{}, errors.New("render cancelled")
+	if deadline.exceeded() {
+		timeoutNotice = fmt.Sprintf(
+			"render timeout: exceeded the %.0f s demo budget after %.1f s; "+
+				"returning the closed-portal response for both endpoints, so the aperture control has no effect",
+			demoRenderTimeout.Seconds(), time.Since(started).Seconds(),
+		)
+		warnings = append(warnings, timeoutNotice)
+	} else {
+		openScene := *closedScene
+		openScene.Portals = append([]scene.Portal(nil), closedScene.Portals...)
+		openScene.Portals[0].State = scene.PortalOpen
+
+		reportDemoProgress("open", 56, "Rendering open-portal response")
+		open, openEvents, err = renderDemoPortalBRIR(&openScene, request)
+		if err != nil {
+			return demoResult{}, fmt.Errorf("render open portal: %w", err)
+		}
+		if demoCancelled() {
+			return demoResult{}, errRenderCancelled
+		}
 	}
 
 	releaseDemoMemory()
@@ -631,11 +779,9 @@ func normalizeDemoRequest(request demoRequest) (demoRequest, []string, error) {
 	request.Room.Depth = clamp(request.Room.Depth, minDemoRoomMeters, maxDemoRoomMeters)
 	request.Room.Height = clamp(request.Room.Height, minDemoRoomMeters, maxDemoRoomMeters)
 
-	if mesh := request.Room.Mesh; mesh != nil && len(mesh.Triangles) > maxDemoMeshTriangles {
-		return demoRequest{}, nil, fmt.Errorf(
-			"room mesh has %d triangles, which exceeds the demo limit of %d",
-			len(mesh.Triangles), maxDemoMeshTriangles,
-		)
+	err := validateDemoStructure(request)
+	if err != nil {
+		return demoRequest{}, nil, err
 	}
 
 	request.Materials.West = normalizeMaterialName(request.Materials.West, defaults.Materials.West)

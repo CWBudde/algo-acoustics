@@ -41,4 +41,6 @@ for the output you need.
 - [Scene format](scene-format.md) and canonical
   [JSON Schema](scene-schema.json).
 - [GPU deployment](gpu-deployment.md).
+- [Web demo deployment](web-deployment.md): the MIME type, cache headers, and
+  COOP/COEP policy the browser demo needs from its host.
 - [RAVEN notes](raven.md).

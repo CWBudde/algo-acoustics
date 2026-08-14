@@ -114,8 +114,11 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 19.6 Deployment — remaining
 
-- [ ] Correct MIME type for `.wasm` (`application/wasm`), cache headers for WASM binary
-- [ ] If using `SharedArrayBuffer` for Web Workers: set COOP/COEP headers
+- [x] Correct MIME type for `.wasm` (`application/wasm`), cache headers for WASM binary
+- [x] If using `SharedArrayBuffer` for Web Workers: set COOP/COEP headers — not
+      required (rendering uses a plain worker with `postMessage`, no shared
+      memory); available behind `web/devserver -coi`. See
+      [docs/web-deployment.md](docs/web-deployment.md).
 
 #### 19.7 Performance constraints — remaining
 

@@ -1436,12 +1436,21 @@ function drawWaveform(canvas, samples = null, state = {}) {
   audioModule.drawWaveform(canvas, samples, state);
 }
 
-function redrawWaveform(samples = lastRender?.samples ?? null) {
+// A preview tier renders a shorter response than the request asked for, so the
+// time axis has to come from the tier that produced the samples rather than from
+// the sliders, or the waveform would be drawn against a scale it does not span.
+function redrawWaveform(
+  samples = lastRender?.samples ?? null,
+  {
+    durationSeconds = state.render.durationSeconds,
+    crossoverTimeSeconds = state.render.crossoverTimeSeconds,
+  } = {},
+) {
   drawWaveform(refs.waveformCanvas, samples, {
     irView: state.irView,
     renderMode: state.render.mode,
-    durationSeconds: state.render.durationSeconds,
-    crossoverTimeSeconds: state.render.crossoverTimeSeconds,
+    durationSeconds,
+    crossoverTimeSeconds,
     waveformZoom,
   });
 }

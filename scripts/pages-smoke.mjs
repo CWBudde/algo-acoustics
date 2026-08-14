@@ -119,6 +119,8 @@ try {
 
   await waitForDeployedPage(page);
   log("demo reported ready");
+  await assertWasmDelivery(page);
+  log("wasm delivery headers verified");
   await renderImpulseResponse(page);
   log("demo render completed");
   await auditionAndUpdateImpulseResponse(page);
@@ -128,6 +130,42 @@ try {
 } finally {
   log(`finished after ${elapsedMs()}ms`);
   await browser.close();
+}
+
+// assertWasmDelivery checks the headers the host sends for the demo binary.
+// WebAssembly.instantiateStreaming, which web/worker.js uses, rejects any
+// response that is not typed application/wasm, so a host misconfiguration must
+// fail the deployment smoke test rather than silently degrade the demo.
+async function assertWasmDelivery(page) {
+  const wasmUrl = new URL("algo_acoustics_demo.wasm", pageUrl).toString();
+  const response = await page.request.get(wasmUrl);
+
+  if (!response.ok()) {
+    throw new Error(`${wasmUrl} returned HTTP ${response.status()}`);
+  }
+
+  const headers = response.headers();
+  log(
+    `wasm headers: content-type=${headers["content-type"] ?? "(none)"} cache-control=${
+      headers["cache-control"] ?? "(none)"
+    } etag=${headers["etag"] ?? "(none)"}`,
+  );
+
+  const contentType = (headers["content-type"] ?? "").split(";")[0].trim();
+  if (contentType !== "application/wasm") {
+    throw new Error(
+      `${wasmUrl} served as "${contentType || "(none)"}", want "application/wasm"; ` +
+        "WebAssembly.instantiateStreaming rejects any other type",
+    );
+  }
+
+  // An unhashed filename must stay revalidatable, otherwise a deployed update
+  // cannot reach browsers that already cached the previous build.
+  if (!headers["etag"] && !headers["last-modified"]) {
+    throw new Error(
+      `${wasmUrl} sent neither ETag nor Last-Modified, so caches cannot revalidate it`,
+    );
+  }
 }
 
 async function renderImpulseResponse(page) {

@@ -32,14 +32,32 @@ envelope and the reasoning behind the limits.
 ## Local run
 
 ```bash
-./web/build-wasm.sh
-python3 -m http.server 8080 -d web
+just web-demo
 ```
 
 Open <http://localhost:8080>.
 
-Or run:
+That builds the module and serves `web/` through `web/devserver`, a small static
+server that types `.wasm` as `application/wasm` and applies the demo's cache
+policy. The MIME type is not cosmetic: the worker loads the module with
+`WebAssembly.instantiateStreaming`, which rejects any other type, so a generic
+static server (`python3 -m http.server` on a host without a wasm entry in
+`/etc/mime.types`) fails to start the demo.
+
+The equivalent by hand:
 
 ```bash
-just web-demo
+./web/build-wasm.sh
+go run ./web/devserver -dir web -addr :8080
 ```
+
+Pass `-coi` to add COOP/COEP headers. The demo does not need them — it renders in
+a plain worker and never uses `SharedArrayBuffer` — but the flag makes the policy
+testable.
+
+## Deployment
+
+`web/_headers` covers Netlify and Cloudflare Pages. GitHub Pages, where the demo
+is deployed, sends the right headers on its own and accepts no overrides. See
+[docs/web-deployment.md](../docs/web-deployment.md) for the full policy, host
+configuration snippets, and how to verify a deployment.

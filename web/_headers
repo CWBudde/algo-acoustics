@@ -1,0 +1,33 @@
+# Header rules for hosts that read a Netlify-style `_headers` file
+# (Netlify, Cloudflare Pages). GitHub Pages ignores this file; see
+# docs/web-deployment.md for what GitHub Pages sends on its own and for
+# nginx/Apache/Caddy equivalents.
+
+# WebAssembly.instantiateStreaming rejects any response that is not typed
+# application/wasm. The demo binary has no content hash in its name, so it is
+# revalidated on every load rather than cached immutably.
+/algo_acoustics_demo.wasm
+  Content-Type: application/wasm
+  Cache-Control: no-cache
+
+/*.js
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache
+
+/*.mjs
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache
+
+/*.css
+  Cache-Control: no-cache
+
+/*.html
+  Cache-Control: no-cache
+
+# Bundled dry-signal samples change only when the files are replaced.
+/audio/*
+  Cache-Control: public, max-age=86400
+
+# COOP/COEP are deliberately absent: the demo runs its renders in a plain
+# Worker and never touches SharedArrayBuffer, and `require-corp` would gate the
+# CDN-hosted three.js and Google Fonts subresources for no benefit.

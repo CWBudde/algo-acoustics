@@ -105,6 +105,7 @@ func cloneDemoMesh(mesh *demoMesh) *demoMesh {
 func registerDemoAPI() {
 	api := js.Global().Get("Object").New()
 	api.Set("version", buildinfo.String())
+	api.Set("limits", demoLimitsToJS())
 	api.Set("renderScene", js.FuncOf(renderSceneJS))
 	api.Set("createRoom", js.FuncOf(createRoomJS))
 	api.Set("setMaterial", js.FuncOf(setMaterialJS))

@@ -91,9 +91,9 @@ smoke-web-demo: build-web-demo
     test -s web/algo_acoustics_demo.wasm
     test -s web/wasm_exec.js
 
-# Serve the browser demo locally
+# Serve the browser demo locally with the MIME and cache headers it needs
 web-demo: build-web-demo
-    python3 -m http.server 8080 -d web
+    go run ./web/devserver -dir web -addr :8080
 
 # Run all checks (formatting, linting, tests, tidiness)
 ci: check-formatted test lint check-tidy

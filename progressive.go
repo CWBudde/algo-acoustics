@@ -292,6 +292,23 @@ func fillProgressiveDefaults(cfg ProgressiveConfig) ProgressiveConfig {
 	return cfg
 }
 
+// ComputeStatisticalMetrics returns the Tier 1 estimates for a scene without
+// running any simulation. It is the same computation RenderProgressive performs
+// before its first simulated tier, exported so callers that drive their own tier
+// sequence — the browser demo does, because it must also cover render modes and
+// connected rooms that RenderProgressive does not — still share one definition
+// of what the statistical tier reports.
+//
+// Non-shoebox rooms yield an empty result: the Sabine and Eyring estimators are
+// defined from a shoebox's volume and surface areas.
+func ComputeStatisticalMetrics(sc *scene.Scene) *StatisticalMetrics {
+	if sc == nil {
+		return &StatisticalMetrics{}
+	}
+
+	return computeStatisticalMetrics(sc)
+}
+
 func computeStatisticalMetrics(sc *scene.Scene) *StatisticalMetrics {
 	if sc.Room.Kind != scene.RoomKindShoebox {
 		return &StatisticalMetrics{}
