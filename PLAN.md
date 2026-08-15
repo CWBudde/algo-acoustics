@@ -412,7 +412,7 @@ Final scores, identical on amd64 and arm64:
 
 ---
 
-### Phase 27 — Dependency Currency Across the `algo-*` Stack
+### Phase 27 — Dependency Currency Across the `algo-*` Stack (Complete except the standing guard)
 
 > Not a feature phase. The four sibling modules had drifted onto three different
 > `algo-fft` versions, which made it impossible to take an upstream fix in one
@@ -434,23 +434,50 @@ v0.6 and v0.7 lines, so code written against v0.6.x fails to compile with
 `algo-acoustics` could not simply take `algo-dsp` `main`: the bump pulls
 `algo-fft` v0.7.x in, which `algo-pde` v0.2.1 does not build against.
 
-- [ ] Release `algo-fft` from `main` (87 unreleased commits, plus a `[0.7.5]`
-      changelog section that was never tagged).
-- [ ] Move `algo-pde` from `algo-fft` v0.6.15 to the new tag, migrating the
-      `PlanReal2D`/`PlanReal3D` call sites; release it.
-- [ ] Move `algo-dsp` from `algo-fft` v0.7.3 to the new tag; release it. `main`
-      already carries the `algo-vecmath` v0.1.3 bump and the fused-AXPY
-      `conv.DirectTo` rewrite, neither of which has ever been tagged.
-- [ ] Bump all four dependencies here, then run the full suite **and**
-      `roombench` on amd64 and arm64.
-- [ ] Confirm `testdata/regression/` specifically. The `conv.DirectTo` rewrite is
-      bit-identical on amd64 but **not** on arm64, where the NEON AXPY fuses a
-      multiply-add that the old two-pass form rounded twice. Given that Phase 26
-      was itself about FMA-contraction determinism, this must be measured against
-      the fixtures rather than waved through.
+- [x] Released `algo-fft` **v0.8.0** from `main` (97 commits since v0.7.4). A
+      minor rather than patch bump because `KernelEightStep` was removed — it
+      duplicated `KernelSixStep`, and enum value 4 is retired rather than reused.
+      The orphaned `[0.7.5]` changelog section was given a retroactive `v0.7.5`
+      tag at the commit that introduced it, so no release note claims a tag that
+      does not exist.
+- [x] Moved `algo-pde` to `algo-fft` v0.8.0 and released **v0.2.2**. The generic
+      migration was `PlanRealT[F, C]` → `PlanReal[F, C]` plus instantiation of
+      the 2D/3D plans. **The float32 → float64 promotion was deliberately not
+      taken**: the new `NewPlanReal2D64`/`3D64` constructors would have silently
+      deleted `WithFloat32`/`WithRealFFT`, which are a documented public accuracy
+      trade (~1e-6 vs ~1e-14) with `UsedRealFFT()` reporting which path ran, and
+      would have broken the test that asserts the two paths _differ_. Patch, not
+      minor: algo-pde's own API and numerical output are unchanged. The stale
+      `poisson/options.go` comment blaming the dependency for the float32 buffers
+      was corrected.
+- [x] Moved `algo-dsp` to `algo-fft` v0.8.0 and released **v0.7.0** — a pure
+      dependency move, no source change (`KernelEightStep` appears nowhere, and
+      the repo persists no wisdom files to invalidate). Minor rather than patch
+      because the release carries the fused-AXPY `conv.DirectTo` rewrite, whose
+      arm64 output is not bit-identical to v0.6.0's. Its benchmark guard reports
+      identical allocation counts and `B/op` moving only downward.
+- [x] Bumped all four here — algo-fft v0.6.11 → v0.8.0, algo-pde v0.2.1 → v0.2.2,
+      algo-dsp v0.5.1 → v0.7.0, algo-vecmath already v0.1.3. **No source change
+      was needed**: this repo only uses `NewPlan64`, `NewPlanReal64`,
+      `*Plan[complex128]` and `Forward`/`Inverse`, none of which moved.
+- [x] Confirmed the regression fixtures on **both** architectures. `roombench`
+      reports 4/4 against the checked-in baselines on amd64 and, under
+      `qemu-aarch64-static`, on arm64. `hybrid`, `ir`, `metrics`, `pde` and
+      `geometry` all pass on arm64 too — `hybrid/network.go` is the caller that
+      made this necessary, since it uses `conv.Convolve`/`conv.Direct` directly.
+      So the predicted arm64 ulp shift does not move any fixture.
 - [ ] Add a standing check so the drift cannot silently recur — a CI job or a
       `just` recipe that fails when a sibling `cwbudde` module is behind its
-      latest tag.
+      latest tag. **Still open**, and still needed: `algo-approx` is pinned at
+      `v0.1.0` in `algo-dsp` while `v0.2.0` exists, which is the same drift
+      starting over.
+
+> **Pre-existing, found while verifying and deliberately not fixed here:**
+> `gpu/worker` does not build for any non-Linux `GOOS`. `shm_linux.go` is
+> `//go:build linux` but `fdtd.go` carries no tag, so it fails on `darwin/arm64`
+> and `darwin/amd64` alike — confirmed identical at the pre-bump commit, so it is
+> unrelated to this phase. `linux/arm64` builds fine, which is why the emulated
+> arm64 CI job never caught it. It needs its own fix.
 
 ---
 
