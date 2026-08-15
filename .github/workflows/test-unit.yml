@@ -38,6 +38,48 @@ jobs:
       - name: Smoke test roomir validate
         run: go run ./cmd/roomir validate testdata/rooms/shoebox_simple.json
 
+  arm64-determinism:
+    name: Unit (emulated arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Register aarch64 binfmt handler
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      # Go contracts `x*y + z` into a single FMA on arm64 but not on amd64, so
+      # geometric predicates decided by an exact tie classify differently per
+      # architecture. See docs/maintenance.md for the diagnosis procedure.
+      #
+      # Scope note: this job deliberately covers ./pde/... and ./geometry/...
+      # only, because emulation is roughly 10x slower and these are the packages
+      # where a result can hinge on an exact floating-point tie. The macOS job
+      # already runs the whole portable suite on real arm64; this one exists to
+      # fail earlier and more cheaply.
+      #
+      # The tree as a whole does build for arm64 as of algo-vecmath v0.1.2 —
+      # v0.1.1 never assembled there, because arch/arm64/neon/dotproduct.s used
+      # the ARM32 mnemonics VFMULD/VFADDD. So widening this scope is a cost
+      # decision now, not a blocked one.
+      #
+      # setup-qemu-action installs a fix-binary binfmt handler, so arm64 test
+      # binaries execute directly and no `-exec qemu-aarch64-static` wrapper is
+      # needed. Locally, where the handler may not be registered, use
+      # `GOOS=linux GOARCH=arm64 go test -exec qemu-aarch64-static ...` instead.
+      - name: Test determinism-sensitive packages on arm64
+        env:
+          GOARCH: arm64
+        run: go test ./pde/... ./geometry/...
+
   linux-gpu-host:
     name: Unit (Linux GPU host adapter)
     runs-on: ubuntu-latest

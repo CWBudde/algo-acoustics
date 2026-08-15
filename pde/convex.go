@@ -49,11 +49,29 @@ func NewConvexRoom(walls []geometry.Plane, vertices []geometry.Vec3) (*ConvexRoo
 	return r, nil
 }
 
+// sideOf is geometry.Plane.SideOf with the three products rounded before they
+// are summed.  Plane.SideOf goes through Vec3.Dot, whose nx*px + ny*py + nz*pz
+// Go is free to contract into FMAs — which arm64 does and amd64 does not — so
+// the same point can land on opposite sides of a plane it very nearly touches,
+// depending on the architecture.  Grid classification decides exactly such ties
+// (a wall on a node plane), so it uses this form instead.
+//
+// The rest of the codebase keeps using Plane.SideOf: it is the hot path for ISM
+// and ray tracing, where no result hinges on an exact tie.
+// See docs/maintenance.md.
+func sideOf(w geometry.Plane, p geometry.Vec3) float64 {
+	x := float64(w.Normal.X * p.X)
+	y := float64(w.Normal.Y * p.Y)
+	z := float64(w.Normal.Z * p.Z)
+
+	return x + y + z - w.Distance
+}
+
 // PointInside reports whether p is strictly inside the convex room.
 // A point is inside when it is on the positive side of every wall plane.
 func (r *ConvexRoom) PointInside(p geometry.Vec3) bool {
 	for _, w := range r.Walls {
-		if w.SideOf(p) <= 0 {
+		if sideOf(w, p) <= 0 {
 			return false
 		}
 	}
@@ -76,7 +94,7 @@ func (r *ConvexRoom) DistanceToNearestWall(p geometry.Vec3) WallDistance {
 	best := WallDistance{Dist: math.Inf(1), WallIdx: -1}
 
 	for i, w := range r.Walls {
-		d := w.SideOf(p) // positive = inside this half-plane
+		d := sideOf(w, p) // positive = inside this half-plane
 		if d < best.Dist {
 			best = WallDistance{Dist: d, Normal: w.Normal, WallIdx: i}
 		}

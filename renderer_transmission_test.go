@@ -71,23 +71,73 @@ func TestTransmissionRendererEarlyIsTranslationInvariant(t *testing.T) {
 		t.Fatalf("event counts = base %d shifted %d", len(baseEvents), len(shiftedEvents))
 	}
 
-	for index := range baseEvents {
-		baseEvent := baseEvents[index]
-		shiftedEvent := shiftedEvents[index]
+	// Match as a multiset rather than index-by-index.  Translating the scene
+	// perturbs each arrival time by up to an ulp, and distinct events here are
+	// separated by less than that, so the solver's (time, kind, distance) sort
+	// legitimately permutes them.  Requiring a bijection keeps the physical
+	// claim -- every event survives translation, none appears or vanishes --
+	// without asserting an ordering the arithmetic cannot guarantee.
+	// The matching has to be a true maximum bipartite matching, not first-fit.
+	// Taking the first free candidate makes the outcome depend on event order:
+	// if one base event is compatible with two shifted events while a later base
+	// event is compatible with only the first of them, grabbing the first here
+	// strands the later one and the test fails even though a perfect matching
+	// exists. Kuhn's augmenting-path algorithm has no such dependence, so a
+	// failure below really does mean an event appeared or vanished.
+	matchOf := make([]int, len(shiftedEvents))
+	for i := range matchOf {
+		matchOf[i] = -1
+	}
 
-		if math.Abs(baseEvent.TimeSeconds-shiftedEvent.TimeSeconds) > 1e-12 ||
-			math.Abs(baseEvent.Amplitude-shiftedEvent.Amplitude) > 1e-12 ||
-			baseEvent.Direction.Distance(shiftedEvent.Direction) > 1e-12 ||
-			baseEvent.Kind != shiftedEvent.Kind {
-			t.Fatalf("event[%d] differs after translation: base=%#v shifted=%#v", index, baseEvent, shiftedEvent)
-		}
+	var augment func(baseIndex int, seen []bool) bool
 
-		for bandIndex := range baseEvent.BandGain {
-			if math.Abs(baseEvent.BandGain[bandIndex]-shiftedEvent.BandGain[bandIndex]) > 1e-12 {
-				t.Fatalf("event[%d] band[%d] differs: base=%v shifted=%v", index, bandIndex, baseEvent.BandGain[bandIndex], shiftedEvent.BandGain[bandIndex])
+	augment = func(baseIndex int, seen []bool) bool {
+		for candidate := range shiftedEvents {
+			if seen[candidate] || !eventsAgreeAfterTranslation(baseEvents[baseIndex], shiftedEvents[candidate]) {
+				continue
+			}
+
+			seen[candidate] = true
+
+			// Free, or its current partner can be rehoused elsewhere.
+			if matchOf[candidate] == -1 || augment(matchOf[candidate], seen) {
+				matchOf[candidate] = baseIndex
+
+				return true
 			}
 		}
+
+		return false
 	}
+
+	for index := range baseEvents {
+		if !augment(index, make([]bool, len(shiftedEvents))) {
+			t.Fatalf("base event[%d] has no counterpart after translation: %#v", index, baseEvents[index])
+		}
+	}
+}
+
+// eventsAgreeAfterTranslation reports whether two events describe the same
+// arrival, up to the rounding a rigid translation of the scene introduces.
+func eventsAgreeAfterTranslation(a, b ir.Event) bool {
+	if a.Kind != b.Kind ||
+		math.Abs(a.TimeSeconds-b.TimeSeconds) > 1e-12 ||
+		math.Abs(a.Amplitude-b.Amplitude) > 1e-12 ||
+		a.Direction.Distance(b.Direction) > 1e-12 {
+		return false
+	}
+
+	if len(a.BandGain) != len(b.BandGain) {
+		return false
+	}
+
+	for bandIndex := range a.BandGain {
+		if math.Abs(a.BandGain[bandIndex]-b.BandGain[bandIndex]) > 1e-12 {
+			return false
+		}
+	}
+
+	return true
 }
 
 func TestTransmissionRendererValidatesOriginalScene(t *testing.T) {

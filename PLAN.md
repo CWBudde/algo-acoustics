@@ -308,39 +308,212 @@ result exactly — 19 peaks, 3 matched):
   its fractions sit at `0.9999999999999992`, ~8e-16 from the same cliff. Any
   room whose dimensions are an exact multiple of `h` is exposed.
 
-Neither obvious one-line fix works, so this needs a decision at the stencil
-contract level rather than inside `fracToWall`:
+The measurement that settles it: counting only directions whose neighbour is
+genuinely exterior (the earlier count conflated those with unwritten `Frac`
+slots, which are also 0),
 
-| Attempt                       | Cross-platform | Collateral                                                                                                               |
-| ----------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `return 1` instead of `0`     | 375 flips → 0  | `TestIBMValidation_RectangularEigenfreqs` drops to 0/5 matched — the `0` sentinel is load-bearing for axis-aligned walls |
-| tolerance `frac > 1-1e-9 → 0` | 375 flips → 0  | breaks `TestIBMStencil_UniformFieldLaplacianZero` and `TestIBMValidation_EnergyDecaySabine`                              |
+| fixture                    | ext-neighbour dirs | `frac == 0` | `frac == 1` | just below 1 | sub-cell |
+| -------------------------- | ------------------ | ----------- | ----------- | ------------ | -------- |
+| shoebox 3x2.5x2, h = 0.05  | 14206              | **2891**    | 0           | 11315        | 0        |
+| rect 4x4x4, h = 0.5        | 294                | 0           | **294**     | 0            | 0        |
+| triangle L=3 z=10, h = 0.1 | 11442              | **375**     | 0           | 375          | 10692    |
 
-- [ ] Define the intended meaning of `BoundaryInfo.Frac == 0` for a direction whose neighbour is **exterior**. The doc comment says "the neighbor in that direction is interior", which cannot hold in the branch that produces it (`pde/ibm_grid.go:22-26`)
-- [ ] Make the stencil consistent with that definition, and reconcile the two validation tests that currently encode opposite assumptions about walls on node planes
-- [ ] Remove the dependence on rounding: derive node positions so a wall coincident with a node plane classifies identically regardless of FMA contraction
-- [ ] Regression: `ClassifyGrid` output byte-identical between amd64 and arm64 for both the triangle and shoebox fixtures
+`rect 4x4x4` at `h = 0.5` is the control: origin and spacing are exact in binary,
+nothing rounds, and every wall direction comes out at exactly 1 — which is why
+`TestIBMStencil_UniformFieldLaplacianZero` passes on it. The shoebox's 2891 zeros
+and the triangle's 375 are the same geometry rounding the other way. So `frac == 0`
+on an exterior neighbour was never a semantics to be chosen, it was a bug, and
+the exact fixture shows the intended value is 1. It also means the shoebox has
+been modelling 20 % of its wall directions as pressure-release rather than rigid
+since Phase 13 — a physics defect, not only a portability one.
+
+- [x] Define the intended meaning of `BoundaryInfo.Frac == 0` for a direction whose neighbour is **exterior** — it is now unreachable. `Frac == 0` means only "the neighbour is an active node"; an exterior neighbour always carries `Frac` in `(0, 1]` (`pde/ibm_grid.go`)
+- [x] Make the stencil consistent with that definition — no stencil change was needed once the sentinel became disjoint. `fracToWall` returns `(frac, ok)`, clamps a fraction above 1 instead of returning 0, snaps a near-tie to exactly 1 (`nodePlaneTol = 1e-9`) and floors a degenerate cut cell (`minWallFrac = 1e-6`)
+- [x] Remove the dependence on rounding — `offsetFromOrigin` rounds `i*h` explicitly before adding, for both the origin and every node position, and `sideOf` is an FMA-free `Plane.SideOf` shared by `PointInside`, `DistanceToNearestWall` and `fracToWall` so the inside test and the wall distance cannot disagree. `geometry.Plane.SideOf` is left alone: it is the ISM/ray-tracing hot path and decides no ties
+- [x] Regression: `ClassifyGrid` output byte-identical between amd64 and arm64 — `TestClassifyGridGolden`, verified under `qemu-aarch64`
+
+> Because amd64 does not contract FMA today, the FMA-free rewrite reproduces the
+> amd64 classification bit-for-bit and arm64 converges onto it: the class hashes
+> are unchanged for all three fixtures. The only intended amd64 behaviour change
+> is the frac clamp.
+>
+> One residual, deliberately not chased: the triangle fixture's own planes are
+> built from `math.Sqrt(3)` in the test helper and differ by 2 ulps across
+> architectures, so its _fraction_ hash is not portable. Its classification is,
+> which is the point — a 2-ulp wall plane no longer flips 375 boundary
+> conditions. The golden test therefore covers the exact-multiple fixtures, and
+> `TestClassifyGridFracInvariant` covers the triangle.
 
 #### 26.2 Triangle modal validation correctness (`pde/ibm_validation_test.go`)
 
 Two defects that made the test a coin flip, which is why a 1-ulp difference could
 decide pass/fail at all:
 
-- [ ] `nSteps = int(0.5/dt)` uses a nominal `dt = 0.95*h/(c*sqrt(3))` the test derives itself, but `runFDTD` uses `0.95*stencil.CFLLimit(c)` — 5.3x smaller. The run covers 94.7 ms, not the documented 500 ms, giving 8.06 Hz FFT bins against a 0.5% tolerance (0.19 Hz at 38 Hz). Derive `nSteps` from the timestep the solver actually uses
-- [ ] The "tall z pushes z-modes out of the analysis band" premise is inverted: `c/(2*10 m)` = 17.15 Hz is the mode _spacing_, so z-harmonics fill 30–500 Hz. Either pick an extrusion that genuinely isolates the 2D modes or compare against the full 3D mode set
-- [ ] Express the match tolerance relative to the achievable bin width instead of a fixed 0.5%
-- [ ] Retune the pass criterion against physics: with 26.1 fixed and the duration corrected, both architectures agree exactly at 30 peaks / 2 matched, so the current threshold of 5 encodes the lottery rather than solver accuracy
+- [x] `nSteps` now derives from the timestep the solver actually uses — `runFDTD` takes a duration in seconds and computes `nSteps` from `0.95*stencil.CFLLimit(c)`. The triangle runs 16504 steps rather than 3126, and all three modal tests realise a true 500 ms and a 2.00 Hz resolution
+- [x] The inverted "tall z isolates the 2D modes" premise is gone: `prismEigenfreqs` combines any cross-section's 2D set with the axial family, and both the triangle and the cylinder are scored against their full 3D mode set. Against the 2D-only set the solver's recall lands _below_ chance (−4 pp triangle, −15 pp cylinder), i.e. the peaks avoid those frequencies — the 2D sets were actively wrong
+- [x] Match tolerance is `max(0.5 %·f, 1.5·df)` with `df = 1/(nSteps·dt)`, the true resolution rather than the zero-padded bin spacing
+- [x] Pass criterion retuned — see below
+
+Retuning turned up two further problems, both of which had to be fixed before a
+threshold could mean anything:
+
+- **The peak-first count is uninformative.** `logChanceLevel` reports how much of
+  the band the tolerance windows cover: 81 % for the shoebox, **97.5 %** for the
+  prism. At that density every possible peak matches something, so 40/40 is
+  arithmetic, not evidence. Scoring is now `requireModeRecall` — how many
+  analytical modes the solver actually _produced_ — which gets harder, not
+  easier, as the mode set thickens, and the test fails outright if recall ever
+  falls to the chance level.
+- **A sealed rigid room has nowhere to put the source's injected volume.** With
+  the walls correctly rigid after 26.1, the receiver's time series settles on a
+  DC offset whose bin is ~49x the strongest acoustic mode, and the peak
+  threshold — 1 % of the _global_ maximum — then rejects nearly every mode: the
+  shoebox dropped from 40 detected peaks to 5. This was masked before 26.1
+  precisely because those 2891 pressure-release directions vented the enclosure.
+  `extractPeakFreqs` now subtracts the mean, applies a Hann taper, and takes its
+  threshold from the in-band maximum.
+
+Final scores, identical on amd64 and arm64:
+
+| test             | band      | recall | chance | threshold |
+| ---------------- | --------- | ------ | ------ | --------- |
+| shoebox          | 30–153 Hz | 67 %   | 39 %   | ≥ 60 %    |
+| triangular prism | 30–187 Hz | 35 %   | 27 %   | ≥ 30 %    |
+| cylinder         | 20–147 Hz | 36 %   | 28 %   | ≥ 30 %    |
+
+> **Revised 2026-08-16 after PR review — the first table published here was
+> wrong, and materially so.** It read shoebox 75 %, prism 58 % / 40 % chance over
+> 30–500 Hz, cylinder 73 % / 57 % over 20–400 Hz. Three defects inflated it:
+>
+> - **Recall double-counted.** Each analytical mode scanned the whole peak list
+>   independently, so one detected peak could satisfy dozens of modes. With ~40
+>   peaks against the prism's 953 modes, most of that 58 % was a handful of peaks
+>   counted over and over. Peaks are now consumed at most once, and modes closer
+>   together than the resolution are clustered first, since they are not
+>   separable even in principle.
+> - **The triangle's analytical set was at half its true frequencies.**
+>   `triangleEigenfreqs` used `c/(3L)`; Lamé's closed form for the equilateral
+>   triangle gives `2c/(3L)·√(m²+mn+n²)`. Every transverse mode of the prism was
+>   therefore compared against a frequency the room cannot produce.
+> - **The cylinder's analytical set was truncated.** `besselPrimeZeros` was a
+>   13-entry table stopping at angular order m = 4, so it omitted whole mode
+>   families — including four roots inside its own range. The roots are now
+>   computed to the band edge, giving 32 for this fixture rather than 13.
+>
+> With all three corrected, the prism and cylinder fall **below** their chance
+> levels when scored over the full band — i.e. over 30–500 Hz those fixtures
+> demonstrate nothing, and no threshold could have made them meaningful.
+> Lengthening the run does not help: at 2 s the resolution improves to 0.5 Hz and
+> the set resolves into 73 clusters, but the solver still yields only 40 peaks,
+> capping recall at 55 % by construction.
+>
+> Both are therefore scored on their sparse low bands, where the tolerance
+> windows cover ~27 % of the band instead of ~100 %, and both clear chance by
+> about 8 points. That is a real but weak claim, and weaker than what this
+> document previously asserted. The shoebox — 67 % against 39 % — remains the
+> strong one. `requireModeRecall` fails outright if any of them falls back to its
+> chance level, so that margin, not the threshold, is the real assertion.
 
 #### 26.3 Cross-platform determinism guard
 
-- [ ] Golden test over `ClassifyGrid` (node counts plus a fraction hash) for a room whose dimensions are an exact multiple of `h`
-- [ ] Document the hazard in `docs/maintenance.md`: Go contracts `x*y + z` into FMA on arm64 but not amd64, so geometric predicates must not be decided by exact ties
-- [ ] Run the portable test suite on arm64 in CI (emulated or native) so this class of divergence is caught before it reaches the macOS job
+- [x] Golden test over `ClassifyGrid` — `TestClassifyGridGolden` (dims, class counts, FNV-64a fraction hash) over three fixtures whose dimensions are exact multiples of `h`, plus `TestClassifyGridFracInvariant` and `TestNodePositionsFMAFree` (`pde/ibm_determinism_test.go`)
+- [x] Hazard documented in `docs/maintenance.md` — the contraction rule, the explicit-conversion suppression idiom, the qemu reproduction procedure and the `-d=fmahash=` bisection
+- [x] arm64 in CI — `arm64-determinism` job in `.github/workflows/test-unit.yml`, `docker/setup-qemu-action` plus `GOARCH=arm64 go test ./pde/... ./geometry/...`. Scoped to the tie-sensitive packages because emulation is ~10x slower; the macOS job still covers the full portable suite on native arm64
 
-> **Also open (unrelated dependency bug, same CI job):** the macOS integration
-> job fails to build `algo-vecmath@v0.1.1` — `arch/arm64/neon/dotproduct.s` uses
-> the ARM32 VFP mnemonics `VFMULD`/`VFADDD` in an arm64 file, so the package has
-> never assembled on Apple Silicon. Needs a fix upstream and a `go.mod` bump.
+> **Also open (unrelated dependency bug, same CI job) — resolved:** the macOS
+> integration job failed to build `algo-vecmath@v0.1.1`, whose
+> `arch/arm64/neon/dotproduct.s` used the ARM32 VFP mnemonics `VFMULD`/`VFADDD`
+> in an arm64 file. Fixed upstream in v0.1.2 (scalar `FLDPD` pair loads with two
+> `FMADDD` accumulators, not the vector form); `go.mod` is bumped and
+> `GOARCH=arm64 go build ./...` now succeeds for the whole tree.
+>
+> Still open upstream, found while verifying the above: at v0.1.2
+> `arch/arm64/neon/scale.s` branches to the scalar path _past_ the `ANDS` that
+> initialises the loop counter, so `ScaleBlock`/`ScaleBlockInPlace` read off the
+> end of the buffer for a single-element slice. Reproduced under qemu.
+> `algo-acoustics` does not call those entry points, so it is not blocking here.
+> **Resolved upstream in `algo-vecmath` v0.1.3** (2026-08-15), which fixes the
+> out-of-bounds write and rewrites the NEON backend as true SIMD. `go.mod` is
+> bumped; see Phase 27.
+
+---
+
+### Phase 27 — Dependency Currency Across the `algo-*` Stack (Complete)
+
+> Not a feature phase. The four sibling modules had drifted onto three different
+> `algo-fft` versions, which made it impossible to take an upstream fix in one
+> without breaking another. This phase brings the whole stack onto current tags
+> and keeps it there.
+
+The state that triggered it (2026-08-15):
+
+| module           | pinned `algo-fft` | own latest tag           |
+| ---------------- | ----------------- | ------------------------ |
+| `algo-pde`       | v0.6.15           | v0.2.1                   |
+| `algo-dsp`       | v0.7.3            | v0.6.0, `main` untagged  |
+| `algo-acoustics` | v0.6.11           | —                        |
+| `algo-fft`       | —                 | v0.7.4, `main` +87 ahead |
+
+`algo-fft`'s generic `PlanReal2D` / `PlanReal3D` changed signature between the
+v0.6 and v0.7 lines, so code written against v0.6.x fails to compile with
+`cannot use generic type PlanReal2D[...] without instantiation`. That is why
+`algo-acoustics` could not simply take `algo-dsp` `main`: the bump pulls
+`algo-fft` v0.7.x in, which `algo-pde` v0.2.1 does not build against.
+
+- [x] Released `algo-fft` **v0.8.0** from `main` (97 commits since v0.7.4). A
+      minor rather than patch bump because `KernelEightStep` was removed — it
+      duplicated `KernelSixStep`, and enum value 4 is retired rather than reused.
+      The orphaned `[0.7.5]` changelog section was given a retroactive `v0.7.5`
+      tag at the commit that introduced it, so no release note claims a tag that
+      does not exist.
+- [x] Moved `algo-pde` to `algo-fft` v0.8.0 and released **v0.2.2**. The generic
+      migration was `PlanRealT[F, C]` → `PlanReal[F, C]` plus instantiation of
+      the 2D/3D plans. **The float32 → float64 promotion was deliberately not
+      taken**: the new `NewPlanReal2D64`/`3D64` constructors would have silently
+      deleted `WithFloat32`/`WithRealFFT`, which are a documented public accuracy
+      trade (~1e-6 vs ~1e-14) with `UsedRealFFT()` reporting which path ran, and
+      would have broken the test that asserts the two paths _differ_. Patch, not
+      minor: algo-pde's own API and numerical output are unchanged. The stale
+      `poisson/options.go` comment blaming the dependency for the float32 buffers
+      was corrected.
+- [x] Moved `algo-dsp` to `algo-fft` v0.8.0 and released **v0.7.0** — a pure
+      dependency move, no source change (`KernelEightStep` appears nowhere, and
+      the repo persists no wisdom files to invalidate). Minor rather than patch
+      because the release carries the fused-AXPY `conv.DirectTo` rewrite, whose
+      arm64 output is not bit-identical to v0.6.0's. Its benchmark guard reports
+      identical allocation counts and `B/op` moving only downward.
+- [x] Bumped all four here — algo-fft v0.6.11 → v0.8.0, algo-pde v0.2.1 → v0.2.2,
+      algo-dsp v0.5.1 → v0.7.0, algo-vecmath already v0.1.3. **No source change
+      was needed**: this repo only uses `NewPlan64`, `NewPlanReal64`,
+      `*Plan[complex128]` and `Forward`/`Inverse`, none of which moved.
+- [x] Confirmed the regression fixtures on **both** architectures. `roombench`
+      reports 4/4 against the checked-in baselines on amd64 and, under
+      `qemu-aarch64-static`, on arm64. `hybrid`, `ir`, `metrics`, `pde` and
+      `geometry` all pass on arm64 too — `hybrid/network.go` is the caller that
+      made this necessary, since it uses `conv.Convolve`/`conv.Direct` directly.
+      So the predicted arm64 ulp shift does not move any fixture.
+- [x] Added a standing guard, in this repo and the seven siblings:
+      `scripts/release-guard.sh`, exposed as `just check-deps`,
+      `just check-unreleased` and `just tag-release vX.Y.Z`, plus a weekly
+      `dep-drift` workflow that files an issue, and a Renovate config that
+      groups the whole `cwbudde` family into one bump PR. The gate refuses to
+      tag on a dirty tree, an unpushed default branch, an out-of-order or
+      existing tag, stale siblings, a missing CHANGELOG section, or an
+      incompatible API change the version does not signal. **That last rule is
+      deliberately stricter than semver**, which exempts `v0.x` — every module
+      here is `v0.x`, so `gorelease` alone would have approved the `v0.7.6`
+      patch bump across the `KernelEightStep` removal. Replaying that exact
+      case, the guard refuses and demands `v0.8.0`. It immediately found two
+      live drifts nobody had flagged: `algo-dsp` pinning `algo-approx v0.1.0`
+      against `v0.2.0`, and `gll-tools` carrying a zero pseudo-version for
+      `go-sofa` that only resolves through a local `replace`.
+
+> **Pre-existing, found while verifying and deliberately not fixed here:**
+> `gpu/worker` does not build for any non-Linux `GOOS`. `shm_linux.go` is
+> `//go:build linux` but `fdtd.go` carries no tag, so it fails on `darwin/arm64`
+> and `darwin/amd64` alike — confirmed identical at the pre-bump commit, so it is
+> unrelated to this phase. `linux/arm64` builds fine, which is why the emulated
+> arm64 CI job never caught it. It needs its own fix.
 
 ---
 
@@ -349,7 +522,11 @@ decide pass/fail at all:
 ```text
 algo-acoustics
 ├── algo-dsp          (convolution, FFT, metrics, filtering)
+│   ├── algo-fft      (transitive; also a direct require here)
+│   ├── algo-vecmath  (transitive; SIMD block kernels)
+│   └── algo-approx   (transitive)
 ├── algo-pde          (Helmholtz shoebox, Phase 8+)
+│   └── algo-fft      (transitive)
 ├── gll-tools         (directivity balloons, Phase 6+)
 ├── wav               (export only, Phase 2+)
 └── go-sofa           (HRTF/BRIR, Phase 7, behind interface)

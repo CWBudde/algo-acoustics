@@ -20,10 +20,26 @@ const (
 )
 
 // BoundaryInfo stores sub-cell geometry for a single boundary node.
-// Frac[axis][dir] is the fractional distance (in 0,1] from this node to
-// the nearest wall along the given axis and direction.  axis: 0=X, 1=Y, 2=Z;
-// dir: 0=negative, 1=positive.  A value of 0 means the neighbor in that
-// direction is interior (no wall crossing within one cell).
+// Frac[axis][dir] is the fractional distance from this node to the nearest
+// wall along the given axis and direction, normalised by the grid spacing.
+// axis: 0=X, 1=Y, 2=Z; dir: 0=negative, 1=positive.
+//
+// Exactly two cases are representable, and they are mutually exclusive:
+//
+//	Frac == 0        the neighbour in that direction is an active node
+//	                 (Interior or Boundary), so no wall is crossed and the
+//	                 stencil reads that neighbour at the full distance h.
+//	Frac in (0, 1]   the neighbour in that direction is exterior, so a wall
+//	                 lies between the two, at distance Frac*h.  The stencil
+//	                 uses the ghost value from the wall boundary condition.
+//
+// A direction with an exterior neighbour therefore never carries Frac == 0.
+// That combination used to be reachable (see fracToWall) and silently imposed
+// a pressure-release wall regardless of the configured WallBC, because the
+// stencil fell through to reading the exterior neighbour's pressure, which is
+// pinned at zero.  Keeping the two cases disjoint is what makes the classifier
+// independent of whether a wall plane rounds just above or just below a node
+// plane — see docs/maintenance.md on FMA contraction.
 type BoundaryInfo struct {
 	Frac    [3][2]float64 // [axis][dir]
 	Normal  geometry.Vec3 // inward normal of nearest wall
@@ -136,12 +152,26 @@ func (g *IBMGrid) nodeIndex(ix, iy, iz int) int {
 }
 
 // nodePos returns the world position of grid node (ix,iy,iz).
+//
+// The offsets are rounded explicitly before being added to the origin.  Go is
+// free to contract `origin + i*h` into a single FMA, which arm64 does and amd64
+// does not, and an unrounded intermediate here shifts every node position by a
+// few ulps — enough to flip the classification of a wall that sits on a node
+// plane.  See offsetFromOrigin.
 func (g *IBMGrid) nodePos(ix, iy, iz int) geometry.Vec3 {
 	return geometry.Vec3{
-		X: g.Origin.X + float64(ix)*g.H,
-		Y: g.Origin.Y + float64(iy)*g.H,
-		Z: g.Origin.Z + float64(iz)*g.H,
+		X: offsetFromOrigin(g.Origin.X, ix, g.H),
+		Y: offsetFromOrigin(g.Origin.Y, iy, g.H),
+		Z: offsetFromOrigin(g.Origin.Z, iz, g.H),
 	}
+}
+
+// offsetFromOrigin returns base + i*h with the product rounded to float64
+// before the addition, so the result cannot depend on FMA contraction.
+// The Go spec guarantees that an explicit floating-point conversion rounds to
+// the target precision, which is what prevents the fusion.
+func offsetFromOrigin(base float64, i int, h float64) float64 {
+	return base + float64(float64(i)*h)
 }
 
 // ClassifyGrid builds an IBMGrid for the given convex room on a uniform
@@ -162,10 +192,13 @@ func ClassifyGrid(room *ConvexRoom, h float64) *IBMGrid {
 	ny := 2*halfNy + 1
 	nz := 2*halfNz + 1
 
+	// Rounded explicitly, for the reason given on offsetFromOrigin: contracting
+	// `center - half*h` into an FMA moves the origin by ~18 ulps on arm64
+	// relative to amd64, which is enough to decide a node-plane tie either way.
 	origin := geometry.Vec3{
-		X: center.X - float64(halfNx)*h,
-		Y: center.Y - float64(halfNy)*h,
-		Z: center.Z - float64(halfNz)*h,
+		X: offsetFromOrigin(center.X, -halfNx, h),
+		Y: offsetFromOrigin(center.Y, -halfNy, h),
+		Z: offsetFromOrigin(center.Z, -halfNz, h),
 	}
 
 	g := &IBMGrid{
@@ -265,8 +298,10 @@ func ClassifyGrid(room *ConvexRoom, h float64) *IBMGrid {
 						nk := iz + offsets[a*2+d][2]
 
 						if ni < 0 || ni >= nx || nj < 0 || nj >= ny || nk < 0 || nk >= nz || !inside[g.nodeIndex(ni, nj, nk)] {
-							// Find nearest wall intersection along this direction.
-							frac := fracToWall(room, p, dir, h)
+							// Neighbour is exterior, so a wall lies between the
+							// two nodes.  fracToWall never reports 0 here, which
+							// is what keeps the sentinel unambiguous.
+							frac, _ := fracToWall(room, p, dir, h)
 							bi.Frac[a][d] = frac
 						}
 					}
@@ -310,34 +345,74 @@ func (g *IBMGrid) buildActiveNodeLists() {
 	}
 }
 
-// fracToWall finds the fractional distance (in 0,1] from point p along
-// direction dir to the nearest wall of the convex room, normalised by h.
-// Returns 0 if no wall is hit within one cell.
-func fracToWall(room *ConvexRoom, p, dir geometry.Vec3, h float64) float64 {
+// nodePlaneTol is the relative window within which a wall is taken to sit
+// exactly one cell away rather than a hair under or over it.
+//
+// Rooms are authored in round numbers, so a wall landing exactly on a node
+// plane is the common case, not a corner case: every dimension that is an exact
+// multiple of h produces one.  Whether the divided-out fraction then evaluates
+// to 0.9999999999999964 or 1.0000000000000142 is decided by the last few ulps
+// of the origin, which differ between amd64 and arm64.  Snapping the whole
+// window to exactly 1 takes that decision away from the rounding mode.
+//
+// The tolerance is far above the ulp noise it absorbs (~1e-14 relative) and far
+// below any sub-cell fraction a real geometry produces, so it cannot swallow a
+// genuine cut cell.
+const nodePlaneTol = 1e-9
+
+// minWallFrac floors the sub-cell fraction for a wall that all but touches a
+// node.  Frac feeds CFLLimit as dt ∝ sqrt(Frac), so an unbounded fraction drives
+// the timestep to zero; and Frac must stay strictly positive to remain
+// distinguishable from the "no wall here" sentinel.  A wall this close to a node
+// is a degenerate cut cell either way, so pinning it is the usual remedy.
+const minWallFrac = 1e-6
+
+// fracToWall finds the fractional distance from point p along direction dir to
+// the nearest wall of the convex room, normalised by h.
+//
+// It is called only for directions whose neighbour node is exterior, which for
+// a convex room means a wall does lie between p and that neighbour.  The result
+// is therefore always in (0, 1]: a fraction above 1 can only come from rounding
+// and is clamped, never turned into the "no wall here" sentinel.  Returning 0
+// here used to make the stencil read the exterior neighbour's pressure, pinned
+// at zero, which imposes a pressure-release wall no matter what WallBC says.
+//
+// ok is false only for degenerate input — no wall plane faces dir at all — in
+// which case the caller falls back to a full cell, i.e. a rigid wall on the
+// node plane, rather than to a soft one.
+func fracToWall(room *ConvexRoom, p, dir geometry.Vec3, h float64) (frac float64, ok bool) {
 	bestT := math.Inf(1)
 
 	for _, w := range room.Walls {
+		// dir is an axis unit vector, so this product is exact.
 		denom := w.Normal.Dot(dir)
 		if denom >= 0 {
 			// Ray moves away from or parallel to this wall's interior side.
 			continue
 		}
 
-		// t = (Distance - Normal·p) / (Normal·dir)
-		t := (w.Distance - w.Normal.Dot(p)) / denom
+		// t = (Distance - Normal·p) / (Normal·dir) = -sideOf(p) / denom.
+		// Expressed through sideOf so that the distance to a wall and the
+		// inside/outside test that produced this boundary node cannot disagree.
+		t := -sideOf(w, p) / denom
 		if t > 0 && t < bestT {
 			bestT = t
 		}
 	}
 
 	if math.IsInf(bestT, 1) {
-		return 0
+		return 1, false
 	}
 
-	frac := bestT / h
-	if frac > 1 {
-		return 0 // wall is beyond the next grid node
-	}
+	frac = bestT / h
 
-	return frac
+	switch {
+	case frac > 1-nodePlaneTol:
+		// Wall on (or within rounding distance of) the next node plane.
+		return 1, true
+	case frac < minWallFrac:
+		return minWallFrac, true
+	default:
+		return frac, true
+	}
 }

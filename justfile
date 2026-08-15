@@ -96,7 +96,7 @@ web-demo: build-web-demo
     go run ./web/devserver -dir web -addr :8080
 
 # Run all checks (formatting, linting, tests, tidiness)
-ci: check-formatted test lint check-tidy
+ci: check-formatted test lint check-tidy check-deps
 
 # Phase 14.1: CPU profiling baseline — record CPU profile from pipeline benchmarks
 # Usage: just profile-cpu [bench=<pattern>]
@@ -162,3 +162,21 @@ clean:
 fix:
     just lint-fix
     just fmt
+
+# Are all github.com/cwbudde/* dependencies at their latest tags?
+check-deps:
+    ./scripts/release-guard.sh deps
+
+# How much work is sitting on main past the latest tag?
+check-unreleased:
+    ./scripts/release-guard.sh unreleased
+
+# Check every release precondition for VERSION without tagging anything.
+release-check VERSION:
+    ./scripts/release-guard.sh gate {{VERSION}}
+
+# Tag VERSION: run the full gate, then create and push the annotated tag.
+# Refuses on a dirty tree, stale siblings, a missing CHANGELOG section, or an
+# incompatible API change the version does not signal. See AGENTS.md.
+tag-release VERSION:
+    ./scripts/release-guard.sh tag {{VERSION}}
