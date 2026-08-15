@@ -144,6 +144,14 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 > symmetry enum values than `pkg/gll.SymmetryType` defines). Fixed on the
 > `gll-tools` main branch; awaiting a release tag and a `go.mod` bump. The
 > models above are unaffected. See `docs/directivity-gll.md`.
+>
+> Interim: rather than leave the affected symmetries rendering silently wrong,
+> the adapter now looks measurements up through the encoding those grid helpers
+> actually read (`repairSymmetryCode`, `directivity/gll.go`) — the test fixture
+> itself is Quarter-symmetric, so the defect was live in our own tests.
+> `TestGLLToolsSymmetryWorkaroundStillNeeded` pins the dependency version and
+> fails when the pin moves, so the remapping cannot survive into the release
+> that fixes this upstream. **Remove it as part of the `go.mod` bump.**
 
 #### 24.2 SOFA file loading (`hrtf/`)
 
@@ -190,6 +198,74 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 
 ---
 
+### Phase 26 — IBM Boundary Robustness and Cross-Platform Determinism
+
+> A wall that lands exactly on a grid node plane is currently resolved by a
+> floating-point tie, so the IBM grid classifies the same room differently on
+> amd64 and arm64. This is a correctness defect in shipped Phase 13 code, not a
+> flaky test: it makes `TestIBMValidation_EquilateralTriangle` fail on macOS CI
+> today. Independent of Phases 24 and 25 — recommended ahead of 25.
+
+#### 26.1 Node-plane degeneracy in grid classification (`pde/`)
+
+Diagnosis, verified locally under `qemu-aarch64` (which reproduces the macOS
+result exactly — 19 peaks, 3 matched):
+
+- `ClassifyGrid` computes `origin.Z = center.Z - float64(halfNz)*h`
+  (`pde/ibm_grid.go:168`). arm64 contracts that into a single FMA, amd64 does
+  not, so the origin differs by 18 ulps (`-0.10000000000000053` vs
+  `-0.10000000000000028`). Rebuilding the arm64 binary with
+  `-gcflags=all=-d=fmahash=…` makes the classification dump byte-identical,
+  which pins FMA contraction as the source.
+- The triangle fixture's ceiling sits at `z = 10.0` with `h = 0.1`, so it falls
+  exactly on a node plane and the nodes one cell below land exactly at `frac == 1`.
+- `fracToWall` ends with `if frac > 1 { return 0 }` (`pde/ibm_grid.go:337`).
+  amd64 computes `1.0000000000000142` (→ `0`, "no wall within a cell"), arm64
+  computes `0.9999999999999964` (→ sub-cell wall). The two branches mean
+  opposite things, so **375 ceiling nodes get a different boundary condition per
+  architecture** — pressure-release versus rigid.
+- Ruled out: instability (a one-ulp seed grows only to 2.7e-13 over 3126 steps)
+  and small cut cells (smallest fraction 0.036).
+- The shoebox path (3.0x2.5x2.0, `h = 0.05`) has zero flips today, but by luck:
+  its fractions sit at `0.9999999999999992`, ~8e-16 from the same cliff. Any
+  room whose dimensions are an exact multiple of `h` is exposed.
+
+Neither obvious one-line fix works, so this needs a decision at the stencil
+contract level rather than inside `fracToWall`:
+
+| Attempt                       | Cross-platform | Collateral                                                                                                               |
+| ----------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `return 1` instead of `0`     | 375 flips → 0  | `TestIBMValidation_RectangularEigenfreqs` drops to 0/5 matched — the `0` sentinel is load-bearing for axis-aligned walls |
+| tolerance `frac > 1-1e-9 → 0` | 375 flips → 0  | breaks `TestIBMStencil_UniformFieldLaplacianZero` and `TestIBMValidation_EnergyDecaySabine`                              |
+
+- [ ] Define the intended meaning of `BoundaryInfo.Frac == 0` for a direction whose neighbour is **exterior**. The doc comment says "the neighbor in that direction is interior", which cannot hold in the branch that produces it (`pde/ibm_grid.go:22-26`)
+- [ ] Make the stencil consistent with that definition, and reconcile the two validation tests that currently encode opposite assumptions about walls on node planes
+- [ ] Remove the dependence on rounding: derive node positions so a wall coincident with a node plane classifies identically regardless of FMA contraction
+- [ ] Regression: `ClassifyGrid` output byte-identical between amd64 and arm64 for both the triangle and shoebox fixtures
+
+#### 26.2 Triangle modal validation correctness (`pde/ibm_validation_test.go`)
+
+Two defects that made the test a coin flip, which is why a 1-ulp difference could
+decide pass/fail at all:
+
+- [ ] `nSteps = int(0.5/dt)` uses a nominal `dt = 0.95*h/(c*sqrt(3))` the test derives itself, but `runFDTD` uses `0.95*stencil.CFLLimit(c)` — 5.3x smaller. The run covers 94.7 ms, not the documented 500 ms, giving 8.06 Hz FFT bins against a 0.5% tolerance (0.19 Hz at 38 Hz). Derive `nSteps` from the timestep the solver actually uses
+- [ ] The "tall z pushes z-modes out of the analysis band" premise is inverted: `c/(2*10 m)` = 17.15 Hz is the mode _spacing_, so z-harmonics fill 30–500 Hz. Either pick an extrusion that genuinely isolates the 2D modes or compare against the full 3D mode set
+- [ ] Express the match tolerance relative to the achievable bin width instead of a fixed 0.5%
+- [ ] Retune the pass criterion against physics: with 26.1 fixed and the duration corrected, both architectures agree exactly at 30 peaks / 2 matched, so the current threshold of 5 encodes the lottery rather than solver accuracy
+
+#### 26.3 Cross-platform determinism guard
+
+- [ ] Golden test over `ClassifyGrid` (node counts plus a fraction hash) for a room whose dimensions are an exact multiple of `h`
+- [ ] Document the hazard in `docs/maintenance.md`: Go contracts `x*y + z` into FMA on arm64 but not amd64, so geometric predicates must not be decided by exact ties
+- [ ] Run the portable test suite on arm64 in CI (emulated or native) so this class of divergence is caught before it reaches the macOS job
+
+> **Also open (unrelated dependency bug, same CI job):** the macOS integration
+> job fails to build `algo-vecmath@v0.1.1` — `arch/arm64/neon/dotproduct.s` uses
+> the ARM32 VFP mnemonics `VFMULD`/`VFADDD` in an arm64 file, so the package has
+> never assembled on Apple Silicon. Needs a fix upstream and a `go.mod` bump.
+
+---
+
 ## Dependency Map
 
 ```text
@@ -212,3 +288,4 @@ algo-acoustics
 | Analytical  | modal frequencies, ISM path lengths, inverse-square attenuation      |
 | Golden      | IR hashes, event JSON dumps, stereo BRIR regression                  |
 | Performance | allocations/render, rays/sec, PDE solver latency                     |
+| Portability | grid classification identical on amd64/arm64 (FMA contraction)       |
