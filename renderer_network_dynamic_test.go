@@ -48,16 +48,91 @@ func TestNetworkPlanApplyInvalidatesOnlyTheMergedGroup(t *testing.T) {
 	}
 
 	// Rooms 0 and 1 merge into one new group; rooms 2 and 3 are untouched.
-	if len(set.InvalidatedSignatures) != 1 {
-		t.Fatalf("invalidated %d groups, want exactly the merged one", len(set.InvalidatedSignatures))
+	if len(set.AddedSignatures) != 1 {
+		t.Fatalf("added %d groups, want exactly the merged one", len(set.AddedSignatures))
 	}
 
-	if set.RecomputedFactors != 1 {
-		t.Fatalf("recomputed %d groups, want 1", set.RecomputedFactors)
+	if set.AddedGroups != 1 {
+		t.Fatalf("added %d groups, want 1", set.AddedGroups)
 	}
 
-	if set.ReusedFactors < 2 {
-		t.Fatalf("reused %d groups, want the two untouched rooms to stay warm", set.ReusedFactors)
+	// The two rooms that merged are gone; the other two survive untouched.
+	if len(set.RemovedSignatures) != 2 {
+		t.Fatalf("removed %d groups, want the two that merged", len(set.RemovedSignatures))
+	}
+
+	if set.ReusedGroups < 2 {
+		t.Fatalf("reused %d groups, want the two untouched rooms to stay warm", set.ReusedGroups)
+	}
+}
+
+// TestApplyRestoresPortalStateWhenReplanningFails guards the plan's internal
+// consistency: p.plan.graph points at p.scene, so a failed rebuild must not
+// leave the new portal state paired with the old topology.
+func TestApplyRestoresPortalStateWhenReplanningFails(t *testing.T) {
+	t.Parallel()
+
+	sc := chainRoomScene(t, 3, 0.25)
+	cfg := ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 0.2, BandSpec: sc.BandSpec}
+
+	renderer := dynamicRenderer(-120)
+
+	plan, err := renderer.Prepare(sc, cfg)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	before := plan.Scene().Portals[0].State
+
+	// Scene validation rejects any state other than open or closed, so this
+	// reliably fails inside prepare, after the scene has been mutated.
+	_, err = plan.Apply(PortalStateChange{PortalIndex: 0, State: scene.PortalState("ajar"), Aperture: 1})
+	if err == nil {
+		t.Fatal("Apply accepted an unsupported portal state")
+	}
+
+	if got := plan.Scene().Portals[0].State; got != before {
+		t.Fatalf("portal state is %v after a failed Apply, want the original %v", got, before)
+	}
+}
+
+// TestApplyKeepsClosedTopologyBelowFullAperture pins the contract the Aperture
+// field now carries: only a fully open portal merges two room groups.
+func TestApplyKeepsClosedTopologyBelowFullAperture(t *testing.T) {
+	t.Parallel()
+
+	sc := chainRoomScene(t, 3, 0.25)
+	cfg := ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 0.2, BandSpec: sc.BandSpec}
+
+	renderer := dynamicRenderer(-120)
+
+	plan, err := renderer.Prepare(sc, cfg)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	set, err := plan.Apply(PortalStateChange{PortalIndex: 0, State: scene.PortalOpen, Aperture: 0.5})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if len(set.AddedSignatures) != 0 {
+		t.Fatalf("a half-open portal merged %d groups, want the closed topology", len(set.AddedSignatures))
+	}
+
+	if plan.Scene().Portals[0].State != scene.PortalClosed {
+		t.Fatal("a half-open portal was applied as fully open")
+	}
+}
+
+func TestPrepareRejectsANilScene(t *testing.T) {
+	t.Parallel()
+
+	renderer := dynamicRenderer(-120)
+
+	_, err := renderer.Prepare(nil, ir.RenderConfig{SampleRate: 48000, DurationSeconds: 0.1})
+	if err == nil {
+		t.Fatal("Prepare accepted a nil scene")
 	}
 }
 
@@ -143,11 +218,14 @@ func TestNetworkPlanDynamicMatchesColdRender(t *testing.T) {
 		t.Fatalf("RenderMono (warm): %v", err)
 	}
 
-	// Rebuild the same configuration from scratch.
+	// Rebuild the same configuration from scratch. The reference needs its own
+	// renderer as well as its own scene: sharing this one would let both sides
+	// read the same GroupResponseCache, so a stale-keying bug could hand them
+	// the same wrong factors and the comparison would still pass.
 	cold := chainRoomScene(t, 3, 0.25)
 	cold.Portals[1].State = scene.PortalOpen
 
-	coldBuffer, err := renderer.RenderMono(cold, cfg)
+	coldBuffer, err := dynamicRenderer(-120).RenderMono(cold, cfg)
 	if err != nil {
 		t.Fatalf("RenderMono (cold): %v", err)
 	}

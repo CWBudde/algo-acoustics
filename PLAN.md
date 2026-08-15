@@ -249,11 +249,12 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
       `GroupResponseCache`, keyed on `GroupSignature` rather than the group ID,
       because opening a portal renumbers every group
 - [x] Reuse Phase 21.5 crossfade for smooth open/close transitions —
-      `AtApertureMerged` follows raven.md 5.3: crossfade to the all-pass
-      filter, hard-switch to the merged group only at full aperture
+      `AtApertureMerged` follows raven.md 5.3 up to the last step: crossfade to
+      the all-pass filter, then fade on into the merged group over the final
+      5 % of aperture rather than switching in one buffer
 - [x] Performance target: portal change to updated BRIR < 2 s for 4-room
-      scenario — **0.47 s warm** against 2.06 s cold on an i7-1255U; see
-      `docs/profiling-baseline.md`
+      scenario — **0.55 s warm binaural** (0.39 s mono) against 2.14 s cold on
+      an i7-1255U; see `docs/profiling-baseline.md`
 
 > The target holds only in the warm case, and the benchmark says so: the cold
 > benchmark builds a fresh renderer each iteration so it cannot inherit the
@@ -261,9 +262,12 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 > slower, which is what `DynamicRays` exists for.
 >
 > raven.md calls the hard switch at full aperture artifact-free without
-> conditions. It is only artifact-free if the all-pass and merged responses are
-> level-matched, so `NewPortalBRIRCacheWithFilter` rejects a pair differing by
-> more than 1.5 dB rather than let a silent click through.
+> conditions. Level-matching is necessary but not sufficient: the all-pass and
+> merged responses are separate simulations with different reflection times, so
+> a single-buffer swap is discontinuous whatever their levels.
+> `AtApertureMerged` therefore crossfades into the merged response over the last
+> 5 % of aperture, and `NewPortalBRIRCacheWithFilter` still rejects a pair
+> differing by more than 1.5 dB, which such a short fade could not disguise.
 >
 > The browser demo gained a genuinely merged open endpoint with no demo-side
 > change: `NewCrossRoomEngine` routes any open portal to the filter network,

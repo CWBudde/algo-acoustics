@@ -257,3 +257,108 @@ func portalBRIREnergy(response BRIR) float64 {
 
 	return energy
 }
+
+// TestAtApertureMergedApproachesTheMergedResponseContinuously is the guard
+// against the click the hard switch would have produced.
+//
+// The all-pass and merged responses are level-matched but not sample-matched,
+// so a switch at aperture 1 would step from one to the other in a single
+// buffer. The crossfade must instead leave the output arbitrarily close to the
+// merged response just below full aperture.
+func TestAtApertureMergedApproachesTheMergedResponseContinuously(t *testing.T) {
+	t.Parallel()
+
+	const rate = 48000
+
+	closed := testBRIR(rate, []float64{0.1, 0, 0, 0}, []float64{0.1, 0, 0, 0})
+	allPass := testBRIR(rate, []float64{1, 0, 0, 0}, []float64{1, 0, 0, 0})
+	// Same broadband level, entirely different arrival pattern: exactly the
+	// case where matching levels does not make a switch inaudible.
+	merged := testBRIR(rate, []float64{0, 0, 1, 0}, []float64{0, 0, 1, 0})
+
+	cache, err := NewPortalBRIRCacheWithFilter(closed, allPass, merged)
+	if err != nil {
+		t.Fatalf("NewPortalBRIRCacheWithFilter: %v", err)
+	}
+
+	full, err := cache.AtApertureMerged(1, 2)
+	if err != nil {
+		t.Fatalf("AtApertureMerged(1): %v", err)
+	}
+
+	near, err := cache.AtApertureMerged(1-1e-6, 2)
+	if err != nil {
+		t.Fatalf("AtApertureMerged(1-eps): %v", err)
+	}
+
+	for index := range full.Left.Samples {
+		if math.Abs(full.Left.Samples[index]-near.Left.Samples[index]) > 1e-4 {
+			t.Fatalf("sample %d jumps from %v to %v at full aperture",
+				index, near.Left.Samples[index], full.Left.Samples[index])
+		}
+	}
+
+	// Well below the merge interval the output must still be the plain
+	// closed-to-all-pass crossfade, untouched by the merged response.
+	plain, err := cache.AtAperture(0.5, 2)
+	if err != nil {
+		t.Fatalf("AtAperture(0.5): %v", err)
+	}
+
+	blended, err := cache.AtApertureMerged(0.5, 2)
+	if err != nil {
+		t.Fatalf("AtApertureMerged(0.5): %v", err)
+	}
+
+	for index := range plain.Left.Samples {
+		if math.Abs(plain.Left.Samples[index]-blended.Left.Samples[index]) > 1e-12 {
+			t.Fatalf("sample %d differs at half aperture: %v vs %v",
+				index, plain.Left.Samples[index], blended.Left.Samples[index])
+		}
+	}
+}
+
+// TestAtApertureMergedIsSampleContinuousAcrossTheSweep walks the whole aperture
+// range and bounds the step between adjacent samples, which is what an audible
+// click would show up as.
+func TestAtApertureMergedIsSampleContinuousAcrossTheSweep(t *testing.T) {
+	t.Parallel()
+
+	const rate = 48000
+
+	cache, err := NewPortalBRIRCacheWithFilter(
+		testBRIR(rate, []float64{0.1, 0, 0, 0}, []float64{0.1, 0, 0, 0}),
+		testBRIR(rate, []float64{1, 0, 0, 0}, []float64{1, 0, 0, 0}),
+		testBRIR(rate, []float64{0, 0, 1, 0}, []float64{0, 0, 1, 0}),
+	)
+	if err != nil {
+		t.Fatalf("NewPortalBRIRCacheWithFilter: %v", err)
+	}
+
+	const steps = 200
+
+	previous, err := cache.AtApertureMerged(0, 2)
+	if err != nil {
+		t.Fatalf("AtApertureMerged(0): %v", err)
+	}
+
+	for step := 1; step <= steps; step++ {
+		aperture := float64(step) / steps
+
+		current, err := cache.AtApertureMerged(aperture, 2)
+		if err != nil {
+			t.Fatalf("AtApertureMerged(%v): %v", aperture, err)
+		}
+
+		for index := range current.Left.Samples {
+			// One step of the sweep may move a sample by at most the full
+			// span of the responses divided by the number of steps, with
+			// generous headroom for the square-root crossfade curve.
+			if delta := math.Abs(current.Left.Samples[index] - previous.Left.Samples[index]); delta > 0.2 {
+				t.Fatalf("sample %d steps by %v at aperture %v", index, delta, aperture)
+			}
+		}
+
+		previous = current
+	}
+}

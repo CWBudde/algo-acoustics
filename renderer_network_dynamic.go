@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"maps"
 	"math"
+	"reflect"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/hybrid"
@@ -18,18 +20,47 @@ import (
 type PortalStateChange struct {
 	PortalIndex int
 	State       scene.PortalState
-	// Aperture in [0,1] drives the crossfade. Only a fully open portal at
-	// aperture 1 triggers the hard switch to the merged room-group response.
+	// Aperture in [0,1] selects the topology a PortalOpen change resolves to.
+	// Only aperture 1 merges the two room groups into one cavity; every
+	// intermediate value keeps the rooms separate, which is what the
+	// closed-to-all-pass crossfade in hybrid.PortalBRIRCache interpolates
+	// between. Aperture is ignored for PortalClosed.
 	Aperture float64
 }
 
-// ChangeSet reports what a portal toggle actually cost.
+// EffectiveState returns the portal state the change actually resolves to.
+//
+// A partly open portal is still two rooms joined by a transmissive partition,
+// not one merged cavity, so it keeps the closed topology and is rendered
+// through the portal filter.
+func (c PortalStateChange) EffectiveState() scene.PortalState {
+	if c.State == scene.PortalOpen && c.Aperture < 1 {
+		return scene.PortalClosed
+	}
+
+	return c.State
+}
+
+// ChangeSet reports what a portal toggle actually cost, counted in room-group
+// signatures rather than in rendered factors.
+//
+// A group that is new to the plan still hits the response cache when the same
+// configuration was rendered before — reopening a door that was open a moment
+// ago costs nothing — so AddedSignatures is an upper bound on the simulation
+// work, not a measurement of it. GroupResponseCache.Stats reports the actual
+// hit and miss counts.
 type ChangeSet struct {
-	// InvalidatedSignatures lists the room groups that did not survive the
-	// change and therefore had to be re-simulated.
-	InvalidatedSignatures []uint64
-	RecomputedFactors     int
-	ReusedFactors         int
+	// RemovedSignatures lists the room groups the change dissolved. Their
+	// cached responses are deliberately kept: toggling the same portal back
+	// rebuilds exactly these signatures, and evicting them would make every
+	// second toggle a cold render. The cache's byte budget reclaims them.
+	RemovedSignatures []uint64
+	// AddedSignatures lists the room groups the change created.
+	AddedSignatures []uint64
+	// AddedGroups counts AddedSignatures; ReusedGroups counts the groups whose
+	// signature survived and whose cached responses therefore stay valid.
+	AddedGroups  int
+	ReusedGroups int
 }
 
 // NetworkPlan is a prepared multi-room render that survives portal toggles.
@@ -46,6 +77,10 @@ type NetworkPlan struct {
 func (r *NetworkRenderer) Prepare(sc *scene.Scene, cfg ir.RenderConfig) (*NetworkPlan, error) {
 	if r == nil {
 		return nil, errors.New("network renderer is nil")
+	}
+
+	if sc == nil {
+		return nil, errors.New("scene is nil")
 	}
 
 	copied := clonePortalScene(sc)
@@ -95,10 +130,16 @@ func (p *NetworkPlan) Apply(change PortalStateChange) (ChangeSet, error) {
 		previous[signature] = true
 	}
 
-	p.scene.Portals[change.PortalIndex].State = change.State
+	restore := p.scene.Portals[change.PortalIndex].State
+	p.scene.Portals[change.PortalIndex].State = change.EffectiveState()
 
 	inner, err := p.renderer.prepare(p.scene)
 	if err != nil {
+		// The graph in p.plan points at this same scene, so leaving the new
+		// state in place would pair the old topology with the new portal state
+		// on every later render.
+		p.scene.Portals[change.PortalIndex].State = restore
+
 		return ChangeSet{}, err
 	}
 
@@ -106,15 +147,25 @@ func (p *NetworkPlan) Apply(change PortalStateChange) (ChangeSet, error) {
 
 	set := ChangeSet{}
 
+	current := make(map[uint64]bool, len(signatures))
+
 	for _, signature := range signatures {
+		current[signature] = true
+
 		if previous[signature] {
-			set.ReusedFactors++
+			set.ReusedGroups++
 
 			continue
 		}
 
-		set.InvalidatedSignatures = append(set.InvalidatedSignatures, signature)
-		set.RecomputedFactors++
+		set.AddedSignatures = append(set.AddedSignatures, signature)
+		set.AddedGroups++
+	}
+
+	for _, signature := range p.signatures {
+		if !current[signature] {
+			set.RemovedSignatures = append(set.RemovedSignatures, signature)
+		}
 	}
 
 	p.plan = inner
@@ -230,19 +281,33 @@ func (r *NetworkRenderer) renderPortalState(
 		copied.Portals[portalIndex].Material = name
 	}
 
-	engine := NewCrossRoomEngine(copied, CrossRoomEngineConfig{
-		ISM:          r.Config.ISM,
-		Raytrace:     r.Config.Raytrace,
-		Hybrid:       r.Config.Hybrid,
-		OnTruncation: r.Config.OnTruncation,
-	})
-
-	left, right, err := engine.RenderBinaural(copied, receiver, cfg)
+	left, right, err := r.crossRoomEngineFor(copied).RenderBinaural(copied, receiver, cfg)
 	if err != nil {
 		return hybrid.BRIR{}, err //nolint:wrapcheck // The callers name the state.
 	}
 
 	return hybrid.BRIR{Left: left, Right: right}, nil
+}
+
+// crossRoomEngineFor picks the engine for a portal endpoint while keeping this
+// renderer's own settings.
+//
+// Routing through CrossRoomEngineConfig would drop DynamicRays, Seed, the path
+// and floor limits, and the shared response cache — and DynamicRays in
+// particular is the whole reason the WASM demo can afford the merged endpoint.
+func (r *NetworkRenderer) crossRoomEngineFor(sc *scene.Scene) CrossRoomEngine {
+	if sceneMatchesOneHopTransmission(sc) {
+		return NewTransmissionRenderer(TransmissionRendererConfig{
+			ISM:      r.Config.ISM,
+			Raytrace: r.Config.Raytrace,
+			Hybrid:   r.Config.Hybrid,
+		})
+	}
+
+	network := NewNetworkRenderer(r.Config)
+	network.SetCache(r.Cache())
+
+	return network
 }
 
 // clonePortalScene copies a scene deeply enough that portal state and materials
@@ -255,8 +320,15 @@ func clonePortalScene(sc *scene.Scene) *scene.Scene {
 	return &copied
 }
 
-// endpointHash covers the placement of the source and receiver and the band
-// layout, none of which a room-group signature carries.
+// endpointHash covers everything about the source and receiver that changes a
+// simulated factor, plus the band layout, none of which a room-group signature
+// carries.
+//
+// Orientation and directivity belong here as much as position does: the ISM
+// solver applies the source's pattern along Source.DirectionTo, and the
+// terminal late factor spatializes through the receiver's orientation and HRTF.
+// Omitting them would let a shared cache hand back a response simulated for a
+// differently aimed loudspeaker.
 func endpointHash(sc *scene.Scene) uint64 {
 	hash := fnv.New64a()
 
@@ -273,13 +345,25 @@ func endpointHash(sc *scene.Scene) uint64 {
 		write(v.Z)
 	}
 
+	writeQuat := func(q geometry.Quaternion) {
+		write(q.W)
+		write(q.X)
+		write(q.Y)
+		write(q.Z)
+	}
+
 	for _, source := range sc.Sources {
 		writeVec(source.Position)
+		writeQuat(source.Orientation)
 		write(source.GainDB)
+		writeModelIdentity(hash, source.Directivity)
 	}
 
 	for _, receiver := range sc.Receivers {
 		writeVec(receiver.Position)
+		writeQuat(receiver.Orientation)
+		_, _ = fmt.Fprintf(hash, "|type:%v|", receiver.Type)
+		writeModelIdentity(hash, receiver.HRTF)
 	}
 
 	for _, freq := range sc.BandSpec.CenterFreqs {
@@ -289,29 +373,45 @@ func endpointHash(sc *scene.Scene) uint64 {
 	return hash.Sum64()
 }
 
-// configHash folds the settings that change a simulated response into a single
-// value, so a configuration change invalidates the cache.
+// writeModelIdentity folds an interface-valued endpoint attribute into a hash.
+//
+// Small value types are hashed by their contents. Reference types are hashed by
+// identity instead, which is conservative — an equal-content copy simply misses
+// — and avoids formatting a whole HRTF grid or GLL balloon on every render.
+func writeModelIdentity(hash io.Writer, value any) {
+	if value == nil {
+		_, _ = io.WriteString(hash, "|nil|")
+
+		return
+	}
+
+	reflected := reflect.ValueOf(value)
+
+	switch reflected.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.UnsafePointer:
+		_, _ = fmt.Fprintf(hash, "|%T:%d|", value, reflected.Pointer())
+	default:
+		_, _ = fmt.Fprintf(hash, "|%T:%v|", value, value)
+	}
+}
+
+// configHash folds every solver setting that changes a simulated response into
+// a single value, so a configuration change cannot be served from the cache.
+//
+// The solver configurations are hashed wholesale rather than field by field.
+// SetCache exists so several renderers can share one budget, which makes a
+// forgotten field a correctness bug rather than a missed optimisation — and a
+// field-by-field list silently stops covering the struct the moment someone
+// adds an option to it.
 func (r *NetworkRenderer) configHash(cfg ir.RenderConfig) uint64 {
 	hash := fnv.New64a()
 
-	var buffer [8]byte
-
-	write := func(value float64) {
-		binary.LittleEndian.PutUint64(buffer[:], math.Float64bits(value))
-		_, _ = hash.Write(buffer[:])
-	}
-
-	write(float64(cfg.SampleRate))
-	write(cfg.DurationSeconds)
-	write(float64(r.Config.ISM.MaxOrder))
-	write(r.Config.ISM.SpeedOfSound)
-	write(float64(r.Config.Raytrace.Launch.NumRays))
-	write(float64(r.Config.Raytrace.Launch.MaxBounces))
-	write(r.Config.Raytrace.ReceiverRadius)
-	write(r.Config.Raytrace.BinDurationSeconds)
-	write(float64(r.Config.DynamicRays))
-	write(float64(r.Config.Seed))
-	write(r.bandFloorDB())
+	_, _ = fmt.Fprintf(hash, "render:%d|%v|", cfg.SampleRate, cfg.DurationSeconds)
+	_, _ = fmt.Fprintf(hash, "bands:%v|", cfg.BandSpec)
+	_, _ = fmt.Fprintf(hash, "ism:%#v|", r.Config.ISM)
+	_, _ = fmt.Fprintf(hash, "raytrace:%#v|", r.Config.Raytrace)
+	_, _ = fmt.Fprintf(hash, "hops:%d|paths:%d|", r.maxPathHops(), r.maxPaths())
+	_, _ = fmt.Fprintf(hash, "dynamic:%d|seed:%d|floor:%v|", r.Config.DynamicRays, r.Config.Seed, r.bandFloorDB())
 
 	return hash.Sum64()
 }

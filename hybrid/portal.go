@@ -17,18 +17,30 @@ type BRIR struct {
 }
 
 // portalMergedLevelToleranceDB bounds how far the all-pass and merged responses
-// may differ in broadband level before the hard switch between them would be
-// audible as a click.
+// may differ in broadband level before the transition between them would be
+// audible as a level jump.
 const portalMergedLevelToleranceDB = 1.5
+
+// portalMergeCrossfadeSpan is the aperture interval over which the all-pass
+// response gives way to the merged room-group response.
+//
+// docs/raven.md section 5.3 describes this last step as a hard switch, but
+// matching broadband levels does not make two independent simulations sample-
+// or phase-continuous: the merged response has different reflection times, so
+// replacing one with the other in a single step is a discontinuity whatever
+// their levels. Crossfading over a short interval instead keeps the whole
+// aperture sweep continuous, and the level guard then only has to keep that
+// interval short enough to stay imperceptible.
+const portalMergeCrossfadeSpan = 0.05
 
 // PortalBRIRCache retains immutable copies of the responses a portal
 // crossfades between.
 //
 // Three states matter, following docs/raven.md section 5.3. The portal starts
 // closed. As it opens, its sound reduction indices fall until the portal filter
-// is an all-pass. Only at that endpoint may the renderer hard-switch to the
-// response of the physically merged room group, which is a different
-// simulation: an aperture in a shared wall, not a transparent partition.
+// is an all-pass. Only near that endpoint does the response of the physically
+// merged room group take over, which is a different simulation: an aperture in
+// a shared wall, not a transparent partition.
 type PortalBRIRCache struct {
 	closed BRIR
 	// allPass is the response with the portal filter fully transmissive but
@@ -55,10 +67,10 @@ func NewPortalBRIRCache(closed, mergedOpen BRIR) (*PortalBRIRCache, error) {
 // all-pass portal filter, and the physically merged room group.
 //
 // It rejects an allPass and merged pair whose broadband levels differ by more
-// than 1.5 dB. docs/raven.md section 5.3 states the hard switch at full
-// aperture is artifact-free, but that only holds if the two responses are
-// level-matched; otherwise the switch is an audible click, and a silent click
-// is the worst failure mode this feature could have.
+// than 1.5 dB. AtApertureMerged crossfades between them over a short aperture
+// interval, which handles the sample-level discontinuity; the level guard
+// handles the other half of the problem, since a crossfade that short cannot
+// disguise a large level step.
 func NewPortalBRIRCacheWithFilter(closed, allPass, merged BRIR) (*PortalBRIRCache, error) {
 	return newPortalBRIRCache(closed, allPass, merged, true)
 }
@@ -186,14 +198,16 @@ func (c *PortalBRIRCache) AtAperture(aperture, rootOrder float64) (BRIR, error) 
 	}, nil
 }
 
-// AtApertureMerged crossfades from closed toward the all-pass portal and hard-
-// switches to the merged room-group response at full aperture.
+// AtApertureMerged crossfades from closed toward the all-pass portal and then,
+// over the last portalMergeCrossfadeSpan of aperture, on into the merged
+// room-group response.
 //
-// This is the sequencing docs/raven.md section 5.3 prescribes: the portal's
-// reduction indices fall continuously until its filter is an all-pass, and only
-// then is the switch to the pre-cached merged response artifact-free. The
-// level guard in NewPortalBRIRCacheWithFilter is what makes that hold in
-// practice.
+// The sequencing follows docs/raven.md section 5.3 — the portal's reduction
+// indices fall until its filter is an all-pass, and only at that endpoint does
+// the merged room group take over — but the final step is a crossfade rather
+// than the hard switch RAVEN describes. Two independently simulated responses
+// are never sample-continuous, so swapping one for the other in a single step
+// is audible however well their broadband levels match.
 func (c *PortalBRIRCache) AtApertureMerged(aperture, rootOrder float64) (BRIR, error) {
 	if c == nil {
 		return BRIR{}, errors.New("portal BRIR cache is nil")
@@ -203,7 +217,26 @@ func (c *PortalBRIRCache) AtApertureMerged(aperture, rootOrder float64) (BRIR, e
 		return clonePortalBRIR(c.merged, c.merged.Left.SampleRate, c.merged.Left.Len()), nil
 	}
 
-	return c.AtAperture(aperture, rootOrder)
+	base, err := c.AtAperture(aperture, rootOrder)
+	if err != nil {
+		return BRIR{}, err
+	}
+
+	const mergeStart = 1 - portalMergeCrossfadeSpan
+	if aperture <= mergeStart {
+		return base, nil
+	}
+
+	// Linear in aperture rather than in the crossfade curve: this leg blends
+	// two responses of the same nominal level, so the equal-power correction
+	// that PortalCrossfadeWeight applies to the closed-to-open leg would only
+	// introduce a bump of its own.
+	weight := (aperture - mergeStart) / portalMergeCrossfadeSpan
+
+	return BRIR{
+		Left:  interpolatePortalBuffer(base.Left, c.merged.Left, weight),
+		Right: interpolatePortalBuffer(base.Right, c.merged.Right, weight),
+	}, nil
 }
 
 func validatePortalBRIR(name string, response BRIR) error {

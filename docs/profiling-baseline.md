@@ -170,24 +170,33 @@ Key insight: the CPU baseline is **single-core** (no parallelism implemented). A
 
 ## Multi-Room Portal Toggles (Phase 25.4)
 
-Measured on the same i7-1255U, `BenchmarkNetworkColdRender4Rooms` and
-`BenchmarkNetworkPortalStateChange4Rooms`. The scenario is
+Measured on the same i7-1255U, `BenchmarkNetworkColdRender4Rooms` and the two
+`BenchmarkNetworkPortalStateChange4Rooms` variants. The scenario is
 `examples/scenes/office_floor.json`: four rooms in a chain, three doors,
 receiver two partitions from the source, image-source order 3, 16 000 rays,
 1.0 s response at 48 kHz.
 
-| Case                              | Time   |
-| --------------------------------- | ------ |
-| Cold render, empty cache          | 2.06 s |
-| Warm portal toggle, prepared plan | 0.47 s |
+| Case                                     | Time   |
+| ---------------------------------------- | ------ |
+| Cold render, empty cache (mono)          | 2.14 s |
+| Warm portal toggle, prepared plan (mono) | 0.39 s |
+| Warm portal toggle, prepared plan (BRIR) | 0.55 s |
 
 The Phase 25.4 target of **under 2 s per portal change is met with margin**, but
 only in the warm case, and that qualifier matters:
 
+- **Binaural is the number that counts.** The target is a portal change through
+  to an updated BRIR, so the mono figure alone would not support it: binaural
+  rendering adds the directional late field and the HRTF convolution on top.
+  Both are listed because the mono path is what `RenderMono` callers get.
 - **Warm, native.** A toggle merges two groups into one, so exactly one room
   group is re-simulated and the rest are served from the group-response cache.
-  The benchmark reports `groups-resimulated/op` and `groups-reused/op` so a
-  regression in cache behaviour shows up as a number, not just a slower run.
+  The benchmarks report `groups-added/op` and `groups-reused/op`, averaged over
+  the run rather than sampled from the last iteration, so a regression in cache
+  behaviour shows up as a number and not just a slower run. These count room
+  groups, not cache outcomes: a group that is new to the plan can still be a
+  cache hit when the same configuration was rendered a toggle ago, which is why
+  `GroupResponseCache.Stats` reports hits and misses separately.
 - **Cold is not the target.** A cold four-room render is around 2 s on its own,
   so quoting the target without saying "warm" would be meaningless. The cold
   benchmark builds a fresh renderer each iteration precisely so it cannot

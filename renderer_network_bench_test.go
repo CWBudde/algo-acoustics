@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
+	"github.com/cwbudde/algo-acoustics/hrtf"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/ism"
 	"github.com/cwbudde/algo-acoustics/raytrace"
@@ -59,14 +60,42 @@ func BenchmarkNetworkColdRender4Rooms(b *testing.B) {
 	}
 }
 
-// BenchmarkNetworkPortalStateChange4Rooms measures the Phase 25.4 target:
-// toggling a portal on a prepared plan and re-rendering.
+// BenchmarkNetworkPortalStateChange4Rooms measures the mono half of the Phase
+// 25.4 target: toggling a portal on a prepared plan and re-rendering.
 //
 // The plan is prepared outside the timer, so this is the warm case. Each
 // iteration toggles the same portal open and then closed again, which keeps the
-// configuration cycling rather than drifting to one state.
+// configuration cycling rather than drifting to one state. Because the two
+// directions differ in group and path count, the reported metrics are averaged
+// over the whole run rather than taken from whichever iteration happened to be
+// last.
 func BenchmarkNetworkPortalStateChange4Rooms(b *testing.B) {
+	benchmarkPortalStateChange(b, func(plan *NetworkPlan) error {
+		_, err := plan.RenderMono()
+
+		return err
+	})
+}
+
+// BenchmarkNetworkPortalStateChange4RoomsBinaural is the benchmark the Phase
+// 25.4 target is actually about: a portal change through to an updated BRIR.
+//
+// Binaural rendering adds the directional late field and the HRTF convolution
+// on top of the mono path, so the mono benchmark alone cannot support a claim
+// about BRIR latency.
+func BenchmarkNetworkPortalStateChange4RoomsBinaural(b *testing.B) {
+	benchmarkPortalStateChange(b, func(plan *NetworkPlan) error {
+		_, err := plan.RenderBinaural(plan.Scene().Receivers[0])
+
+		return err
+	})
+}
+
+func benchmarkPortalStateChange(b *testing.B, render func(*NetworkPlan) error) {
+	b.Helper()
+
 	sc := benchmarkFourRoomScene(b)
+	sc.Receivers[0].HRTF = hrtf.NoopDataset{SampleRateHz: sc.SampleRate}
 	cfg := ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 1.0, BandSpec: sc.BandSpec}
 	renderer := NewNetworkRenderer(benchmarkNetworkConfig())
 
@@ -75,16 +104,16 @@ func BenchmarkNetworkPortalStateChange4Rooms(b *testing.B) {
 		b.Fatalf("Prepare: %v", err)
 	}
 
-	_, err = plan.RenderMono()
+	err = render(plan)
 	if err != nil {
-		b.Fatalf("warm-up RenderMono: %v", err)
+		b.Fatalf("warm-up render: %v", err)
 	}
 
 	if len(plan.plan.paths) > renderer.maxPaths() {
 		b.Fatalf("plan holds %d paths, above the %d cap", len(plan.plan.paths), renderer.maxPaths())
 	}
 
-	var last ChangeSet
+	var added, reused, paths int
 
 	b.ResetTimer()
 
@@ -94,19 +123,25 @@ func BenchmarkNetworkPortalStateChange4Rooms(b *testing.B) {
 			state = scene.PortalClosed
 		}
 
-		last, err = plan.Apply(PortalStateChange{PortalIndex: 1, State: state, Aperture: 1})
+		set, err := plan.Apply(PortalStateChange{PortalIndex: 1, State: state, Aperture: 1})
 		if err != nil {
 			b.Fatalf("Apply: %v", err)
 		}
 
-		_, err = plan.RenderMono()
+		err = render(plan)
 		if err != nil {
-			b.Fatalf("RenderMono: %v", err)
+			b.Fatalf("render: %v", err)
 		}
+
+		added += set.AddedGroups
+		reused += set.ReusedGroups
+		paths += len(plan.plan.paths)
 	}
 
 	b.StopTimer()
-	b.ReportMetric(float64(last.RecomputedFactors), "groups-resimulated/op")
-	b.ReportMetric(float64(last.ReusedFactors), "groups-reused/op")
-	b.ReportMetric(float64(len(plan.plan.paths)), "paths/op")
+
+	iterations := float64(max(b.N, 1))
+	b.ReportMetric(float64(added)/iterations, "groups-added/op")
+	b.ReportMetric(float64(reused)/iterations, "groups-reused/op")
+	b.ReportMetric(float64(paths)/iterations, "paths/op")
 }

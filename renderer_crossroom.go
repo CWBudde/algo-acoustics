@@ -74,22 +74,19 @@ func sceneMatchesOneHopTransmission(sc *scene.Scene) bool {
 	connected := false
 
 	for _, portal := range sc.Portals {
-		joinsThePair := portal.RoomIndices == [2]int{sourceRoom, receiverRoom} ||
-			portal.RoomIndices == [2]int{receiverRoom, sourceRoom}
-		if !joinsThePair {
-			continue
-		}
-
-		// An open portal must go to the filter network. The Phase 21 renderer
-		// models "open" as a fully transmissive partition, tau = 1, with both
-		// rooms still geometrically separate; only the scene graph physically
-		// merges the two volumes into one cavity, which is a different — and
-		// correct — response.
+		// Any open portal sends the scene to the filter network. The Phase 21
+		// renderer models "open" as a fully transmissive partition, tau = 1,
+		// with both rooms still geometrically separate; only the scene graph
+		// merges the two volumes into the single cavity that an open door
+		// actually is.
 		if portal.State == scene.PortalOpen {
 			return false
 		}
 
-		connected = true
+		if portal.RoomIndices == [2]int{sourceRoom, receiverRoom} ||
+			portal.RoomIndices == [2]int{receiverRoom, sourceRoom} {
+			connected = true
+		}
 	}
 
 	return connected

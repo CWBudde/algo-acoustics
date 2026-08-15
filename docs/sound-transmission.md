@@ -147,9 +147,13 @@ of both walls and merges the volumes into one cavity.
 
 `hybrid.PortalBRIRCache` can hold all three states — closed, the all-pass
 portal filter, and the merged room group — through
-`NewPortalBRIRCacheWithFilter`. `AtApertureMerged` then follows the sequencing
-of `raven.md` section 5.3: crossfade from closed toward the all-pass filter,
-and hard-switch to the merged response only at full aperture. That switch is
-artifact-free only if the two are level-matched, which the reference does not
-say, so the constructor rejects a pair differing by more than 1.5 dB rather
-than let a silent click through.
+`NewPortalBRIRCacheWithFilter`. `AtApertureMerged` follows the sequencing of
+`raven.md` section 5.3 — crossfade from closed toward the all-pass filter, and
+only at that endpoint does the merged room group take over — but the last step
+is a crossfade rather than the hard switch the reference describes. Two
+independently simulated responses have different reflection times, so replacing
+one with the other in a single buffer is a discontinuity no matter how well
+their broadband levels match. The merged response therefore fades in over the
+last 5 % of aperture, and the constructor additionally rejects an all-pass and
+merged pair differing by more than 1.5 dB, since a fade that short cannot
+disguise a large level step.
