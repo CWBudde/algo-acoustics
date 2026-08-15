@@ -412,7 +412,7 @@ Final scores, identical on amd64 and arm64:
 
 ---
 
-### Phase 27 — Dependency Currency Across the `algo-*` Stack (Complete except the standing guard)
+### Phase 27 — Dependency Currency Across the `algo-*` Stack (Complete)
 
 > Not a feature phase. The four sibling modules had drifted onto three different
 > `algo-fft` versions, which made it impossible to take an upstream fix in one
@@ -466,11 +466,21 @@ v0.6 and v0.7 lines, so code written against v0.6.x fails to compile with
       `geometry` all pass on arm64 too — `hybrid/network.go` is the caller that
       made this necessary, since it uses `conv.Convolve`/`conv.Direct` directly.
       So the predicted arm64 ulp shift does not move any fixture.
-- [ ] Add a standing check so the drift cannot silently recur — a CI job or a
-      `just` recipe that fails when a sibling `cwbudde` module is behind its
-      latest tag. **Still open**, and still needed: `algo-approx` is pinned at
-      `v0.1.0` in `algo-dsp` while `v0.2.0` exists, which is the same drift
-      starting over.
+- [x] Added a standing guard, in this repo and the seven siblings:
+      `scripts/release-guard.sh`, exposed as `just check-deps`,
+      `just check-unreleased` and `just tag-release vX.Y.Z`, plus a weekly
+      `dep-drift` workflow that files an issue, and a Renovate config that
+      groups the whole `cwbudde` family into one bump PR. The gate refuses to
+      tag on a dirty tree, an unpushed default branch, an out-of-order or
+      existing tag, stale siblings, a missing CHANGELOG section, or an
+      incompatible API change the version does not signal. **That last rule is
+      deliberately stricter than semver**, which exempts `v0.x` — every module
+      here is `v0.x`, so `gorelease` alone would have approved the `v0.7.6`
+      patch bump across the `KernelEightStep` removal. Replaying that exact
+      case, the guard refuses and demands `v0.8.0`. It immediately found two
+      live drifts nobody had flagged: `algo-dsp` pinning `algo-approx v0.1.0`
+      against `v0.2.0`, and `gll-tools` carrying a zero pseudo-version for
+      `go-sofa` that only resolves through a local `replace`.
 
 > **Pre-existing, found while verifying and deliberately not fixed here:**
 > `gpu/worker` does not build for any non-Linux `GOOS`. `shm_linux.go` is
