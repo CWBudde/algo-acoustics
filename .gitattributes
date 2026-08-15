@@ -1,0 +1,14 @@
+# Check every text file out with LF, on every platform. Windows runners default
+# to core.autocrlf=true, which rewrites line endings in the working tree and
+# changes the bytes of anything hashed or compared verbatim.
+* text=auto eol=lf
+
+# Reference data whose SHA-256 is pinned in
+# testdata/diffraction/reference-manifest.json. Never let Git touch these.
+testdata/diffraction/generate_svensson_edb2.m -text
+testdata/diffraction/svensson_edb2_single_wedge.csv -text
+
+# Measurement and audio fixtures compared byte for byte.
+*.wav binary
+*.gll binary
+*.sofa binary

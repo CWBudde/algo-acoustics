@@ -29,9 +29,11 @@ jobs:
 
       - name: Test portable packages
         shell: bash
+        # No mapfile: the macOS runner ships bash 3.2, which predates it.
+        # Package paths never contain whitespace, so word splitting is safe.
         run: |
-          mapfile -t packages < <(go list ./... | grep -v '/gpu/worker$')
-          go test "${packages[@]}"
+          packages=$(go list ./... | grep -v '/gpu/worker$')
+          go test $packages
 
       - name: Smoke test roomir validate
         run: go run ./cmd/roomir validate testdata/rooms/shoebox_simple.json
