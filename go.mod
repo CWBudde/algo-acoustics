@@ -3,9 +3,9 @@ module github.com/cwbudde/algo-acoustics
 go 1.25.0
 
 require (
-	github.com/cwbudde/algo-dsp v0.5.1
-	github.com/cwbudde/algo-fft v0.6.11
-	github.com/cwbudde/algo-pde v0.2.1
+	github.com/cwbudde/algo-dsp v0.7.0
+	github.com/cwbudde/algo-fft v0.8.0
+	github.com/cwbudde/algo-pde v0.2.2
 	github.com/cwbudde/gll-tools v0.1.1
 	github.com/cwbudde/wav v0.1.0
 	github.com/go-audio/audio v1.0.0
