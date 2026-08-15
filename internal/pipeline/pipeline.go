@@ -42,7 +42,12 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 		BandSpec:     bandSpec,
 	}
 	if sc != nil && sc.RoomCount() > 1 {
-		engine := algoacoustics.NewTransmissionRenderer(algoacoustics.TransmissionRendererConfig{ISM: ismConfig})
+		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
+			ISM: ismConfig,
+		}).(algoacoustics.TransmissionEarlyEngine)
+		if !ok {
+			return nil, errors.New("cross-room engine cannot produce early events")
+		}
 
 		events, err := engine.SolveEarly(sc, renderConfig(sc, 0))
 		if err != nil {
@@ -65,9 +70,12 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 // RenderLateBuffer traces late-field energy via ray tracing and returns a dense buffer.
 func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
 	if sc != nil && sc.RoomCount() > 1 {
-		engine := algoacoustics.NewTransmissionRenderer(algoacoustics.TransmissionRendererConfig{
+		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
 			Raytrace: newLateEngine(cfg).Config,
-		})
+		}).(algoacoustics.CrossRoomLateEngine)
+		if !ok {
+			return nil, errors.New("cross-room engine cannot render the late field on its own")
+		}
 
 		buffer, err := engine.RenderLateMono(sc, renderConfig(sc, cfg.DurationSeconds))
 		if err != nil {
@@ -89,9 +97,12 @@ func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
 // through the receiver's HRTF using binaural Poisson synthesis.
 func RenderLateBinaural(sc *scene.Scene, receiver scene.Receiver, cfg LateConfig) (left, right *ir.Buffer, err error) {
 	if sc != nil && sc.RoomCount() > 1 {
-		engine := algoacoustics.NewTransmissionRenderer(algoacoustics.TransmissionRendererConfig{
+		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
 			Raytrace: newLateEngine(cfg).Config,
-		})
+		}).(algoacoustics.CrossRoomLateEngine)
+		if !ok {
+			return nil, nil, errors.New("cross-room engine cannot render the late field on its own")
+		}
 
 		left, right, err = engine.RenderLateBinaural(sc, receiver, renderConfig(sc, cfg.DurationSeconds))
 		if err != nil {

@@ -48,17 +48,91 @@ The built-in transmission renderer supports:
 - early ISM, late ray tracing, hybrid mono, and hybrid binaural output;
 - closed materials and the fully transmissive open state.
 
-Phase 21 deliberately rejects portal chains, sources or receivers with
-ambiguous room membership, and cross-room propagation involving mesh rooms.
-Mesh rooms and portals can still be serialized for future scene-graph work.
-Low-frequency PDE blending is also unavailable for multi-room renders. Portal
-chains and true merged open-room simulation belong to Phase 25.
+This renderer stays the fast path for exactly that shape, so its output is
+unchanged. Anything beyond it — portal chains above all — is handled by the
+multi-room filter network below, which `NewCrossRoomEngine` selects
+automatically.
 
 ## Metrics and Interactive Aperture
 
 `metrics.ApparentSoundReductionIndex` evaluates
 `Ls - Lr + 10*log10(S/Ar)`. The flanking-aware helper combines parallel path
 energy coefficients as `-10*log10(sum(tau_ij))`.
+
+## Multi-Room Filter Network
+
+`NetworkRenderer` renders propagation across any number of rooms as the filter
+network of `docs/raven.md` section 5.2: a path is the product
+
+```text
+H_PP = H_PS * prod(H_Portal) * prod(H_RoomGroup) * H_R
+```
+
+of separately simulated factors, one per room group the path passes through.
+
+**Why not extend the one-hop model.** Phase 21 composes a hop by re-emitting
+every incident event and running a fresh image-source solve per emission. That
+is one solve per event per hop, so an N-hop chain costs O(events^N) — an
+order-3 shoebox yields 60 to 120 events, putting hop three around a million
+solves. The network instead runs **one simulation per hop** and composes by
+per-band convolution. Convolving two impulse trains is exactly their cartesian
+product, so the two formulations agree to floating-point precision; the
+regression test pins that against the Phase 21 renderer at image-source orders
+0, 1, and 2.
+
+### Path types
+
+`PLAN.md` names four path types that `raven.md` never expands. **The expansion
+below is ours, not the reference's.** It follows the structure of `H_PP`
+directly: only the source and receiver factors are marked complex and binaural
+there, so a hop ending at a portal is scalar per band while a hop ending at the
+receiver carries direction through the HRTF.
+
+| Type   | Meaning                      | Renders                                             |
+| ------ | ---------------------------- | --------------------------------------------------- |
+| `PS2P` | primary source to portal     | the first hop, out of the source's own group        |
+| `SS2P` | secondary source to portal   | an intermediate hop, portal to portal               |
+| `SS2R` | secondary source to receiver | the terminal hop, binaural                          |
+| `PS2R` | primary source to receiver   | the zero-hop case, source and receiver in one group |
+
+As in Phase 21 the portal filter is `sqrt(tau)` in the pressure domain and
+`tau` in the energy domain.
+
+### Alignment
+
+Path contributions are summed first, and the early-to-late alignment runs
+**once on the summed fields**. Aligning each path separately would be wrong:
+per-path early-to-late ratios are physically meaningful, and a long flanking
+path legitimately arrives with a different direct-to-reverberant ratio than the
+direct path. Aligning them individually would flatten exactly the information
+that makes flanking audible.
+
+Cross-path time alignment needs nothing extra. Every factor is causal from its
+own emission instant and the portal handoff adds no delay, so convolution sums
+the delays automatically.
+
+### Limits
+
+- One source and one receiver. The ray tracer detects one receiver per trace,
+  so several receivers would need one full render each.
+- Intermediate hops compose in the energy domain, which carries no direction,
+  so an intermediate room group acts as a scalar-per-band filter. Only the
+  terminal group keeps true directionality.
+- A portal is treated as a point source at its centre, which is an
+  approximation for large apertures.
+- `MaxPaths` caps how many paths are rendered, strongest first, because
+  convolution assembly dominates the cost.
+
+Low-frequency PDE blending now works for multi-room mono renders. The modal
+response is computed for the receiver's own room group and excited at the
+portal that admits sound to it, since the solver needs a shoebox containing a
+source. That captures the receiving room's modes and where they are driven from,
+not the coupled modal behaviour of two volumes sharing an aperture; it is
+refused rather than approximated when the receiver's group is not a single
+shoebox. Stereo still omits it, because one monaural transfer function cannot
+preserve ear-specific HRTF information.
+
+## Interactive Aperture
 
 The browser demo caches closed and fully transmissive binaural endpoint
 responses. Its aperture control interpolates them with `x^(1/n)` (square root

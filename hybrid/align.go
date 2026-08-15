@@ -50,6 +50,48 @@ func AlignLateTail(late *ir.Buffer, earlyEvents []ir.Event, cfg HybridConfig) *i
 	return aligned
 }
 
+// AlignLateTailBuffer scales the late buffer so its post-crossover energy
+// matches a dense early buffer over an equally sized pre-crossover window. It
+// is the counterpart of AlignLateTail for renders whose early field is a buffer
+// rather than an event list.
+//
+// Multi-room renders must call this **once, on the summed early and late
+// fields**, never once per propagation path. Per-path early-to-late ratios are
+// physically meaningful — a long flanking path legitimately arrives with a
+// different direct-to-reverberant ratio than the direct path — so aligning each
+// path on its own would flatten exactly the information that makes flanking
+// audible.
+func AlignLateTailBuffer(late, early *ir.Buffer, cfg HybridConfig) *ir.Buffer {
+	if late == nil {
+		return nil
+	}
+
+	aligned := cloneBuffer(late)
+	if aligned.SampleRate <= 0 || len(aligned.Samples) == 0 || early == nil {
+		return aligned
+	}
+
+	cutoffSample := max(int(cfg.CrossoverTimeSeconds*float64(aligned.SampleRate)), 0)
+	if cutoffSample >= len(aligned.Samples) {
+		cutoffSample = len(aligned.Samples) - 1
+	}
+
+	window := crossoverWindowSamples(aligned.SampleRate)
+	lateEnergy := bufferEnergyRMS(aligned, cutoffSample, min(cutoffSample+window, len(aligned.Samples)))
+	earlyEnergy := bufferEnergyRMS(early, max(cutoffSample-window, 0), cutoffSample)
+
+	if earlyEnergy <= 0 || lateEnergy <= 0 {
+		return aligned
+	}
+
+	scale := earlyEnergy / lateEnergy
+	for index := range aligned.Samples {
+		aligned.Samples[index] *= scale
+	}
+
+	return aligned
+}
+
 func eventEnergyRMS(events []ir.Event, cutoffSeconds float64) float64 {
 	return eventEnergyRMSInWindow(events, 0, cutoffSeconds)
 }

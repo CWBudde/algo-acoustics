@@ -217,10 +217,29 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 
 #### 25.3 Filter network rendering (`hybrid/`, `ir/`)
 
-- [ ] Per-path transfer function: `H_PP = H_PS * prod(H_Portal) * prod(H_RoomGroup) * H_R`
-- [ ] Four path types: PS2R, PS2P, SS2R, SS2P with binaural/monaural selection
-- [ ] Sum all path contributions for final BRIR
-- [ ] Integration test: office floor with correct level drop per room
+- [x] Per-path transfer function: `H_PP = H_PS * prod(H_Portal) * prod(H_RoomGroup) * H_R`
+      — `hybrid.PathChain` folds the factors by per-band convolution
+- [x] Four path types: PS2R, PS2P, SS2R, SS2P with binaural/monaural selection
+- [x] Sum all path contributions for final BRIR
+- [x] Integration test: office floor with correct level drop per room —
+      monotonic decay plus an analytic check against
+      `metrics.ApparentSoundReductionIndex`
+
+> The one-hop model could not simply be extended. `ism.SolveSecondary` runs a
+> full solve per emitted event, so an N-hop chain costs O(events^N). The
+> network runs one simulation per hop and composes by convolution instead;
+> since convolving impulse trains is exactly their cartesian product, the two
+> agree to floating-point precision, pinned against the Phase 21 renderer at
+> image-source orders 0-2. `TransmissionRenderer` is untouched and
+> `NewCrossRoomEngine` still selects it for the exact Phase 21 shape.
+>
+> PS2R/PS2P/SS2R/SS2P are named only in this plan, never in `docs/raven.md`;
+> the expansion is ours and is documented as such. Alignment runs once on the
+> summed fields, never per path, because per-path early-to-late ratios carry
+> the information that makes flanking audible. Multi-room low-frequency
+> blending is also unblocked for mono, computed on the receiver's group and
+> excited at its entry portal. Remaining limits: one receiver, point-source
+> portals, and no directionality on intermediate hops.
 
 #### 25.4 Dynamic portal interaction
 

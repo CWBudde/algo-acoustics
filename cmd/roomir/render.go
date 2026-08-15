@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	algoacoustics "github.com/cwbudde/algo-acoustics"
 	"github.com/cwbudde/algo-acoustics/export"
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/internal/pipeline"
@@ -210,8 +211,17 @@ func renderHybridMode(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.RenderCo
 }
 
 func applyLowFrequencyBlend(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.RenderConfig, buffer *ir.Buffer, cfg renderCommandConfig) (*ir.Buffer, error) {
+	// A multi-room scene has no single room to solve, so the modal response is
+	// computed for the receiver's own room group, excited at the portal that
+	// admits sound to it. See algoacoustics.LowFreqSceneForMultiRoom.
+	modalScene := sc
 	if sc != nil && sc.RoomCount() > 1 {
-		return nil, errors.New("low-frequency PDE blending is not supported for multi-room transmission")
+		var err error
+
+		modalScene, err = algoacoustics.LowFreqSceneForMultiRoom(sc)
+		if err != nil {
+			return nil, fmt.Errorf("prepare multi-room low-frequency scene: %w", err)
+		}
 	}
 
 	engine := pde.PDELowFreqEngine{
@@ -224,7 +234,7 @@ func applyLowFrequencyBlend(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.Re
 		CrossoverFreqHz: cfg.lowFreqCrossoverHz,
 	}
 
-	transfer, err := engine.Transfer(sc, renderCfg)
+	transfer, err := engine.Transfer(modalScene, renderCfg)
 	if err != nil {
 		return nil, fmt.Errorf("render low-frequency transfer: %w", err)
 	}
