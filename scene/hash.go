@@ -47,40 +47,75 @@ func newSceneHashWriter() *sceneHashWriter {
 	return &sceneHashWriter{hash: fnv.New64a()}
 }
 
-func (w *sceneHashWriter) writeRoomsAndPortals(s *Scene) {
-	for roomIndex := range s.RoomCount() {
-		room, ok := s.RoomAt(roomIndex)
-		if !ok {
-			continue
-		}
+// RoomGroupHash hashes only the given rooms and the portals incident to them.
+//
+// Hashing a group rather than the whole scene is what lets a portal toggle in
+// one part of a building leave the derived geometry of every other group warm.
+// Room indices are written as given, so callers pass them in a stable order.
+func (s *Scene) RoomGroupHash(roomIndices []int) uint64 {
+	member := make(map[int]bool, len(roomIndices))
+	for _, roomIndex := range roomIndices {
+		member[roomIndex] = true
+	}
 
-		w.writeFloat(float64(roomIndex))
-		_, _ = w.hash.Write([]byte(room.Kind))
-
-		if room.Shoebox != nil {
-			w.writeVec3(room.Shoebox.Origin)
-			w.writeVec3(geometry.Vec3{X: room.Shoebox.Width, Y: room.Shoebox.Depth, Z: room.Shoebox.Height})
-		}
-
-		if room.Mesh != nil {
-			for index := range room.Mesh.Triangles {
-				triangle := &room.Mesh.Triangles[index]
-				w.writeVec3(triangle.V0)
-				w.writeVec3(triangle.V1)
-				w.writeVec3(triangle.V2)
-			}
-		}
+	writer := newSceneHashWriter()
+	for _, roomIndex := range roomIndices {
+		writer.writeRoom(s, roomIndex)
 	}
 
 	for portalIndex, portal := range s.Portals {
-		w.writeFloat(float64(portalIndex))
-		w.writeFloat(float64(portal.RoomIndices[0]))
-		w.writeFloat(float64(portal.RoomIndices[1]))
-		_, _ = w.hash.Write([]byte(portal.State))
-
-		for _, vertex := range portal.Polygon {
-			w.writeVec3(vertex)
+		if !member[portal.RoomIndices[0]] && !member[portal.RoomIndices[1]] {
+			continue
 		}
+
+		writer.writePortal(portalIndex, portal)
+	}
+
+	return writer.hash.Sum64()
+}
+
+func (w *sceneHashWriter) writeRoomsAndPortals(s *Scene) {
+	for roomIndex := range s.RoomCount() {
+		w.writeRoom(s, roomIndex)
+	}
+
+	for portalIndex, portal := range s.Portals {
+		w.writePortal(portalIndex, portal)
+	}
+}
+
+func (w *sceneHashWriter) writeRoom(s *Scene, roomIndex int) {
+	room, ok := s.RoomAt(roomIndex)
+	if !ok {
+		return
+	}
+
+	w.writeFloat(float64(roomIndex))
+	_, _ = w.hash.Write([]byte(room.Kind))
+
+	if room.Shoebox != nil {
+		w.writeVec3(room.Shoebox.Origin)
+		w.writeVec3(geometry.Vec3{X: room.Shoebox.Width, Y: room.Shoebox.Depth, Z: room.Shoebox.Height})
+	}
+
+	if room.Mesh != nil {
+		for index := range room.Mesh.Triangles {
+			triangle := &room.Mesh.Triangles[index]
+			w.writeVec3(triangle.V0)
+			w.writeVec3(triangle.V1)
+			w.writeVec3(triangle.V2)
+		}
+	}
+}
+
+func (w *sceneHashWriter) writePortal(portalIndex int, portal Portal) {
+	w.writeFloat(float64(portalIndex))
+	w.writeFloat(float64(portal.RoomIndices[0]))
+	w.writeFloat(float64(portal.RoomIndices[1]))
+	_, _ = w.hash.Write([]byte(portal.State))
+
+	for _, vertex := range portal.Polygon {
+		w.writeVec3(vertex)
 	}
 }
 

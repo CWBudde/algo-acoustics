@@ -170,10 +170,26 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 
 #### 25.1 Acoustic Scene Graph (`scene/`)
 
-- [ ] `AcousticSceneGraph`: nodes = Room, edges = Portal, with counter-portal pointers
-- [ ] Room groups: connected components of rooms joined by open portals
-- [ ] `UpdateRoomGroups()` on portal state changes; per-group BVH and simulation context
-- [ ] Unit test: 8-room office floor with 10 portals, various open/closed configs
+- [x] `AcousticSceneGraph`: nodes = Room, edges = Portal, with counter-portal
+      pointers — `PortalView.Counter()` produces the opposite view on demand
+      rather than storing a second object per room
+- [x] Room groups: connected components of rooms joined by open portals
+- [x] `UpdateRoomGroups()` on portal state changes; per-group BVH and simulation
+      context via `GroupGeometry`/`GroupBVH`/`GroupScene`. Group geometry cuts
+      each open aperture from **both** adjacent rooms' walls; caches are keyed
+      on `Scene.RoomGroupHash` rather than the group ID, because opening a
+      portal renumbers the groups
+- [x] Unit test: 8-room office floor with 10 portals, various open/closed configs
+
+> Two constraints surfaced while building this. Mesh rooms carried a single
+> material, so merging shoeboxes would have collapsed six wall materials into
+> one; `Room.TriangleMaterials` now carries a per-triangle table through the
+> ISM mesh solver and the ray tracer. And a merged group is deliberately not
+> edge-manifold — two rooms sharing a partition contribute two coincident
+> sheets, one per material — so group volume is the sum of room volumes rather
+> than `Mesh.EnclosedVolume`, and closedness uses a group-local even-edge rule.
+> Shoebox portals must be rectangular in their wall plane; mesh apertures must
+> be an edge loop of the authored mesh. See `docs/scene-graph.md`.
 
 #### 25.2 Path search and source elimination (`scene/`, `hybrid/`)
 
