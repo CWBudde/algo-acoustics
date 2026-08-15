@@ -121,7 +121,7 @@ func EvaluateMesh(sources []MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]
 
 	bvh := geometry.BuildBVH(sc.Room.Mesh)
 	ppm := geometry.BuildPlanePolygonMap(sc.Room.Mesh)
-	material := meshMaterial(sc)
+	materials := meshMaterials(sc)
 	receiver := sc.Receivers[0]
 
 	events := make([]ir.Event, 0)
@@ -137,7 +137,7 @@ func EvaluateMesh(sources []MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]
 				continue
 			}
 
-			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, material, bandSpec, speedOfSound)
+			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, materials, bandSpec, speedOfSound)
 			if ok {
 				events = append(events, event)
 			}
@@ -145,7 +145,7 @@ func EvaluateMesh(sources []MeshImageSource, sc *scene.Scene, cfg ISMConfig) ([]
 	}
 
 	if cfg.EnableDiffraction {
-		events = append(events, meshDiffractionEvents(sc, cfg, bvh, material, bandSpec, speedOfSound)...)
+		events = append(events, meshDiffractionEvents(sc, cfg, bvh, materials, bandSpec, speedOfSound)...)
 	}
 
 	sort.Slice(events, func(i, j int) bool {

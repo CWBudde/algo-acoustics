@@ -93,11 +93,51 @@ func (s Shoebox) Bounds() geometry.Box {
 //
 //nolint:tagliatelle // Camel-case tags are part of the established public scene schema.
 type Room struct {
-	Kind         RoomKind       `json:"kind"`
-	Shoebox      *Shoebox       `json:"shoebox,omitempty"`
-	MeshPath     string         `json:"meshPath,omitempty"`
-	Mesh         *geometry.Mesh `json:"mesh,omitempty"`
-	MeshMaterial string         `json:"meshMaterial,omitempty"`
+	Kind     RoomKind       `json:"kind"`
+	Shoebox  *Shoebox       `json:"shoebox,omitempty"`
+	MeshPath string         `json:"meshPath,omitempty"`
+	Mesh     *geometry.Mesh `json:"mesh,omitempty"`
+	// MeshMaterial names the material applied to every triangle that
+	// TriangleMaterials does not override.
+	MeshMaterial string `json:"meshMaterial,omitempty"`
+	// TriangleMaterials optionally names one material per mesh triangle,
+	// parallel to Mesh.Triangles. It exists so that geometry assembled from
+	// several surfaces — most importantly a room group merged across open
+	// portals — keeps each surface's own material instead of collapsing them
+	// onto a single MeshMaterial. Empty entries fall back to MeshMaterial.
+	TriangleMaterials []string `json:"triangleMaterials,omitempty"`
+}
+
+// TriangleMaterialName returns the material name governing a mesh triangle,
+// falling back to MeshMaterial when TriangleMaterials is absent, too short, or
+// carries an empty entry.
+func (r Room) TriangleMaterialName(index int) string {
+	if index < 0 || index >= len(r.TriangleMaterials) {
+		return r.MeshMaterial
+	}
+
+	if name := r.TriangleMaterials[index]; name != "" {
+		return name
+	}
+
+	return r.MeshMaterial
+}
+
+// MaterialForTriangle resolves the material governing a mesh triangle. An unset
+// or unknown name yields MaterialFullyReflective, matching the behaviour the
+// solvers already relied on for whole-mesh materials.
+func (r Room) MaterialForTriangle(index int, materials map[string]Material) Material {
+	name := r.TriangleMaterialName(index)
+	if name == "" {
+		return MaterialFullyReflective()
+	}
+
+	material, ok := materials[name]
+	if !ok {
+		return MaterialFullyReflective()
+	}
+
+	return material
 }
 
 // IsMesh reports whether the room uses triangulated geometry.

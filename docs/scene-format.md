@@ -17,6 +17,13 @@ Mesh rooms use `"kind": "mesh"` and reference a Wavefront OBJ file via `"meshPat
 }
 ```
 
+A mesh room takes its surface material from `meshMaterial`. Where one material
+per room is not enough, `triangleMaterials` names a material per triangle,
+parallel to the mesh triangle order; entries left empty fall back to
+`meshMaterial`, and an undefined name resolves to a fully reflective surface.
+The array must either be absent or match the triangle count exactly, and
+shoebox rooms must not set it — they use `wallMaterials`.
+
 The public JSON field names intentionally retain their established casing
 (`bandSpec`, `sampleRate`, `gainDb`, and uppercase vector components). Do not
 derive scene JSON from the repository's general snake-case convention.

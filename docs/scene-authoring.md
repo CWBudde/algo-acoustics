@@ -27,7 +27,9 @@ hand. The canonical field reference is
    scene should use a relative `meshPath`; it is resolved relative to the scene
    file.
 2. Define every material name referenced by the six shoebox wall entries. For a
-   mesh-wide material, set `room.meshMaterial`.
+   mesh-wide material, set `room.meshMaterial`. To vary the material across a
+   mesh, add `room.triangleMaterials`: one entry per triangle, in mesh order,
+   where an empty entry falls back to `meshMaterial`.
 3. Keep source and receiver positions inside the room bounds. Add explicit
    identity orientations when no rotation is intended.
 4. Use an `omni` receiver for mono output. A `binaural` receiver also requires
