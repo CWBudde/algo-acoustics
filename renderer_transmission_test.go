@@ -71,23 +71,58 @@ func TestTransmissionRendererEarlyIsTranslationInvariant(t *testing.T) {
 		t.Fatalf("event counts = base %d shifted %d", len(baseEvents), len(shiftedEvents))
 	}
 
-	for index := range baseEvents {
-		baseEvent := baseEvents[index]
-		shiftedEvent := shiftedEvents[index]
+	// Match as a multiset rather than index-by-index.  Translating the scene
+	// perturbs each arrival time by up to an ulp, and distinct events here are
+	// separated by less than that, so the solver's (time, kind, distance) sort
+	// legitimately permutes them.  Requiring a bijection keeps the physical
+	// claim -- every event survives translation, none appears or vanishes --
+	// without asserting an ordering the arithmetic cannot guarantee.
+	unmatched := make([]bool, len(shiftedEvents))
 
-		if math.Abs(baseEvent.TimeSeconds-shiftedEvent.TimeSeconds) > 1e-12 ||
-			math.Abs(baseEvent.Amplitude-shiftedEvent.Amplitude) > 1e-12 ||
-			baseEvent.Direction.Distance(shiftedEvent.Direction) > 1e-12 ||
-			baseEvent.Kind != shiftedEvent.Kind {
-			t.Fatalf("event[%d] differs after translation: base=%#v shifted=%#v", index, baseEvent, shiftedEvent)
-		}
+	for index, baseEvent := range baseEvents {
+		matched := -1
 
-		for bandIndex := range baseEvent.BandGain {
-			if math.Abs(baseEvent.BandGain[bandIndex]-shiftedEvent.BandGain[bandIndex]) > 1e-12 {
-				t.Fatalf("event[%d] band[%d] differs: base=%v shifted=%v", index, bandIndex, baseEvent.BandGain[bandIndex], shiftedEvent.BandGain[bandIndex])
+		for candidate, taken := range unmatched {
+			if taken {
+				continue
+			}
+
+			if eventsAgreeAfterTranslation(baseEvent, shiftedEvents[candidate]) {
+				matched = candidate
+
+				break
 			}
 		}
+
+		if matched < 0 {
+			t.Fatalf("base event[%d] has no counterpart after translation: %#v", index, baseEvent)
+		}
+
+		unmatched[matched] = true
 	}
+}
+
+// eventsAgreeAfterTranslation reports whether two events describe the same
+// arrival, up to the rounding a rigid translation of the scene introduces.
+func eventsAgreeAfterTranslation(a, b ir.Event) bool {
+	if a.Kind != b.Kind ||
+		math.Abs(a.TimeSeconds-b.TimeSeconds) > 1e-12 ||
+		math.Abs(a.Amplitude-b.Amplitude) > 1e-12 ||
+		a.Direction.Distance(b.Direction) > 1e-12 {
+		return false
+	}
+
+	if len(a.BandGain) != len(b.BandGain) {
+		return false
+	}
+
+	for bandIndex := range a.BandGain {
+		if math.Abs(a.BandGain[bandIndex]-b.BandGain[bandIndex]) > 1e-12 {
+			return false
+		}
+	}
+
+	return true
 }
 
 func TestTransmissionRendererValidatesOriginalScene(t *testing.T) {
