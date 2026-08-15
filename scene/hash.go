@@ -52,6 +52,11 @@ func newSceneHashWriter() *sceneHashWriter {
 // Hashing a group rather than the whole scene is what lets a portal toggle in
 // one part of a building leave the derived geometry of every other group warm.
 // Room indices are written as given, so callers pass them in a stable order.
+//
+// Unlike GeometryHash and RoomHash, this hash also covers each room's material
+// assignments. The group geometry it keys carries a derived per-triangle
+// material table, so a caller that reassigns a wall material would otherwise
+// keep receiving the stale table from the cache.
 func (s *Scene) RoomGroupHash(roomIndices []int) uint64 {
 	member := make(map[int]bool, len(roomIndices))
 	for _, roomIndex := range roomIndices {
@@ -61,6 +66,7 @@ func (s *Scene) RoomGroupHash(roomIndices []int) uint64 {
 	writer := newSceneHashWriter()
 	for _, roomIndex := range roomIndices {
 		writer.writeRoom(s, roomIndex)
+		writer.writeRoomMaterials(s, roomIndex)
 	}
 
 	for portalIndex, portal := range s.Portals {
@@ -108,6 +114,28 @@ func (w *sceneHashWriter) writeRoom(s *Scene, roomIndex int) {
 	}
 }
 
+// writeRoomMaterials hashes a room's material assignments. It is deliberately
+// kept out of writeRoom so that GeometryHash and RoomHash stay
+// material-independent, as their documented contract promises.
+func (w *sceneHashWriter) writeRoomMaterials(s *Scene, roomIndex int) {
+	room, ok := s.RoomAt(roomIndex)
+	if !ok {
+		return
+	}
+
+	if room.Shoebox != nil {
+		for _, name := range room.Shoebox.WallMaterials {
+			w.writeString(name)
+		}
+	}
+
+	w.writeString(room.MeshMaterial)
+
+	for _, name := range room.TriangleMaterials {
+		w.writeString(name)
+	}
+}
+
 func (w *sceneHashWriter) writePortal(portalIndex int, portal Portal) {
 	w.writeFloat(float64(portalIndex))
 	w.writeFloat(float64(portal.RoomIndices[0]))
@@ -117,6 +145,13 @@ func (w *sceneHashWriter) writePortal(portalIndex int, portal Portal) {
 	for _, vertex := range portal.Polygon {
 		w.writeVec3(vertex)
 	}
+}
+
+// writeString hashes a name length-prefixed, so that adjacent assignments
+// cannot be confused with a single concatenated one.
+func (w *sceneHashWriter) writeString(value string) {
+	w.writeFloat(float64(len(value)))
+	_, _ = w.hash.Write([]byte(value))
 }
 
 func (w *sceneHashWriter) writeFloat(value float64) {

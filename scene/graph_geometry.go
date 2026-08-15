@@ -15,6 +15,17 @@ const groupGeometryTolerance = portalGeometryTolerance
 // GroupGeometry is the merged boundary of a room group: one triangle soup
 // covering every member room, with the apertures of the open portals inside the
 // group cut away so the group forms a single connected cavity.
+//
+// Known limitation — per-side materials on a shared partition. Two rooms
+// meeting at a closed wall contribute two coincident sheets, each carrying its
+// own room's material. Which of the two a solver picks is currently decided by
+// BVH traversal order rather than by the side the ray arrives from, because
+// geometry.RayTriangle is double-sided and the traversal keeps only one of two
+// hits at equal distance. Ray tracing can therefore apply the neighbour's
+// absorption on such a partition. Making this side-aware is a solver-side
+// change (BVH tie resolution plus the mesh ISM plane test) and is tracked
+// separately; until then, per-side materials on a shared partition are only
+// reliable when both sides name the same material.
 type GroupGeometry struct {
 	Mesh              *geometry.Mesh
 	TriangleMaterials []string
@@ -183,13 +194,151 @@ func (g *AcousticSceneGraph) checkGroupRoomsDoNotOverlap(rooms []int) error {
 				continue
 			}
 
-			if boxesOverlap(firstBounds, secondBounds, groupGeometryTolerance) {
+			// The bounding boxes are only the broad phase. Two rooms meeting
+			// along a slanted wall have overlapping boxes in all three axes
+			// while their interiors stay disjoint, and rejecting those would
+			// rule out every non-axis-aligned neighbour.
+			if !boxesOverlap(firstBounds, secondBounds, groupGeometryTolerance) {
+				continue
+			}
+
+			if roomsShareInterior(*firstRoom, *secondRoom) {
 				return fmt.Errorf("rooms %d and %d overlap and cannot share a group", first, second)
 			}
 		}
 	}
 
 	return nil
+}
+
+// overlapProbeDirections are the ray directions of the point-in-solid parity
+// test. Several deliberately skewed directions are used and the majority wins,
+// so that a ray grazing a wall or slipping through a shared vertex cannot
+// decide the outcome on its own.
+var overlapProbeDirections = [3]geometry.Vec3{
+	{X: 0.7371, Y: 0.4523, Z: 0.5021},
+	{X: -0.5119, Y: 0.8093, Z: 0.2887},
+	{X: 0.2341, Y: -0.4177, Z: 0.8779},
+}
+
+// roomsShareInterior is the narrow phase of the overlap check: it reports
+// whether two rooms actually occupy common space, rather than merely having
+// overlapping bounding boxes.
+//
+// Two shoeboxes are settled by their boxes alone, which are exact. Otherwise
+// the rooms are probed as triangle soups: a room sample point that lies in the
+// strict interior of the other room proves the overlap, while rooms sharing
+// only a partition put all their samples on each other's surface.
+func roomsShareInterior(first, second Room) bool {
+	if first.Kind == RoomKindShoebox && second.Kind == RoomKindShoebox {
+		return true
+	}
+
+	firstMesh, ok := roomBoundaryMesh(first)
+	if !ok {
+		return true
+	}
+
+	secondMesh, ok := roomBoundaryMesh(second)
+	if !ok {
+		return true
+	}
+
+	return anySampleInsideMesh(firstMesh, secondMesh) || anySampleInsideMesh(secondMesh, firstMesh)
+}
+
+// roomBoundaryMesh returns a room's boundary as a triangle soup. A room whose
+// geometry cannot be derived yields false, and the caller then falls back to
+// the conservative answer.
+func roomBoundaryMesh(room Room) (*geometry.Mesh, bool) {
+	switch room.Kind {
+	case RoomKindShoebox:
+		if room.Shoebox == nil {
+			return nil, false
+		}
+
+		bounds := room.Shoebox.Bounds()
+
+		return geometry.MeshFromBox(bounds.Min, bounds.Max), true
+	case RoomKindMesh:
+		if room.Mesh == nil || len(room.Mesh.Triangles) == 0 {
+			return nil, false
+		}
+
+		return room.Mesh, true
+	default:
+		return nil, false
+	}
+}
+
+// anySampleInsideMesh reports whether any vertex or face centre of the sample
+// mesh lies strictly inside the solid mesh.
+func anySampleInsideMesh(sample, solid *geometry.Mesh) bool {
+	for _, triangle := range sample.Triangles {
+		centroid := triangle.V0.Add(triangle.V1).Add(triangle.V2).Scale(1.0 / 3.0)
+		for _, point := range [4]geometry.Vec3{triangle.V0, triangle.V1, triangle.V2, centroid} {
+			if pointStrictlyInsideMesh(solid, point) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// pointStrictlyInsideMesh reports whether a point lies in the interior of a
+// closed mesh. Points on the surface count as outside, which is what lets two
+// rooms share a partition without being called overlapping.
+func pointStrictlyInsideMesh(mesh *geometry.Mesh, point geometry.Vec3) bool {
+	for _, triangle := range mesh.Triangles {
+		if pointOnTriangle(triangle, point, groupGeometryTolerance) {
+			return false
+		}
+	}
+
+	inside := 0
+
+	for _, direction := range overlapProbeDirections {
+		if rayCrossingsAreOdd(mesh, point, direction) {
+			inside++
+		}
+	}
+
+	return inside*2 > len(overlapProbeDirections)
+}
+
+// rayCrossingsAreOdd counts how often a ray from the point leaves and enters
+// the mesh. An odd count means the point started inside.
+func rayCrossingsAreOdd(mesh *geometry.Mesh, origin, direction geometry.Vec3) bool {
+	ray := geometry.Ray{Origin: origin, Direction: direction.Normalize()}
+	crossings := 0
+
+	for _, triangle := range mesh.Triangles {
+		distance, hit := geometry.RayTriangle(ray, triangle)
+		if hit && distance > groupGeometryTolerance {
+			crossings++
+		}
+	}
+
+	return crossings%2 == 1
+}
+
+// pointOnTriangle reports whether a point lies on a triangle's surface,
+// including its edges.
+func pointOnTriangle(triangle geometry.Triangle, point geometry.Vec3, eps float64) bool {
+	normal := triangle.Normal()
+	if normal.Norm() <= eps {
+		return false
+	}
+
+	frame := geometry.NewPlaneFrame(triangle.V0, normal)
+	if math.Abs(frame.Distance(point)) > eps {
+		return false
+	}
+
+	corners := []geometry.Vec2{frame.To2D(triangle.V0), frame.To2D(triangle.V1), frame.To2D(triangle.V2)}
+
+	return pointInPolygon2D(corners, frame.To2D(point), eps)
 }
 
 // groupExtent returns the group's physical volume and bounds. The volume is the
@@ -335,7 +484,7 @@ func markApertureTriangles(room Room, roomIndex int, polygon []geometry.Vec3, dr
 			continue
 		}
 
-		if !triangleTouchesAperture(frame, outline, triangle) {
+		if !triangleOverlapsAperture(frame, outline, projected, triangle) {
 			continue
 		}
 
@@ -351,11 +500,22 @@ func markApertureTriangles(room Room, roomIndex int, polygon []geometry.Vec3, dr
 		covered += triangle.Area()
 	}
 
-	// Nothing coplanar reaches the aperture, so the outline is already a hole
-	// in the authored mesh. That is the other legitimate way to model an
-	// opening, and there is nothing to delete.
+	// Nothing coplanar reaches the aperture. That is legitimate only when the
+	// outline is already a hole in the authored mesh — the other way to model
+	// an opening — and then there is nothing to delete. Absence of coverage is
+	// not proof of a hole on its own: portal validation only requires *some*
+	// coplanar room triangle, so a polygon floating on the wall plane but
+	// beside the mesh also lands here, and accepting it would merge the rooms
+	// while leaving the partition uncut.
 	if covered == 0 && straddling == 0 {
-		return nil
+		if apertureIsExistingHole(room.Mesh, polygon) {
+			return nil
+		}
+
+		return fmt.Errorf(
+			"portal aperture of mesh room %d neither tiles any triangle nor matches a boundary edge loop of the mesh; place the outline on an existing hole or retriangulate so it becomes an edge loop",
+			roomIndex,
+		)
 	}
 
 	portalArea := polygonArea(polygon, normal.Normal)
@@ -369,21 +529,251 @@ func markApertureTriangles(room Room, roomIndex int, polygon []geometry.Vec3, dr
 	return nil
 }
 
-// triangleTouchesAperture reports whether a triangle lies on the aperture plane
-// and its projection shares positive area with the aperture outline.
-func triangleTouchesAperture(frame geometry.PlaneFrame, outline geometry.Rect2, triangle geometry.Triangle) bool {
-	vertices := [3]geometry.Vec3{triangle.V0, triangle.V1, triangle.V2}
-	projected := make([]geometry.Vec2, 0, 3)
+// apertureIsExistingHole reports whether the portal outline traces a rim of the
+// authored mesh, meaning the opening is already modelled as a hole.
+//
+// A polygon edge may be subdivided by several mesh edges along that rim, so it
+// is not enough to look for one boundary edge per polygon edge: the boundary
+// edges lying on a polygon edge must cover its full length.
+func apertureIsExistingHole(mesh *geometry.Mesh, polygon []geometry.Vec3) bool {
+	boundary := meshBoundaryEdges(mesh)
+	if len(boundary) == 0 {
+		return false
+	}
 
-	for _, vertex := range vertices {
+	for index, start := range polygon {
+		end := polygon[(index+1)%len(polygon)]
+
+		length := end.Sub(start).Norm()
+		if length <= groupGeometryTolerance {
+			continue
+		}
+
+		covered := 0.0
+
+		for _, edge := range boundary {
+			if !pointOnSegment3D(start, end, edge[0], groupGeometryTolerance) ||
+				!pointOnSegment3D(start, end, edge[1], groupGeometryTolerance) {
+				continue
+			}
+
+			covered += edge[1].Sub(edge[0]).Norm()
+		}
+
+		if math.Abs(covered-length) > math.Max(groupGeometryTolerance, length*1e-6) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// meshBoundaryEdges returns the edges used by exactly one triangle, which are
+// the rims of the mesh's holes.
+func meshBoundaryEdges(mesh *geometry.Mesh) [][2]geometry.Vec3 {
+	type edgeKey struct{ a, b geometry.Vec3 }
+
+	counts := make(map[edgeKey]int, len(mesh.Triangles)*3)
+
+	for _, triangle := range mesh.Triangles {
+		for _, pair := range [3][2]geometry.Vec3{
+			{triangle.V0, triangle.V1},
+			{triangle.V1, triangle.V2},
+			{triangle.V2, triangle.V0},
+		} {
+			key := edgeKey{a: pair[0], b: pair[1]}
+			if vec3SortsAfter(pair[0], pair[1]) {
+				key = edgeKey{a: pair[1], b: pair[0]}
+			}
+
+			counts[key]++
+		}
+	}
+
+	var boundary [][2]geometry.Vec3
+
+	for key, count := range counts {
+		if count == 1 {
+			boundary = append(boundary, [2]geometry.Vec3{key.a, key.b})
+		}
+	}
+
+	return boundary
+}
+
+// pointOnSegment3D reports whether a point lies on the segment within eps.
+func pointOnSegment3D(a, b, point geometry.Vec3, eps float64) bool {
+	direction := b.Sub(a)
+
+	length := direction.Norm()
+	if length <= eps {
+		return point.Sub(a).Norm() <= eps
+	}
+
+	offset := point.Sub(a)
+	if offset.Cross(direction).Norm()/length > eps {
+		return false
+	}
+
+	along := offset.Dot(direction) / length
+
+	return along >= -eps && along <= length+eps
+}
+
+// triangleOverlapsAperture reports whether a triangle lies on the aperture
+// plane and its projection shares positive area with the aperture polygon.
+//
+// The aperture's bounding rectangle is only a broad phase; the polygon itself
+// decides. Rectangle overlap alone would misjudge every aperture that is not
+// itself an axis-aligned rectangle in the plane basis: the two complementary
+// triangles of a quad have the same bounding rectangle but meet along their
+// diagonal only, so a triangle-shaped aperture would report its neighbour as
+// crossing the outline and reject a perfectly valid edge loop.
+func triangleOverlapsAperture(
+	frame geometry.PlaneFrame,
+	outline geometry.Rect2,
+	polygon []geometry.Vec2,
+	triangle geometry.Triangle,
+) bool {
+	projected, ok := projectCoplanarTriangle(frame, triangle)
+	if !ok {
+		return false
+	}
+
+	if !geometry.BoundingRect2(projected[:]).Overlaps(outline, groupGeometryTolerance) {
+		return false
+	}
+
+	return trianglePolygonOverlap2D(polygon, projected, groupGeometryTolerance)
+}
+
+// projectCoplanarTriangle projects a triangle into the plane basis, reporting
+// false when the triangle does not lie on the plane.
+func projectCoplanarTriangle(frame geometry.PlaneFrame, triangle geometry.Triangle) ([3]geometry.Vec2, bool) {
+	var projected [3]geometry.Vec2
+
+	for index, vertex := range [3]geometry.Vec3{triangle.V0, triangle.V1, triangle.V2} {
 		if math.Abs(frame.Distance(vertex)) > groupGeometryTolerance {
+			return projected, false
+		}
+
+		projected[index] = frame.To2D(vertex)
+	}
+
+	return projected, true
+}
+
+// trianglePolygonOverlap2D reports whether a triangle and a polygon share
+// positive area in the plane. Shapes that merely touch along an edge or at a
+// corner do not count, which is exactly what separates a triangle tiling the
+// aperture from its neighbour on the far side of a shared edge.
+func trianglePolygonOverlap2D(polygon []geometry.Vec2, triangle [3]geometry.Vec2, eps float64) bool {
+	// A triangle whose vertices all sit on the outline — the usual case for a
+	// triangle-aligned aperture — is caught by its centroid alone.
+	centroid := geometry.Vec2{
+		U: (triangle[0].U + triangle[1].U + triangle[2].U) / 3,
+		V: (triangle[0].V + triangle[1].V + triangle[2].V) / 3,
+	}
+	if pointStrictlyInPolygon2D(polygon, centroid, eps) {
+		return true
+	}
+
+	for _, vertex := range triangle {
+		if pointStrictlyInPolygon2D(polygon, vertex, eps) {
+			return true
+		}
+	}
+
+	for _, vertex := range polygon {
+		if pointStrictlyInTriangle2D(triangle, vertex, eps) {
+			return true
+		}
+	}
+
+	// Two shapes can overlap without either holding a vertex of the other, but
+	// then a pair of their edges must cross properly.
+	for index, current := range polygon {
+		next := polygon[(index+1)%len(polygon)]
+
+		for corner := range triangle {
+			if segmentsCrossProperly2D(current, next, triangle[corner], triangle[(corner+1)%3], eps) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// pointStrictlyInPolygon2D is pointInPolygon2D with the outline excluded.
+func pointStrictlyInPolygon2D(polygon []geometry.Vec2, point geometry.Vec2, eps float64) bool {
+	for index, current := range polygon {
+		next := polygon[(index+1)%len(polygon)]
+		if pointOnSegment2D(current, next, point, eps) {
+			return false
+		}
+	}
+
+	return pointInPolygon2D(polygon, point, eps)
+}
+
+// pointStrictlyInTriangle2D reports whether a point lies inside a triangle
+// without touching its border.
+func pointStrictlyInTriangle2D(triangle [3]geometry.Vec2, point geometry.Vec2, eps float64) bool {
+	positive, negative := false, false
+
+	for index := range triangle {
+		a, b := triangle[index], triangle[(index+1)%3]
+
+		length := math.Hypot(b.U-a.U, b.V-a.V)
+		if length <= eps {
 			return false
 		}
 
-		projected = append(projected, frame.To2D(vertex))
+		side := ((point.U-a.U)*(b.V-a.V) - (point.V-a.V)*(b.U-a.U)) / length
+		if math.Abs(side) <= eps {
+			return false
+		}
+
+		if side > 0 {
+			positive = true
+		} else {
+			negative = true
+		}
 	}
 
-	return geometry.BoundingRect2(projected).Overlaps(outline, groupGeometryTolerance)
+	return positive != negative
+}
+
+// segmentsCrossProperly2D reports whether two segments cross at a point
+// interior to both. Segments that only touch or run collinearly do not.
+func segmentsCrossProperly2D(a, b, c, d geometry.Vec2, eps float64) bool {
+	first := sideOfSegment2D(a, b, c, eps) * sideOfSegment2D(a, b, d, eps)
+	second := sideOfSegment2D(c, d, a, eps) * sideOfSegment2D(c, d, b, eps)
+
+	return first < 0 && second < 0
+}
+
+// sideOfSegment2D returns -1, 0 or +1 for the side a point falls on, with the
+// zero band scaled by the segment length so eps stays a distance.
+func sideOfSegment2D(a, b, point geometry.Vec2, eps float64) float64 {
+	du, dv := b.U-a.U, b.V-a.V
+
+	length := math.Hypot(du, dv)
+	if length <= eps {
+		return 0
+	}
+
+	side := ((point.U-a.U)*dv - (point.V-a.V)*du) / length
+	if math.Abs(side) <= eps {
+		return 0
+	}
+
+	if side > 0 {
+		return 1
+	}
+
+	return -1
 }
 
 func (b *GroupGeometry) append(triangles []geometry.Triangle, material string, roomIndex int) {

@@ -1,4 +1,4 @@
-package scene_test
+package scene
 
 import (
 	"math"
@@ -7,40 +7,39 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/geometry"
-	"github.com/cwbudde/algo-acoustics/scene"
 )
 
 // twoRoomScene mirrors examples/scenes/two_room_transmission.json: two 6 x 4 x 3
 // rooms side by side, joined by a floor-standing door on the shared x = 6 wall.
-func twoRoomScene(t *testing.T) *scene.Scene {
+func twoRoomScene(t *testing.T) *Scene {
 	t.Helper()
 
-	sc := &scene.Scene{
-		Rooms: []scene.Room{
+	sc := &Scene{
+		Rooms: []Room{
 			shoeboxAt(geometry.Vec3Zero, 6, 4, 3),
 			shoeboxAt(geometry.Vec3{X: 6}, 6, 4, 3),
 		},
-		Portals: []scene.Portal{{
+		Portals: []Portal{{
 			RoomIndices: [2]int{0, 1},
 			Polygon:     doorOnX(6, 1.4, 2.6, 2.1),
 			Material:    "door",
-			State:       scene.PortalClosed,
+			State:       PortalClosed,
 		}},
 		Materials: graphTestMaterials(),
-		Sources: []scene.Source{{
+		Sources: []Source{{
 			Position:    geometry.Vec3{X: 2, Y: 2, Z: 1.2},
 			Orientation: geometry.QuatIdentity(),
 		}},
-		Receivers: []scene.Receiver{{
+		Receivers: []Receiver{{
 			Position:    geometry.Vec3{X: 9, Y: 2, Z: 1.2},
 			Orientation: geometry.QuatIdentity(),
-			Type:        scene.ReceiverOmni,
+			Type:        ReceiverOmni,
 		}},
 		BandSpec:   acoustics.Octave6,
 		SampleRate: 48000,
 	}
 
-	err := scene.Validate(sc)
+	err := Validate(sc)
 	if err != nil {
 		t.Fatalf("two-room fixture is invalid: %v", err)
 	}
@@ -174,7 +173,7 @@ func TestGroupGeometryIsClosed(t *testing.T) {
 		openPortals(t, graph, open...)
 
 		for id := range graph.GroupCount() {
-			group, err := graph.GroupGeometry(scene.GroupID(id))
+			group, err := graph.GroupGeometry(GroupID(id))
 			if err != nil {
 				t.Fatalf("open=%v group %d: %v", open, id, err)
 			}
@@ -229,7 +228,7 @@ func TestGroupGeometryRejectsNonRectangularPortal(t *testing.T) {
 		{X: 6, Y: 2.6, Z: 0},
 		{X: 6, Y: 2.0, Z: 2.1},
 	}
-	sc.Portals[0].State = scene.PortalOpen
+	sc.Portals[0].State = PortalOpen
 
 	graph := newGraph(t, sc)
 
@@ -250,9 +249,9 @@ func TestGroupGeometryRejectsOverlappingRooms(t *testing.T) {
 
 	sc := twoRoomScene(t)
 	sc.Rooms[1].Shoebox.Origin = geometry.Vec3{X: 5}
-	sc.Portals[0].State = scene.PortalOpen
+	sc.Portals[0].State = PortalOpen
 
-	graph, err := scene.NewAcousticSceneGraph(sc)
+	graph, err := NewAcousticSceneGraph(sc)
 	if err != nil {
 		// Portal validation may already reject the moved wall, which is an
 		// equally good outcome.
@@ -306,7 +305,7 @@ func TestGroupSceneFastPathPreservesShoebox(t *testing.T) {
 		t.Fatalf("GroupScene: %v", err)
 	}
 
-	if sub.Room.Kind != scene.RoomKindShoebox || sub.Room.Shoebox == nil {
+	if sub.Room.Kind != RoomKindShoebox || sub.Room.Shoebox == nil {
 		t.Fatalf("group scene room kind = %q, want the shoebox fast path", sub.Room.Kind)
 	}
 
@@ -332,7 +331,7 @@ func TestGroupSceneMergedRoomIsAValidMeshRoom(t *testing.T) {
 		t.Fatalf("GroupScene: %v", err)
 	}
 
-	if sub.Room.Kind != scene.RoomKindMesh || sub.Room.Mesh == nil {
+	if sub.Room.Kind != RoomKindMesh || sub.Room.Mesh == nil {
 		t.Fatalf("merged group room kind = %q, want a mesh room", sub.Room.Kind)
 	}
 
@@ -343,7 +342,7 @@ func TestGroupSceneMergedRoomIsAValidMeshRoom(t *testing.T) {
 
 	// The merged scene must survive validation, since every downstream engine
 	// validates before simulating.
-	err = scene.Validate(sub)
+	err = Validate(sub)
 	if err != nil {
 		t.Fatalf("merged group scene does not validate: %v", err)
 	}
@@ -437,17 +436,17 @@ func TestGroupOfPositionResolvesDoorwayAmbiguityWithinAGroup(t *testing.T) {
 func TestSingleRoomSceneFormsOneGroup(t *testing.T) {
 	t.Parallel()
 
-	sc := &scene.Scene{
+	sc := &Scene{
 		Room:      shoeboxAt(geometry.Vec3Zero, 6, 4, 3),
 		Materials: graphTestMaterials(),
-		Sources: []scene.Source{{
+		Sources: []Source{{
 			Position:    geometry.Vec3{X: 2, Y: 2, Z: 1.2},
 			Orientation: geometry.QuatIdentity(),
 		}},
-		Receivers: []scene.Receiver{{
+		Receivers: []Receiver{{
 			Position:    geometry.Vec3{X: 4, Y: 2, Z: 1.2},
 			Orientation: geometry.QuatIdentity(),
-			Type:        scene.ReceiverOmni,
+			Type:        ReceiverOmni,
 		}},
 		BandSpec:   acoustics.Octave6,
 		SampleRate: 48000,
@@ -463,7 +462,7 @@ func TestSingleRoomSceneFormsOneGroup(t *testing.T) {
 		t.Fatalf("GroupScene: %v", err)
 	}
 
-	if sub.Room.Kind != scene.RoomKindShoebox {
+	if sub.Room.Kind != RoomKindShoebox {
 		t.Fatalf("single-room group kind = %q, want shoebox", sub.Room.Kind)
 	}
 }

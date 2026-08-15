@@ -1,4 +1,4 @@
-package scene_test
+package scene
 
 import (
 	"strings"
@@ -6,13 +6,12 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/geometry"
-	"github.com/cwbudde/algo-acoustics/scene"
 )
 
 const graphTestEps = 1e-9
 
-func graphTestMaterials() map[string]scene.Material {
-	return map[string]scene.Material{
+func graphTestMaterials() map[string]Material {
+	return map[string]Material{
 		"wall":    {Name: "wall", AbsorptionByBand: []float64{0.1}, ScatteringByBand: []float64{0.05}},
 		"floor":   {Name: "floor", AbsorptionByBand: []float64{0.05}, ScatteringByBand: []float64{0.05}},
 		"ceiling": {Name: "ceiling", AbsorptionByBand: []float64{0.2}, ScatteringByBand: []float64{0.05}},
@@ -22,10 +21,10 @@ func graphTestMaterials() map[string]scene.Material {
 
 // shoeboxAt builds a room whose walls use distinguishable materials so that
 // merged-group triangle materials can be checked per face.
-func shoeboxAt(origin geometry.Vec3, width, depth, height float64) scene.Room { //nolint:unparam // Kept general so fixtures can vary every dimension.
-	return scene.Room{
-		Kind: scene.RoomKindShoebox,
-		Shoebox: &scene.Shoebox{
+func shoeboxAt(origin geometry.Vec3, width, depth, height float64) Room { //nolint:unparam // Kept general so fixtures can vary every dimension.
+	return Room{
+		Kind: RoomKindShoebox,
+		Shoebox: &Shoebox{
 			Origin: origin,
 			Width:  width, Depth: depth, Height: height,
 			WallMaterials: [6]string{"wall", "wall", "wall", "wall", "floor", "ceiling"},
@@ -62,7 +61,7 @@ func doorOnY(atY, xMin, xMax, height float64) []geometry.Vec3 {
 //
 //	row 1 (y = 4..8):  4  5  6  7
 //	row 0 (y = 0..4):  0  1  2  3
-func officeFloorScene(t *testing.T) *scene.Scene {
+func officeFloorScene(t *testing.T) *Scene {
 	t.Helper()
 
 	const (
@@ -70,7 +69,7 @@ func officeFloorScene(t *testing.T) *scene.Scene {
 		height = 3.0
 	)
 
-	rooms := make([]scene.Room, 0, 8)
+	rooms := make([]Room, 0, 8)
 
 	for row := range 2 {
 		for column := range 4 {
@@ -81,49 +80,49 @@ func officeFloorScene(t *testing.T) *scene.Scene {
 		}
 	}
 
-	portals := make([]scene.Portal, 0, 10)
+	portals := make([]Portal, 0, 10)
 
 	// Three doors along each row, on the shared x planes.
 	for row := range 2 {
 		for column := range 3 {
 			first := row*4 + column
-			portals = append(portals, scene.Portal{
+			portals = append(portals, Portal{
 				RoomIndices: [2]int{first, first + 1},
 				Polygon:     doorOnX(float64(column+1)*size, float64(row)*size+1.4, float64(row)*size+2.6, 2.1),
 				Material:    "door",
-				State:       scene.PortalClosed,
+				State:       PortalClosed,
 			})
 		}
 	}
 
 	// Four doors across the corridor, on the shared y = 4 plane.
 	for column := range 4 {
-		portals = append(portals, scene.Portal{
+		portals = append(portals, Portal{
 			RoomIndices: [2]int{column, column + 4},
 			Polygon:     doorOnY(size, float64(column)*size+1.4, float64(column)*size+2.6, 2.1),
 			Material:    "door",
-			State:       scene.PortalClosed,
+			State:       PortalClosed,
 		})
 	}
 
-	sc := &scene.Scene{
+	sc := &Scene{
 		Rooms:     rooms,
 		Portals:   portals,
 		Materials: graphTestMaterials(),
-		Sources: []scene.Source{{
+		Sources: []Source{{
 			Position:    geometry.Vec3{X: 2, Y: 2, Z: 1.5},
 			Orientation: geometry.QuatIdentity(),
 		}},
-		Receivers: []scene.Receiver{{
+		Receivers: []Receiver{{
 			Position:    geometry.Vec3{X: 6, Y: 2, Z: 1.5},
 			Orientation: geometry.QuatIdentity(),
-			Type:        scene.ReceiverOmni,
+			Type:        ReceiverOmni,
 		}},
 		BandSpec:   acoustics.Octave6,
 		SampleRate: 48000,
 	}
 
-	err := scene.Validate(sc)
+	err := Validate(sc)
 	if err != nil {
 		t.Fatalf("office floor fixture is invalid: %v", err)
 	}
@@ -131,10 +130,10 @@ func officeFloorScene(t *testing.T) *scene.Scene {
 	return sc
 }
 
-func newGraph(t *testing.T, sc *scene.Scene) *scene.AcousticSceneGraph {
+func newGraph(t *testing.T, sc *Scene) *AcousticSceneGraph {
 	t.Helper()
 
-	graph, err := scene.NewAcousticSceneGraph(sc)
+	graph, err := NewAcousticSceneGraph(sc)
 	if err != nil {
 		t.Fatalf("NewAcousticSceneGraph: %v", err)
 	}
@@ -142,11 +141,11 @@ func newGraph(t *testing.T, sc *scene.Scene) *scene.AcousticSceneGraph {
 	return graph
 }
 
-func openPortals(t *testing.T, graph *scene.AcousticSceneGraph, indices ...int) {
+func openPortals(t *testing.T, graph *AcousticSceneGraph, indices ...int) {
 	t.Helper()
 
 	for _, index := range indices {
-		err := graph.SetPortalState(index, scene.PortalOpen)
+		err := graph.SetPortalState(index, PortalOpen)
 		if err != nil {
 			t.Fatalf("SetPortalState(%d, open): %v", index, err)
 		}
@@ -155,13 +154,13 @@ func openPortals(t *testing.T, graph *scene.AcousticSceneGraph, indices ...int) 
 
 // groupSets returns the group memberships as a comparable string so that tests
 // can assert the partition rather than particular identifiers.
-func groupSets(t *testing.T, graph *scene.AcousticSceneGraph) []string {
+func groupSets(t *testing.T, graph *AcousticSceneGraph) []string {
 	t.Helper()
 
 	sets := make([]string, 0, graph.GroupCount())
 
 	for id := range graph.GroupCount() {
-		rooms, ok := graph.GroupRooms(scene.GroupID(id))
+		rooms, ok := graph.GroupRooms(GroupID(id))
 		if !ok {
 			t.Fatalf("GroupRooms(%d) is missing", id)
 		}
@@ -275,7 +274,7 @@ func TestSetPortalStateRecomputesRoomGroups(t *testing.T) {
 		t.Fatal("rooms 0 and 2 must share a group while the chain is open")
 	}
 
-	err := graph.SetPortalState(1, scene.PortalClosed)
+	err := graph.SetPortalState(1, PortalClosed)
 	if err != nil {
 		t.Fatalf("SetPortalState: %v", err)
 	}
@@ -295,12 +294,12 @@ func TestSetPortalStateRejectsInvalidInput(t *testing.T) {
 
 	graph := newGraph(t, officeFloorScene(t))
 
-	err := graph.SetPortalState(99, scene.PortalOpen)
+	err := graph.SetPortalState(99, PortalOpen)
 	if err == nil {
 		t.Fatal("SetPortalState accepted an out-of-range portal index")
 	}
 
-	err = graph.SetPortalState(0, scene.PortalState("ajar"))
+	err = graph.SetPortalState(0, PortalState("ajar"))
 	if err == nil {
 		t.Fatal("SetPortalState accepted an unsupported state")
 	}
