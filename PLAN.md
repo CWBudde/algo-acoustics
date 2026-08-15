@@ -406,6 +406,51 @@ Final scores, identical on amd64 and arm64:
 > initialises the loop counter, so `ScaleBlock`/`ScaleBlockInPlace` read off the
 > end of the buffer for a single-element slice. Reproduced under qemu.
 > `algo-acoustics` does not call those entry points, so it is not blocking here.
+> **Resolved upstream in `algo-vecmath` v0.1.3** (2026-08-15), which fixes the
+> out-of-bounds write and rewrites the NEON backend as true SIMD. `go.mod` is
+> bumped; see Phase 27.
+
+---
+
+### Phase 27 — Dependency Currency Across the `algo-*` Stack
+
+> Not a feature phase. The four sibling modules had drifted onto three different
+> `algo-fft` versions, which made it impossible to take an upstream fix in one
+> without breaking another. This phase brings the whole stack onto current tags
+> and keeps it there.
+
+The state that triggered it (2026-08-15):
+
+| module           | pinned `algo-fft` | own latest tag           |
+| ---------------- | ----------------- | ------------------------ |
+| `algo-pde`       | v0.6.15           | v0.2.1                   |
+| `algo-dsp`       | v0.7.3            | v0.6.0, `main` untagged  |
+| `algo-acoustics` | v0.6.11           | —                        |
+| `algo-fft`       | —                 | v0.7.4, `main` +87 ahead |
+
+`algo-fft`'s generic `PlanReal2D` / `PlanReal3D` changed signature between the
+v0.6 and v0.7 lines, so code written against v0.6.x fails to compile with
+`cannot use generic type PlanReal2D[...] without instantiation`. That is why
+`algo-acoustics` could not simply take `algo-dsp` `main`: the bump pulls
+`algo-fft` v0.7.x in, which `algo-pde` v0.2.1 does not build against.
+
+- [ ] Release `algo-fft` from `main` (87 unreleased commits, plus a `[0.7.5]`
+      changelog section that was never tagged).
+- [ ] Move `algo-pde` from `algo-fft` v0.6.15 to the new tag, migrating the
+      `PlanReal2D`/`PlanReal3D` call sites; release it.
+- [ ] Move `algo-dsp` from `algo-fft` v0.7.3 to the new tag; release it. `main`
+      already carries the `algo-vecmath` v0.1.3 bump and the fused-AXPY
+      `conv.DirectTo` rewrite, neither of which has ever been tagged.
+- [ ] Bump all four dependencies here, then run the full suite **and**
+      `roombench` on amd64 and arm64.
+- [ ] Confirm `testdata/regression/` specifically. The `conv.DirectTo` rewrite is
+      bit-identical on amd64 but **not** on arm64, where the NEON AXPY fuses a
+      multiply-add that the old two-pass form rounded twice. Given that Phase 26
+      was itself about FMA-contraction determinism, this must be measured against
+      the fixtures rather than waved through.
+- [ ] Add a standing check so the drift cannot silently recur — a CI job or a
+      `just` recipe that fails when a sibling `cwbudde` module is behind its
+      latest tag.
 
 ---
 
@@ -414,7 +459,11 @@ Final scores, identical on amd64 and arm64:
 ```text
 algo-acoustics
 ├── algo-dsp          (convolution, FFT, metrics, filtering)
+│   ├── algo-fft      (transitive; also a direct require here)
+│   ├── algo-vecmath  (transitive; SIMD block kernels)
+│   └── algo-approx   (transitive)
 ├── algo-pde          (Helmholtz shoebox, Phase 8+)
+│   └── algo-fft      (transitive)
 ├── gll-tools         (directivity balloons, Phase 6+)
 ├── wav               (export only, Phase 2+)
 └── go-sofa           (HRTF/BRIR, Phase 7, behind interface)
