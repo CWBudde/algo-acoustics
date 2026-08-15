@@ -33,7 +33,7 @@ func solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 
 	bvh := geometry.BuildBVH(sc.Room.Mesh)
 	ppm := geometry.BuildPlanePolygonMap(sc.Room.Mesh)
-	material := meshMaterial(sc)
+	materials := meshMaterials(sc)
 	receiver := sc.Receivers[0]
 
 	events := make([]ir.Event, 0)
@@ -57,7 +57,7 @@ func solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 				continue
 			}
 
-			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, material, bandSpec, speedOfSound)
+			event, ok := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, materials, bandSpec, speedOfSound)
 			if ok {
 				events = append(events, event)
 			}
@@ -65,7 +65,7 @@ func solveMesh(sc *scene.Scene, cfg ISMConfig) ([]ir.Event, error) {
 	}
 
 	if cfg.EnableDiffraction {
-		events = append(events, meshDiffractionEvents(sc, cfg, bvh, material, bandSpec, speedOfSound)...)
+		events = append(events, meshDiffractionEvents(sc, cfg, bvh, materials, bandSpec, speedOfSound)...)
 	}
 
 	sort.Slice(events, func(i, j int) bool {
@@ -90,7 +90,7 @@ func meshSpecularEvent(
 	mesh *geometry.Mesh,
 	bvh *geometry.BVHNode,
 	ppm *geometry.PlanePolygonMap,
-	material scene.Material,
+	materials meshMaterialSet,
 	bandSpec acoustics.BandSpec,
 	speedOfSound float64,
 ) (ir.Event, bool) {
@@ -115,7 +115,7 @@ func meshSpecularEvent(
 	}
 
 	for bandIndex := range bandGain {
-		bandGain[bandIndex] *= meshPathReflectance(path, source.Position, material, bandIndex)
+		bandGain[bandIndex] *= meshPathReflectance(path, source.Position, materials, bandIndex)
 	}
 
 	if bandGainSilent(bandGain) {
@@ -225,7 +225,7 @@ func meshReflectionPath(
 	return points, true
 }
 
-func meshPathReflectance(path []meshReflectionPoint, source geometry.Vec3, material scene.Material, bandIndex int) float64 {
+func meshPathReflectance(path []meshReflectionPoint, source geometry.Vec3, materials meshMaterialSet, bandIndex int) float64 {
 	if len(path) == 0 {
 		return 1
 	}
@@ -245,26 +245,51 @@ func meshPathReflectance(path []meshReflectionPoint, source geometry.Vec3, mater
 			cosAngle = 1
 		}
 
-		pressure *= wayverbPressureReflectance(material.AbsorptionAt(bandIndex), cosAngle)
+		pressure *= wayverbPressureReflectance(materials.At(rp.TriIndex).AbsorptionAt(bandIndex), cosAngle)
 		previous = rp.Point
 	}
 
 	return pressure
 }
 
-// meshMaterial looks up the mesh material from the scene, falling back to
-// fully reflective if not set or not found.
-func meshMaterial(sc *scene.Scene) scene.Material {
-	if sc.Room.MeshMaterial == "" {
-		return scene.MaterialFullyReflective()
+// meshMaterialSet resolves the material governing each triangle of a mesh room.
+// Rooms that name a single MeshMaterial keep perTriangle nil, so the common case
+// costs nothing; rooms assembled from several surfaces — a room group merged
+// across open portals, above all — carry one entry per triangle.
+type meshMaterialSet struct {
+	fallback    scene.Material
+	perTriangle []scene.Material
+}
+
+// At returns the material of a triangle, falling back to the whole-mesh
+// material for out-of-range indices.
+func (s meshMaterialSet) At(triIndex int) scene.Material {
+	if triIndex < 0 || triIndex >= len(s.perTriangle) {
+		return s.fallback
 	}
 
-	mat, ok := sc.Materials[sc.Room.MeshMaterial]
-	if !ok {
-		return scene.MaterialFullyReflective()
+	return s.perTriangle[triIndex]
+}
+
+// meshMaterials resolves the mesh room's materials, falling back to fully
+// reflective where a name is unset or undefined.
+func meshMaterials(sc *scene.Scene) meshMaterialSet {
+	set := meshMaterialSet{fallback: scene.MaterialFullyReflective()}
+
+	if material, ok := sc.Materials[sc.Room.MeshMaterial]; ok && sc.Room.MeshMaterial != "" {
+		set.fallback = material
 	}
 
-	return mat
+	if len(sc.Room.TriangleMaterials) == 0 || sc.Room.Mesh == nil {
+		return set
+	}
+
+	set.perTriangle = make([]scene.Material, len(sc.Room.Mesh.Triangles))
+	for index := range set.perTriangle {
+		set.perTriangle[index] = sc.Room.MaterialForTriangle(index, sc.Materials)
+	}
+
+	return set
 }
 
 // meshMaxDistance returns a safe maximum image source distance based on a 2-second cap.

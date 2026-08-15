@@ -14,7 +14,7 @@ func meshDiffractionEvents(
 	sc *scene.Scene,
 	cfg ISMConfig,
 	bvh *geometry.BVHNode,
-	material scene.Material,
+	materials meshMaterialSet,
 	bandSpec acoustics.BandSpec,
 	speedOfSound float64,
 ) []ir.Event {
@@ -43,8 +43,8 @@ func meshDiffractionEvents(
 		}
 
 		if order >= 2 && cfg.MaxOrder >= 1 {
-			events = append(events, reflectionDiffractionEvents(source, receiver, edges, sc.Room.Mesh, bvh, material, bandSpec, speedOfSound)...)
-			events = append(events, diffractionReflectionEvents(source, receiver, edges, sc.Room.Mesh, bvh, material, bandSpec, speedOfSound)...)
+			events = append(events, reflectionDiffractionEvents(source, receiver, edges, sc.Room.Mesh, bvh, materials, bandSpec, speedOfSound)...)
+			events = append(events, diffractionReflectionEvents(source, receiver, edges, sc.Room.Mesh, bvh, materials, bandSpec, speedOfSound)...)
 		}
 	}
 
@@ -68,7 +68,7 @@ func reflectionDiffractionEvents(
 	edges []geometry.DiffractionEdge,
 	mesh *geometry.Mesh,
 	bvh *geometry.BVHNode,
-	material scene.Material,
+	materials meshMaterialSet,
 	bandSpec acoustics.BandSpec,
 	speedOfSound float64,
 ) []ir.Event {
@@ -101,7 +101,7 @@ func reflectionDiffractionEvents(
 				arrivalDirection:    candidate.Point.Sub(receiver.Position).Normalize(),
 				totalDistance:       source.Position.Distance(reflection.Point) + reflection.Point.Distance(candidate.Point) + candidate.Point.Distance(receiver.Position),
 				extraDistance:       source.Position.Distance(reflection.Point),
-				reflectance:         mixedReflectance([]meshReflectionPoint{reflection}, source.Position, material, bandSpec.BandCount()),
+				reflectance:         mixedReflectance([]meshReflectionPoint{reflection}, source.Position, materials, bandSpec.BandCount()),
 			})
 		}
 	}
@@ -115,7 +115,7 @@ func diffractionReflectionEvents(
 	edges []geometry.DiffractionEdge,
 	mesh *geometry.Mesh,
 	bvh *geometry.BVHNode,
-	material scene.Material,
+	materials meshMaterialSet,
 	bandSpec acoustics.BandSpec,
 	speedOfSound float64,
 ) []ir.Event {
@@ -148,7 +148,7 @@ func diffractionReflectionEvents(
 				arrivalDirection:    reflection.Point.Sub(receiver.Position).Normalize(),
 				totalDistance:       source.Position.Distance(candidate.Point) + candidate.Point.Distance(reflection.Point) + reflection.Point.Distance(receiver.Position),
 				extraDistance:       reflection.Point.Distance(receiver.Position),
-				reflectance:         mixedReflectance([]meshReflectionPoint{reflection}, candidate.Point, material, bandSpec.BandCount()),
+				reflectance:         mixedReflectance([]meshReflectionPoint{reflection}, candidate.Point, materials, bandSpec.BandCount()),
 			})
 		}
 	}
@@ -156,10 +156,10 @@ func diffractionReflectionEvents(
 	return mixedDiffractionPathEvents(source, receiver, paths, bandSpec, speedOfSound)
 }
 
-func mixedReflectance(path []meshReflectionPoint, source geometry.Vec3, material scene.Material, bandCount int) []float64 {
+func mixedReflectance(path []meshReflectionPoint, source geometry.Vec3, materials meshMaterialSet, bandCount int) []float64 {
 	reflectance := make([]float64, bandCount)
 	for bandIndex := range bandCount {
-		reflectance[bandIndex] = meshPathReflectance(path, source, material, bandIndex)
+		reflectance[bandIndex] = meshPathReflectance(path, source, materials, bandIndex)
 	}
 
 	return reflectance

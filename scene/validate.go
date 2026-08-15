@@ -146,10 +146,32 @@ func validateMaterialReferences(s *Scene) ValidationErrors {
 			}
 		}
 
-		if room.Kind == RoomKindMesh && room.MeshMaterial != "" {
+		if room.Kind != RoomKindMesh {
+			continue
+		}
+
+		if room.MeshMaterial != "" {
 			if _, ok := s.Materials[room.MeshMaterial]; !ok {
 				errs = append(errs, fmt.Errorf("%smesh material references undefined material %q", prefix, room.MeshMaterial))
 			}
+		}
+
+		errs = append(errs, validateTriangleMaterialReferences(s, prefix, *room)...)
+	}
+
+	return errs
+}
+
+func validateTriangleMaterialReferences(s *Scene, prefix string, room Room) ValidationErrors {
+	var errs ValidationErrors
+
+	for triangleIndex, materialName := range room.TriangleMaterials {
+		if materialName == "" {
+			continue
+		}
+
+		if _, ok := s.Materials[materialName]; !ok {
+			errs = append(errs, fmt.Errorf("%striangle material %d references undefined material %q", prefix, triangleIndex, materialName))
 		}
 	}
 
@@ -592,6 +614,10 @@ func validateShoeboxRoom(room Room) error {
 	}
 
 	var errs ValidationErrors
+	if len(room.TriangleMaterials) > 0 {
+		errs = append(errs, errors.New("shoebox room must not set triangle materials; use wallMaterials"))
+	}
+
 	if !isFiniteVec3(room.Shoebox.Origin) {
 		errs = append(errs, errors.New("shoebox origin must be finite"))
 	}
@@ -624,6 +650,12 @@ func validateShoeboxRoom(room Room) error {
 func validateMeshRoom(room Room) error {
 	if !room.IsValid() {
 		return errors.New("mesh room requires a mesh definition")
+	}
+
+	// An explicitly present but empty list is a mismatch, not an omission: the
+	// documented contract is absent or one entry per triangle.
+	if count := len(room.TriangleMaterials); room.TriangleMaterials != nil && count != len(room.Mesh.Triangles) {
+		return fmt.Errorf("mesh room triangle material count = %d, want %d", count, len(room.Mesh.Triangles))
 	}
 
 	err := room.Mesh.Validate()

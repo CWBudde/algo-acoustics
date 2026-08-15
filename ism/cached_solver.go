@@ -301,7 +301,7 @@ func evaluateMeshMultiSource(
 		ppm = geometry.BuildPlanePolygonMap(sc.Room.Mesh)
 	}
 
-	material := meshMaterial(sc)
+	materials := meshMaterials(sc)
 	receiver := sc.Receivers[0]
 
 	events := make([]ir.Event, 0)
@@ -317,7 +317,7 @@ func evaluateMeshMultiSource(
 				continue
 			}
 
-			event, evOK := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, material, bandSpec, speedOfSound)
+			event, evOK := meshSpecularEvent(source, receiver, imgSrc, sc.Room.Mesh, bvh, ppm, materials, bandSpec, speedOfSound)
 			if evOK {
 				events = append(events, event)
 			}
@@ -325,7 +325,7 @@ func evaluateMeshMultiSource(
 	}
 
 	if cfg.EnableDiffraction {
-		events = append(events, meshDiffractionEvents(sc, cfg, bvh, material, bandSpec, speedOfSound)...)
+		events = append(events, meshDiffractionEvents(sc, cfg, bvh, materials, bandSpec, speedOfSound)...)
 	}
 
 	sortEvents(events)

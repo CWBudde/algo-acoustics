@@ -314,14 +314,30 @@ func (r *RayTracer) sceneMaterialForWall(wallIdx int) scene.Material {
 		return scene.MaterialFullyReflective()
 	}
 
-	// Mesh: use the single named material that applies to all triangles.
-	if r.Scene.Room.Kind == scene.RoomKindMesh && r.Scene.Room.MeshMaterial != "" {
-		if material, ok := r.Scene.Materials[r.Scene.Room.MeshMaterial]; ok {
-			return material
-		}
+	// Mesh: NextHit reports the triangle index as the wall index, so an
+	// optional per-triangle material table resolves directly. Rooms that set
+	// only MeshMaterial fall back to it for every triangle.
+	if r.Scene.Room.Kind == scene.RoomKindMesh {
+		return r.Scene.Room.MaterialForTriangle(wallIdx, r.Scene.Materials)
 	}
 
 	return scene.MaterialFullyReflective()
+}
+
+// sceneMeshTriangleMaterials resolves the per-triangle material table of a mesh
+// room, or nil when the room names a single material for the whole mesh.
+func sceneMeshTriangleMaterials(sc *scene.Scene) []*scene.Material {
+	if sc == nil || sc.Room.Mesh == nil || len(sc.Room.TriangleMaterials) == 0 {
+		return nil
+	}
+
+	materials := make([]*scene.Material, len(sc.Room.Mesh.Triangles))
+	for index := range materials {
+		material := sc.Room.MaterialForTriangle(index, sc.Materials)
+		materials[index] = &material
+	}
+
+	return materials
 }
 
 func (r *RayTracer) sceneTracer() (Tracer, error) {
@@ -341,7 +357,7 @@ func (r *RayTracer) sceneTracer() (Tracer, error) {
 			return nil, errors.New("mesh room is nil")
 		}
 
-		return NewMeshTracer(r.Scene.Room.Mesh, nil)
+		return NewMeshTracer(r.Scene.Room.Mesh, sceneMeshTriangleMaterials(r.Scene))
 	default:
 		return nil, errors.New("raytrace requires a shoebox or mesh room")
 	}
