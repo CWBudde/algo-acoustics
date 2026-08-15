@@ -79,3 +79,88 @@ can prove its behavior:
 
 Keep generated or licensed data out of the small-fixture layer unless its
 provenance and redistribution terms are recorded.
+
+## Cross-Platform Floating-Point Determinism (FMA)
+
+Go permits the compiler to fuse `x*y + z` into a single fused multiply-add
+instruction. It does so on arm64, ppc64, s390x, and riscv64, but not on amd64.
+A fused instruction does not round the intermediate product, so the same
+expression evaluates to slightly different values on the two architectures —
+typically a handful of ulps. Nothing is broken on either side; the arithmetic is
+simply not bit-identical.
+
+The consequence for this codebase is a hard rule: **geometric predicates must
+never be decided by an exact tie.** A wall plane that lands exactly on a grid
+node plane, a point exactly on a half-space boundary, a fraction exactly equal
+to `1` — each of these resolves one way on amd64 and the other way on arm64,
+because the deciding comparison sits within a few ulps of the branch point. This
+is what made `TestIBMValidation_EquilateralTriangle` fail on the macOS CI runner
+(Apple Silicon) while it passed on every amd64 runner: a room dimension that was
+an exact multiple of the grid spacing put hundreds of boundary nodes on the
+wrong side of a `frac > 1` test, giving them the opposite boundary condition.
+
+### Suppressing contraction
+
+The Go spec guarantees that an explicit conversion forces the intermediate value
+to be rounded to its type, which defeats the fusion. Wrap the product wherever
+bit-identical arithmetic actually matters:
+
+```go
+// Contracted into one FMA on arm64, two rounded operations on amd64:
+origin.Z = center.Z - float64(halfNz)*h
+
+// Rounded after the multiply on every architecture:
+origin.Z = center.Z - float64(float64(halfNz)*h)
+```
+
+Use this deliberately and locally. It is a determinism tool, not a correctness
+tool; the fused form is usually the more accurate one. The better fix for a
+classifier is almost always to remove the tie, not to pin the rounding.
+
+### Reproducing an arm64 divergence locally
+
+No Apple hardware is needed — `qemu-aarch64-static` (Debian/Ubuntu package
+`qemu-user-static`) reproduces the macOS result exactly:
+
+1. Cross-compile the test binary for arm64:
+
+   ```bash
+   GOOS=linux GOARCH=arm64 go test -c -o /tmp/pde.arm64.test ./pde/
+   ```
+
+2. Run it under emulation:
+
+   ```bash
+   qemu-aarch64-static /tmp/pde.arm64.test -test.run TestIBMValidation -test.v
+   ```
+
+3. Compare against the same test on the host to confirm the divergence, then
+   confirm FMA contraction is the cause by rebuilding the arm64 binary with a
+   contraction hash filter and bisecting the pattern until the divergence
+   disappears:
+
+   ```bash
+   GOOS=linux GOARCH=arm64 go test -c -gcflags=all=-d=fmahash=1010 \
+     -o /tmp/pde.arm64.test ./pde/
+   ```
+
+   `-d=fmahash=<pattern>` enables FMA contraction only at call sites whose
+   position hash matches the given bit pattern. Narrowing the pattern until the
+   output flips identifies the exact contraction site responsible. If some
+   pattern makes the arm64 output byte-identical to amd64, FMA is confirmed as
+   the source and the matching site is the one to fix.
+
+Emulation is roughly ten times slower than native execution; budget accordingly
+when running a whole package.
+
+### For reviewers
+
+- Prefer tolerance-based comparisons over exact equality or bare `>` / `<` in
+  any code that classifies geometry (inside/outside, on-plane, cut-cell
+  fractions). State the tolerance and why it has the magnitude it has.
+- Any new geometric classifier needs a golden or determinism test — hash its
+  output for a fixture whose dimensions are an exact multiple of the grid
+  spacing, so a per-architecture flip fails loudly instead of drifting.
+- Cross-platform CI covers this class of defect: the emulated arm64 job in
+  [the unit test workflow](../.github/workflows/test-unit.yml) catches it before
+  it reaches the macOS job.
