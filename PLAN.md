@@ -308,39 +308,104 @@ result exactly — 19 peaks, 3 matched):
   its fractions sit at `0.9999999999999992`, ~8e-16 from the same cliff. Any
   room whose dimensions are an exact multiple of `h` is exposed.
 
-Neither obvious one-line fix works, so this needs a decision at the stencil
-contract level rather than inside `fracToWall`:
+The measurement that settles it: counting only directions whose neighbour is
+genuinely exterior (the earlier count conflated those with unwritten `Frac`
+slots, which are also 0),
 
-| Attempt                       | Cross-platform | Collateral                                                                                                               |
-| ----------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `return 1` instead of `0`     | 375 flips → 0  | `TestIBMValidation_RectangularEigenfreqs` drops to 0/5 matched — the `0` sentinel is load-bearing for axis-aligned walls |
-| tolerance `frac > 1-1e-9 → 0` | 375 flips → 0  | breaks `TestIBMStencil_UniformFieldLaplacianZero` and `TestIBMValidation_EnergyDecaySabine`                              |
+| fixture                    | ext-neighbour dirs | `frac == 0` | `frac == 1` | just below 1 | sub-cell |
+| -------------------------- | ------------------ | ----------- | ----------- | ------------ | -------- |
+| shoebox 3x2.5x2, h = 0.05  | 14206              | **2891**    | 0           | 11315        | 0        |
+| rect 4x4x4, h = 0.5        | 294                | 0           | **294**     | 0            | 0        |
+| triangle L=3 z=10, h = 0.1 | 11442              | **375**     | 0           | 375          | 10692    |
 
-- [ ] Define the intended meaning of `BoundaryInfo.Frac == 0` for a direction whose neighbour is **exterior**. The doc comment says "the neighbor in that direction is interior", which cannot hold in the branch that produces it (`pde/ibm_grid.go:22-26`)
-- [ ] Make the stencil consistent with that definition, and reconcile the two validation tests that currently encode opposite assumptions about walls on node planes
-- [ ] Remove the dependence on rounding: derive node positions so a wall coincident with a node plane classifies identically regardless of FMA contraction
-- [ ] Regression: `ClassifyGrid` output byte-identical between amd64 and arm64 for both the triangle and shoebox fixtures
+`rect 4x4x4` at `h = 0.5` is the control: origin and spacing are exact in binary,
+nothing rounds, and every wall direction comes out at exactly 1 — which is why
+`TestIBMStencil_UniformFieldLaplacianZero` passes on it. The shoebox's 2891 zeros
+and the triangle's 375 are the same geometry rounding the other way. So `frac == 0`
+on an exterior neighbour was never a semantics to be chosen, it was a bug, and
+the exact fixture shows the intended value is 1. It also means the shoebox has
+been modelling 20 % of its wall directions as pressure-release rather than rigid
+since Phase 13 — a physics defect, not only a portability one.
+
+- [x] Define the intended meaning of `BoundaryInfo.Frac == 0` for a direction whose neighbour is **exterior** — it is now unreachable. `Frac == 0` means only "the neighbour is an active node"; an exterior neighbour always carries `Frac` in `(0, 1]` (`pde/ibm_grid.go`)
+- [x] Make the stencil consistent with that definition — no stencil change was needed once the sentinel became disjoint. `fracToWall` returns `(frac, ok)`, clamps a fraction above 1 instead of returning 0, snaps a near-tie to exactly 1 (`nodePlaneTol = 1e-9`) and floors a degenerate cut cell (`minWallFrac = 1e-6`)
+- [x] Remove the dependence on rounding — `offsetFromOrigin` rounds `i*h` explicitly before adding, for both the origin and every node position, and `sideOf` is an FMA-free `Plane.SideOf` shared by `PointInside`, `DistanceToNearestWall` and `fracToWall` so the inside test and the wall distance cannot disagree. `geometry.Plane.SideOf` is left alone: it is the ISM/ray-tracing hot path and decides no ties
+- [x] Regression: `ClassifyGrid` output byte-identical between amd64 and arm64 — `TestClassifyGridGolden`, verified under `qemu-aarch64`
+
+> Because amd64 does not contract FMA today, the FMA-free rewrite reproduces the
+> amd64 classification bit-for-bit and arm64 converges onto it: the class hashes
+> are unchanged for all three fixtures. The only intended amd64 behaviour change
+> is the frac clamp.
+>
+> One residual, deliberately not chased: the triangle fixture's own planes are
+> built from `math.Sqrt(3)` in the test helper and differ by 2 ulps across
+> architectures, so its _fraction_ hash is not portable. Its classification is,
+> which is the point — a 2-ulp wall plane no longer flips 375 boundary
+> conditions. The golden test therefore covers the exact-multiple fixtures, and
+> `TestClassifyGridFracInvariant` covers the triangle.
 
 #### 26.2 Triangle modal validation correctness (`pde/ibm_validation_test.go`)
 
 Two defects that made the test a coin flip, which is why a 1-ulp difference could
 decide pass/fail at all:
 
-- [ ] `nSteps = int(0.5/dt)` uses a nominal `dt = 0.95*h/(c*sqrt(3))` the test derives itself, but `runFDTD` uses `0.95*stencil.CFLLimit(c)` — 5.3x smaller. The run covers 94.7 ms, not the documented 500 ms, giving 8.06 Hz FFT bins against a 0.5% tolerance (0.19 Hz at 38 Hz). Derive `nSteps` from the timestep the solver actually uses
-- [ ] The "tall z pushes z-modes out of the analysis band" premise is inverted: `c/(2*10 m)` = 17.15 Hz is the mode _spacing_, so z-harmonics fill 30–500 Hz. Either pick an extrusion that genuinely isolates the 2D modes or compare against the full 3D mode set
-- [ ] Express the match tolerance relative to the achievable bin width instead of a fixed 0.5%
-- [ ] Retune the pass criterion against physics: with 26.1 fixed and the duration corrected, both architectures agree exactly at 30 peaks / 2 matched, so the current threshold of 5 encodes the lottery rather than solver accuracy
+- [x] `nSteps` now derives from the timestep the solver actually uses — `runFDTD` takes a duration in seconds and computes `nSteps` from `0.95*stencil.CFLLimit(c)`. The triangle runs 16504 steps rather than 3126, and all three modal tests realise a true 500 ms and a 2.00 Hz resolution
+- [x] The inverted "tall z isolates the 2D modes" premise is gone: `prismEigenfreqs` combines any cross-section's 2D set with the axial family, and both the triangle and the cylinder are scored against their full 3D mode set. Against the 2D-only set the solver's recall lands _below_ chance (−4 pp triangle, −15 pp cylinder), i.e. the peaks avoid those frequencies — the 2D sets were actively wrong
+- [x] Match tolerance is `max(0.5 %·f, 1.5·df)` with `df = 1/(nSteps·dt)`, the true resolution rather than the zero-padded bin spacing
+- [x] Pass criterion retuned — see below
+
+Retuning turned up two further problems, both of which had to be fixed before a
+threshold could mean anything:
+
+- **The peak-first count is uninformative.** `logChanceLevel` reports how much of
+  the band the tolerance windows cover: 81 % for the shoebox, **97.5 %** for the
+  prism. At that density every possible peak matches something, so 40/40 is
+  arithmetic, not evidence. Scoring is now `requireModeRecall` — how many
+  analytical modes the solver actually _produced_ — which gets harder, not
+  easier, as the mode set thickens, and the test fails outright if recall ever
+  falls to the chance level.
+- **A sealed rigid room has nowhere to put the source's injected volume.** With
+  the walls correctly rigid after 26.1, the receiver's time series settles on a
+  DC offset whose bin is ~49x the strongest acoustic mode, and the peak
+  threshold — 1 % of the _global_ maximum — then rejects nearly every mode: the
+  shoebox dropped from 40 detected peaks to 5. This was masked before 26.1
+  precisely because those 2891 pressure-release directions vented the enclosure.
+  `extractPeakFreqs` now subtracts the mean, applies a Hann taper, and takes its
+  threshold from the in-band maximum.
+
+Final scores, identical on amd64 and arm64:
+
+| test             | band      | recall | chance | threshold |
+| ---------------- | --------- | ------ | ------ | --------- |
+| shoebox          | 30–153 Hz | 75 %   | 39 %   | ≥ 60 %    |
+| triangular prism | 30–500 Hz | 58 %   | 40 %   | ≥ 45 %    |
+| cylinder         | 20–400 Hz | 73 %   | 57 %   | ≥ 42 %    |
+
+> The prism is scored over the whole band rather than its low end because at
+> `zHeight = 10 m` the 3D modes below 187 Hz are spaced ~1.7 Hz apart, under the
+> 2 Hz FFT resolution — they are not separable at 500 ms at all. That is the cost
+> of keeping the tall extrusion and extending the mode set instead of shrinking
+> z; the +18 pp margin over chance is a real but modest claim, and the shoebox
+> test carries the strong one.
 
 #### 26.3 Cross-platform determinism guard
 
-- [ ] Golden test over `ClassifyGrid` (node counts plus a fraction hash) for a room whose dimensions are an exact multiple of `h`
-- [ ] Document the hazard in `docs/maintenance.md`: Go contracts `x*y + z` into FMA on arm64 but not amd64, so geometric predicates must not be decided by exact ties
-- [ ] Run the portable test suite on arm64 in CI (emulated or native) so this class of divergence is caught before it reaches the macOS job
+- [x] Golden test over `ClassifyGrid` — `TestClassifyGridGolden` (dims, class counts, FNV-64a fraction hash) over three fixtures whose dimensions are exact multiples of `h`, plus `TestClassifyGridFracInvariant` and `TestNodePositionsFMAFree` (`pde/ibm_determinism_test.go`)
+- [x] Hazard documented in `docs/maintenance.md` — the contraction rule, the explicit-conversion suppression idiom, the qemu reproduction procedure and the `-d=fmahash=` bisection
+- [x] arm64 in CI — `arm64-determinism` job in `.github/workflows/test-unit.yml`, `docker/setup-qemu-action` plus `GOARCH=arm64 go test ./pde/... ./geometry/...`. Scoped to the tie-sensitive packages because emulation is ~10x slower; the macOS job still covers the full portable suite on native arm64
 
-> **Also open (unrelated dependency bug, same CI job):** the macOS integration
-> job fails to build `algo-vecmath@v0.1.1` — `arch/arm64/neon/dotproduct.s` uses
-> the ARM32 VFP mnemonics `VFMULD`/`VFADDD` in an arm64 file, so the package has
-> never assembled on Apple Silicon. Needs a fix upstream and a `go.mod` bump.
+> **Also open (unrelated dependency bug, same CI job) — resolved:** the macOS
+> integration job failed to build `algo-vecmath@v0.1.1`, whose
+> `arch/arm64/neon/dotproduct.s` used the ARM32 VFP mnemonics `VFMULD`/`VFADDD`
+> in an arm64 file. Fixed upstream in v0.1.2 (scalar `FLDPD` pair loads with two
+> `FMADDD` accumulators, not the vector form); `go.mod` is bumped and
+> `GOARCH=arm64 go build ./...` now succeeds for the whole tree.
+>
+> Still open upstream, found while verifying the above: at v0.1.2
+> `arch/arm64/neon/scale.s` branches to the scalar path _past_ the `ANDS` that
+> initialises the loop counter, so `ScaleBlock`/`ScaleBlockInPlace` read off the
+> end of the buffer for a single-element slice. Reproduced under qemu.
+> `algo-acoustics` does not call those entry points, so it is not blocking here.
 
 ---
 
