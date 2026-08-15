@@ -18,6 +18,8 @@ for the output you need.
 - [Sound transmission](sound-transmission.md): author adjacent rooms and
   portals, render secondary-source propagation, and interpret isolation
   metrics.
+- [Acoustic scene graph](scene-graph.md): group rooms across open portals,
+  merge their geometry, and simulate a group with the single-room engines.
 - [Comparing against another tool](compare-another-tool.md): prepare equivalent
   inputs and interpret `roomir compare` output.
 - [External-tool compatibility](external-tool-compatibility.md): interchange
