@@ -19,7 +19,9 @@ import (
 //
 // Hops are memoised by their endpoint identity, not by path, so a hop that
 // several paths share through the same group and the same two portals costs one
-// simulation in total rather than one per path.
+// simulation in total rather than one per path. Behind that per-render memo sits
+// the signature-keyed GroupResponseCache, which carries a hop across renders so
+// a portal toggle re-simulates only the groups it actually changed.
 //
 // needs selects which fields are simulated. SolveEarly wants only the
 // image-source factors and RenderLateMono only the ray-traced ones; computing
@@ -32,15 +34,33 @@ func (r *NetworkRenderer) renderPathFactors(
 ) ([]*GroupFactor, error) {
 	path := plan.paths[pathIndex]
 	factors := make([]*GroupFactor, 0, len(path.groups))
+	configHash := r.configHash(cfg)
 
 	for index, group := range path.groups {
 		key := hopKeyAt(path, index)
 		cached := plan.factors[key]
 
+		from, to := r.hopPorts(plan, path, index, index == 0, index == len(path.groups)-1)
+		responseKey, keyed := plan.groupResponseKey(group, from, to, configHash)
+
+		// A group whose signature survived the last portal change keeps its
+		// simulated response across renders, which is what makes an interactive
+		// portal toggle cost only the group that actually changed. The
+		// within-render memo wins where both hold the hop, since it is at least
+		// as complete.
+		if cached.factor == nil && keyed {
+			if stored, ok := r.Cache().Get(responseKey); ok {
+				// Copy before it is filled in: several renderers may share one
+				// cache, so a stored factor must never be written through.
+				cached = cachedFactor{factor: cloneFactor(stored), needs: factorNeedsOf(stored)}
+			}
+		}
+
 		// A hop cached with only its early field keeps that work and adds the
 		// missing ray trace to the same factor, rather than solving it again.
 		missing := cached.needs.missing(needs)
 		if cached.factor != nil && missing.empty() {
+			plan.storeFactor(key, cached.factor, cached.needs)
 			factors = append(factors, cached.factor)
 
 			continue
@@ -52,6 +72,11 @@ func (r *NetworkRenderer) renderPathFactors(
 		}
 
 		plan.storeFactor(key, factor, cached.needs.union(needs))
+
+		if keyed {
+			r.Cache().Put(responseKey, factor)
+		}
+
 		factors = append(factors, factor)
 	}
 
@@ -312,7 +337,32 @@ func composeDirectionalLate(
 	return composed, nil
 }
 
-// sumLateHistograms renders and sums the directional late field of every path.
+// hopPorts returns the entry and exit ports of one hop along a path.
+func (r *NetworkRenderer) hopPorts(
+	plan *networkPlan,
+	path networkPath,
+	index int,
+	first, last bool,
+) (from, to groupPort) {
+	sc := plan.graph.Scene()
+
+	if first {
+		from = groupPort{Kind: portKindSource, Position: plan.source.Position}
+	} else {
+		from = portalPort(sc, path.portals[index-1], true)
+	}
+
+	if last {
+		to = groupPort{Kind: portKindReceiver, Position: plan.receiver.Position}
+	} else {
+		to = portalPort(sc, path.portals[index], false)
+	}
+
+	return from, to
+}
+
+// sumLateHistograms renders and sums the directional late field of every path,
+// keeping the directivity groups of the terminal hop.
 //
 // Both the total and the per-direction histograms are summed across paths, and
 // the arrival probabilities are derived only afterwards, so every path

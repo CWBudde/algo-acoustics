@@ -134,8 +134,26 @@ preserve ear-specific HRTF information.
 
 ## Interactive Aperture
 
-The browser demo caches closed and fully transmissive binaural endpoint
-responses. Its aperture control interpolates them with `x^(1/n)` (square root
-by default), so dragging the control does not trigger a new simulation. The
-fully open Phase 21 endpoint is the all-pass portal response; physical merging
-of the room geometry remains Phase 25 work.
+The browser demo caches its two binaural endpoint responses and interpolates
+them with `x^(1/n)` (square root by default), so dragging the aperture control
+triggers no new simulation.
+
+The open endpoint is now a **physically merged room group**, not the `tau = 1`
+all-pass stand-in it used to be. Nothing in the demo changed to achieve that:
+`NewCrossRoomEngine` routes any open portal to the filter network, because the
+Phase 21 renderer models "open" as a fully transmissive partition with the two
+rooms still geometrically separate, while the scene graph cuts the aperture out
+of both walls and merges the volumes into one cavity.
+
+`hybrid.PortalBRIRCache` can hold all three states — closed, the all-pass
+portal filter, and the merged room group — through
+`NewPortalBRIRCacheWithFilter`. `AtApertureMerged` follows the sequencing of
+`raven.md` section 5.3 — crossfade from closed toward the all-pass filter, and
+only at that endpoint does the merged room group take over — but the last step
+is a crossfade rather than the hard switch the reference describes. Two
+independently simulated responses have different reflection times, so replacing
+one with the other in a single buffer is a discontinuity no matter how well
+their broadband levels match. The merged response therefore fades in over the
+last 5 % of aperture, and the constructor additionally rejects an all-pass and
+merged pair differing by more than 1.5 dB, since a fade that short cannot
+disguise a large level step.

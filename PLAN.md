@@ -243,10 +243,36 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 
 #### 25.4 Dynamic portal interaction
 
-- [ ] Recompute room groups and PST/PPG on portal state change
-- [ ] Cache BRIRs per room group; only resimulate affected groups
-- [ ] Reuse Phase 21.5 crossfade for smooth open/close transitions
-- [ ] Performance target: portal change to updated BRIR < 2 s for 4-room scenario
+- [x] Recompute room groups and PST/PPG on portal state change —
+      `(*NetworkRenderer).Prepare` and `(*NetworkPlan).Apply`
+- [x] Cache BRIRs per room group; only resimulate affected groups —
+      `GroupResponseCache`, keyed on `GroupSignature` rather than the group ID,
+      because opening a portal renumbers every group
+- [x] Reuse Phase 21.5 crossfade for smooth open/close transitions —
+      `AtApertureMerged` follows raven.md 5.3 up to the last step: crossfade to
+      the all-pass filter, then fade on into the merged group over the final
+      5 % of aperture rather than switching in one buffer
+- [x] Performance target: portal change to updated BRIR < 2 s for 4-room
+      scenario — **0.55 s warm binaural** (0.39 s mono) against 2.14 s cold on
+      an i7-1255U; see `docs/profiling-baseline.md`
+
+> The target holds only in the warm case, and the benchmark says so: the cold
+> benchmark builds a fresh renderer each iteration so it cannot inherit the
+> warm cache. WASM is not covered — single-threaded WASM is several times
+> slower, which is what `DynamicRays` exists for.
+>
+> raven.md calls the hard switch at full aperture artifact-free without
+> conditions. Level-matching is necessary but not sufficient: the all-pass and
+> merged responses are separate simulations with different reflection times, so
+> a single-buffer swap is discontinuous whatever their levels.
+> `AtApertureMerged` therefore crossfades into the merged response over the last
+> 5 % of aperture, and `NewPortalBRIRCacheWithFilter` still rejects a pair
+> differing by more than 1.5 dB, which such a short fade could not disguise.
+>
+> The browser demo gained a genuinely merged open endpoint with no demo-side
+> change: `NewCrossRoomEngine` routes any open portal to the filter network,
+> since the Phase 21 renderer models "open" as a transmissive partition rather
+> than merged geometry.
 
 ---
 

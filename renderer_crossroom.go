@@ -66,33 +66,55 @@ func NewCrossRoomEngine(sc *scene.Scene, cfg CrossRoomEngineConfig) CrossRoomEng
 // flanking paths dropped without a trace even when a direct portal also exists.
 // Anything above two rooms therefore belongs to the filter network.
 func sceneMatchesOneHopTransmission(sc *scene.Scene) bool {
-	if sc == nil || sc.RoomCount() != 2 || len(sc.Sources) != 1 || len(sc.Receivers) != 1 {
-		return false
-	}
-
-	sourceRoom, ok := sc.RoomIndexAt(sc.Sources[0].Position)
+	sourceRoom, receiverRoom, ok := oneHopRoomPair(sc)
 	if !ok {
 		return false
 	}
 
-	receiverRoom, ok := sc.RoomIndexAt(sc.Receivers[0].Position)
+	connected := false
+
+	for _, portal := range sc.Portals {
+		// Any open portal sends the scene to the filter network. The Phase 21
+		// renderer models "open" as a fully transmissive partition, tau = 1,
+		// with both rooms still geometrically separate; only the scene graph
+		// merges the two volumes into the single cavity that an open door
+		// actually is.
+		if portal.State == scene.PortalOpen {
+			return false
+		}
+
+		if portal.RoomIndices == [2]int{sourceRoom, receiverRoom} ||
+			portal.RoomIndices == [2]int{receiverRoom, sourceRoom} {
+			connected = true
+		}
+	}
+
+	return connected
+}
+
+// oneHopRoomPair returns the source and receiver rooms when the scene has the
+// single-source, single-receiver, two-shoebox shape the Phase 21 renderer needs.
+func oneHopRoomPair(sc *scene.Scene) (sourceRoom, receiverRoom int, ok bool) {
+	if sc == nil || sc.RoomCount() != 2 || len(sc.Sources) != 1 || len(sc.Receivers) != 1 {
+		return 0, 0, false
+	}
+
+	sourceRoom, ok = sc.RoomIndexAt(sc.Sources[0].Position)
+	if !ok {
+		return 0, 0, false
+	}
+
+	receiverRoom, ok = sc.RoomIndexAt(sc.Receivers[0].Position)
 	if !ok || sourceRoom == receiverRoom {
-		return false
+		return 0, 0, false
 	}
 
 	for _, roomIndex := range []int{sourceRoom, receiverRoom} {
 		room, found := sc.RoomAt(roomIndex)
 		if !found || room.Kind != scene.RoomKindShoebox || room.Shoebox == nil {
-			return false
+			return 0, 0, false
 		}
 	}
 
-	for _, portal := range sc.Portals {
-		if portal.RoomIndices == [2]int{sourceRoom, receiverRoom} ||
-			portal.RoomIndices == [2]int{receiverRoom, sourceRoom} {
-			return true
-		}
-	}
-
-	return false
+	return sourceRoom, receiverRoom, true
 }
