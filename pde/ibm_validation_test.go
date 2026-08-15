@@ -12,12 +12,26 @@ import (
 
 // runFDTD runs an FDTD simulation with a Gaussian pulse source and records
 // the pressure time series at a receiver node. Returns the time series and dt.
-func runFDTD(room *ConvexRoom, h float64, bc WallBC, srcPos, rcvPos geometry.Vec3, nSteps int) ([]float64, float64) {
+//
+// The caller specifies the simulated duration in seconds; the step count is
+// derived from the time step the solver actually uses, which is
+// 0.95·CFLLimit(c) and can be several times smaller than the nominal
+// h/(c·√3) bound when the grid contains small cut cells. Deriving nSteps
+// from a nominal dt (as this test used to) silently shortens the run and
+// coarsens the achievable FFT resolution.
+func runFDTD(
+	room *ConvexRoom,
+	h float64,
+	bc WallBC,
+	srcPos, rcvPos geometry.Vec3,
+	duration float64,
+) ([]float64, float64) {
 	g := ClassifyGrid(room, h)
 	stencil := NewIBMStencil(g, bc)
 
 	c := 343.0
 	dt := 0.95 * stencil.CFLLimit(c)
+	nSteps := int(math.Ceil(duration / dt))
 
 	src, err := NewIBMSource(room, g, srcPos, SoftSource)
 	if err != nil {
@@ -62,8 +76,34 @@ func extractPeakFreqs(ts []float64, dt float64, minFreq, maxFreq float64, nPeaks
 		nfft <<= 1
 	}
 
+	// Remove the mean and taper before transforming.
+	//
+	// A rigid enclosure is sealed, so the volume the soft source injects has
+	// nowhere to go: the pressure settles on a non-zero mean and stays there.
+	// That step is by far the largest feature of the record — for the 3x2.5x2
+	// shoebox the DC bin comes out ~49x the strongest acoustic mode — and its
+	// 1/f leakage tail leans on the bottom of the analysis band. Neither is
+	// acoustic content. Subtracting the mean removes the bin, and the Hann
+	// taper removes the record-edge discontinuity that a non-decaying signal
+	// otherwise leaves under a rectangular window.
+	//
+	// This was masked before Phase 26.1: hundreds of wall directions were
+	// silently pressure-release, which vented the enclosure and suppressed the
+	// drift. With the walls correctly rigid it dominates, so detrending is not
+	// cosmetic — without it the peak threshold below rejects nearly every mode.
+	mean := 0.0
+	for _, v := range ts {
+		mean += v
+	}
+
+	mean /= float64(n)
+
 	padded := make([]float64, nfft)
-	copy(padded, ts)
+
+	for i, v := range ts {
+		w := 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(n-1))
+		padded[i] = (v - mean) * w
+	}
 
 	plan, err := algofft.NewPlanReal64(nfft)
 	if err != nil {
@@ -86,14 +126,20 @@ func extractPeakFreqs(ts []float64, dt float64, minFreq, maxFreq float64, nPeaks
 	}
 
 	// Find peaks: local maxima above a threshold.
+	//
+	// The threshold is taken from the strongest magnitude *inside* the analysis
+	// band. Anchoring it to the global maximum lets a feature the band excludes
+	// set the bar for everything in it, which is what a DC step does.
 	threshold := 0.0
-	for _, m := range mag {
-		if m > threshold {
+
+	for i, m := range mag {
+		f := float64(i) * freqBin
+		if f >= minFreq && f <= maxFreq && m > threshold {
 			threshold = m
 		}
 	}
 
-	threshold *= 0.01 // 1% of max
+	threshold *= 0.01 // 1% of the in-band max
 
 	type peak struct {
 		freq float64
@@ -134,6 +180,200 @@ func extractPeakFreqs(ts []float64, dt float64, minFreq, maxFreq float64, nPeaks
 	}
 
 	return freqs
+}
+
+// binTolerance is the number of true FFT bins a detected peak is allowed to
+// sit away from an analytical mode before the match is rejected.
+//
+// The FFT in extractPeakFreqs zero-pads to the next power of two, so it reports
+// frequencies on a finer grid than the run can actually resolve; the true
+// resolution is df = 1/(nSteps·dt). A damped, un-windowed mode smears over
+// roughly one true bin, and the interpolated peak location of such a lobe is
+// only good to a fraction of it, so one bin is the floor for a meaningful
+// tolerance. 1.5 adds margin for modal broadening from wall losses and for the
+// slight downward frequency bias of the dispersive FDTD stencil, without
+// letting the window grow into the neighbouring mode.
+const binTolerance = 1.5
+
+// matchToleranceHz returns the absolute Hz tolerance used to decide whether a
+// detected peak identifies an analytical mode: the larger of a relative
+// accuracy target and the physically achievable frequency resolution.
+func matchToleranceHz(fAnalytical, relTol, df float64) float64 {
+	return math.Max(relTol*fAnalytical, binTolerance*df)
+}
+
+// windowCoverage returns the fraction of [lo, hi] covered by the union of the
+// tolerance windows around the analytical modes. It is the probability that a
+// peak placed uniformly at random in the analysis band would be counted as a
+// match, i.e. the chance-level match rate the pass criterion must beat.
+func windowCoverage(analytical []float64, relTol, df, lo, hi float64) float64 {
+	if hi <= lo {
+		return 0
+	}
+
+	type span struct{ a, b float64 }
+
+	spans := make([]span, 0, len(analytical))
+
+	for _, f := range analytical {
+		tol := matchToleranceHz(f, relTol, df)
+		a, b := math.Max(f-tol, lo), math.Min(f+tol, hi)
+
+		if b > a {
+			spans = append(spans, span{a, b})
+		}
+	}
+
+	sort.Slice(spans, func(i, j int) bool { return spans[i].a < spans[j].a })
+
+	covered := 0.0
+	curA, curB := math.Inf(1), math.Inf(-1)
+
+	for _, s := range spans {
+		switch {
+		case math.IsInf(curA, 1):
+			curA, curB = s.a, s.b
+		case s.a <= curB:
+			curB = math.Max(curB, s.b)
+		default:
+			covered += curB - curA
+			curA, curB = s.a, s.b
+		}
+	}
+
+	if !math.IsInf(curA, 1) {
+		covered += curB - curA
+	}
+
+	return covered / (hi - lo)
+}
+
+// logChanceLevel reports how much of the analysis band the tolerance windows
+// occupy — the rate at which peaks placed at random would be "matched".
+//
+// It also splits the band in three, because mode density grows with frequency:
+// where the analytical set is sparse a match is real evidence, where it is
+// dense (windows covering most of the sub-band) the match statistic carries no
+// information and any pass threshold derived from it is meaningless.
+func logChanceLevel(t *testing.T, analytical []float64, relTol, df, lo, hi float64) {
+	t.Helper()
+
+	t.Logf("chance-level match rate over %.0f–%.0f Hz: %.1f%% of the band lies inside a tolerance window",
+		lo, hi, windowCoverage(analytical, relTol, df, lo, hi)*100)
+
+	third := (hi - lo) / 3
+	for i := range 3 {
+		a, b := lo+float64(i)*third, lo+float64(i+1)*third
+		t.Logf("  sub-band %.0f–%.0f Hz: %d analytical modes, chance level %.1f%%",
+			a, b, countInBand(analytical, a, b), windowCoverage(analytical, relTol, df, a, b)*100)
+	}
+}
+
+// modeRecall counts how many analytical modes in [lo, hi] were actually found
+// by the solver, i.e. have at least one detected peak within tolerance.
+//
+// This runs the comparison the opposite way from "every peak sits near some
+// mode", and it is the direction that carries information. A peak-first count
+// gets easier as the analytical set grows denser — with the triangular prism's
+// 953 modes below 500 Hz the tolerance windows tile the band and every possible
+// peak matches something, so 40/40 says nothing about the solver. Recall gets
+// *harder* with a denser set, because each mode has to be produced, not merely
+// approached.
+//
+// chance reports the probability of a single mode being covered by luck, given
+// the number of detected peaks in the band: 1 − (1 − 2·tol/W)^P. Comparing the
+// recall rate against it is what stops a pass threshold from encoding a lottery.
+func modeRecall(analytical, peaks []float64, relTol, df, lo, hi float64) (found, total int, chance float64) {
+	nPeaksInBand := 0
+
+	for _, p := range peaks {
+		if p >= lo && p <= hi {
+			nPeaksInBand++
+		}
+	}
+
+	avgTol := 0.0
+
+	for _, af := range analytical {
+		if af < lo || af > hi {
+			continue
+		}
+
+		total++
+		tol := matchToleranceHz(af, relTol, df)
+		avgTol += tol
+
+		for _, p := range peaks {
+			if math.Abs(p-af) < tol {
+				found++
+
+				break
+			}
+		}
+	}
+
+	if total > 0 && hi > lo {
+		avgTol /= float64(total)
+		chance = 1 - math.Pow(math.Max(0, 1-2*avgTol/(hi-lo)), float64(nPeaksInBand))
+	}
+
+	return found, total, chance
+}
+
+// requireModeRecall asserts that the solver reproduces the modes in [lo, hi]
+// and that the result is clear of the chance level, so the threshold cannot be
+// satisfied by a dense analytical set alone.
+func requireModeRecall(t *testing.T, name string, analytical, peaks []float64, relTol, df, lo, hi float64, minRate float64) {
+	t.Helper()
+
+	found, total, chance := modeRecall(analytical, peaks, relTol, df, lo, hi)
+	if total == 0 {
+		t.Fatalf("%s: no analytical modes in %.0f–%.0f Hz to score against", name, lo, hi)
+	}
+
+	rate := float64(found) / float64(total)
+	t.Logf("%s: recalled %d/%d analytical modes in %.0f–%.0f Hz (%.0f%%), chance level %.0f%%",
+		name, found, total, lo, hi, rate*100, chance*100)
+
+	if rate < minRate {
+		t.Errorf("%s: recalled %d/%d modes in %.0f–%.0f Hz (%.0f%%), want ≥ %.0f%%",
+			name, found, total, lo, hi, rate*100, minRate*100)
+	}
+
+	if rate <= chance {
+		t.Errorf("%s: recall %.0f%% is at or below the %.0f%% chance level, so it demonstrates nothing",
+			name, rate*100, chance*100)
+	}
+}
+
+// countInBand counts analytical modes falling in [lo, hi].
+func countInBand(freqs []float64, lo, hi float64) int {
+	n := 0
+
+	for _, f := range freqs {
+		if f >= lo && f <= hi {
+			n++
+		}
+	}
+
+	return n
+}
+
+// logRunResolution reports the timing and resolution actually achieved, plus
+// the tolerance those numbers imply, so the numbers behind a pass/fail are
+// visible without re-deriving them.
+func logRunResolution(t *testing.T, dt float64, nSteps int, relTol, loFreq float64) float64 {
+	t.Helper()
+
+	df := 1.0 / (float64(nSteps) * dt)
+	tolLo := matchToleranceHz(loFreq, relTol, df)
+
+	t.Logf("dt=%.6g s, nSteps=%d, simulated duration=%.4g s, true FFT resolution df=%.3f Hz",
+		dt, nSteps, float64(nSteps)*dt, df)
+	t.Logf("match tolerance = max(%.1f%%·f, %.1f·df) → %.2f Hz at %.0f Hz (= %.2f%% relative)",
+		relTol*100, binTolerance, tolLo, loFreq, tolLo/loFreq*100)
+
+	return df
 }
 
 // shoeboxEigenfreqs returns the analytical eigenfrequencies of a rectangular
@@ -180,21 +420,25 @@ func TestIBMValidation_RectangularEigenfreqs(t *testing.T) {
 	srcPos := geometry.Vec3{X: 0.7, Y: 0.6, Z: 0.5}
 	rcvPos := geometry.Vec3{X: 2.3, Y: 1.9, Z: 1.5}
 
-	// Run enough steps for modes to develop and ring.
-	// Frequency resolution df = 1/T, so 0.5 s gives df ≈ 2 Hz.
-	dt := 0.95 * h / (c * math.Sqrt(3))
-	nSteps := int(0.5 / dt) // 500 ms of simulation
+	// Run long enough for modes to develop and ring; frequency resolution
+	// df = 1/T, so 0.5 s of simulated time gives df ≈ 2 Hz.
+	const (
+		duration = 0.5
+		minFreq  = 30.0
+		relTol   = 0.005
+	)
 
-	ts, dtActual := runFDTD(room, h, RigidWallBC(), srcPos, rcvPos, nSteps)
+	ts, dtActual := runFDTD(room, h, RigidWallBC(), srcPos, rcvPos, duration)
 
 	maxFreq := 400.0 // well below Nyquist, well-resolved by grid
 	analytical := shoeboxEigenfreqs(lx, ly, lz, c, maxFreq)
 
 	// Extract spectral peaks from FDTD.
-	fdtdPeaks := extractPeakFreqs(ts, dtActual, 30, maxFreq, 40)
+	fdtdPeaks := extractPeakFreqs(ts, dtActual, minFreq, maxFreq, 40)
 
-	t.Logf("dt=%.6g s, nSteps=%d, simulation time=%.4g s", dtActual, nSteps, float64(nSteps)*dtActual)
+	df := logRunResolution(t, dtActual, len(ts), relTol, minFreq)
 	t.Logf("analytical modes (up to %.0f Hz): %d", maxFreq, len(analytical))
+	logChanceLevel(t, analytical, relTol, df, minFreq, maxFreq)
 	t.Logf("FDTD peaks found: %d", len(fdtdPeaks))
 
 	// Match each FDTD peak to nearest analytical mode.
@@ -223,25 +467,27 @@ func TestIBMValidation_RectangularEigenfreqs(t *testing.T) {
 			maxError = relErr
 		}
 
-		if relErr < 0.005 { // 0.5% match tolerance for peak identification
+		tol := matchToleranceHz(bestAnalytical, relTol, df)
+		if bestDist < tol {
 			matched++
 		}
 
-		t.Logf("FDTD peak %.1f Hz → analytical %.1f Hz (error %.3f%%)",
-			fp, bestAnalytical, relErr*100)
+		t.Logf("FDTD peak %.1f Hz → analytical %.1f Hz (error %.3f%%, %.2f Hz; tol %.2f Hz)",
+			fp, bestAnalytical, relErr*100, bestDist, tol)
 	}
 
 	t.Logf("matched %d/%d FDTD peaks, max error: %.4f%%", matched, len(fdtdPeaks), maxError*100)
 
-	// Require at least 20 matched modes with < 0.5% error.
-	if matched < 20 {
-		t.Errorf("only %d modes matched within 0.5%%, want ≥ 20", matched)
-	}
-
-	// The best matches should be within 0.1%.
-	if maxError > 0.005 {
-		t.Logf("warning: max error %.4f%% exceeds 0.1%% target for some peaks", maxError*100)
-	}
+	// Scored on recall, not on the peak-first count above, which is kept only
+	// as a diagnostic. The band stops at 153 Hz: past that the analytical set
+	// packs modes closer than the tolerance window (chance level 92% in the
+	// middle third, 98% in the top), so a peak-first count there is free.
+	//
+	// Measured 75% against a 39% chance level, identically on amd64 and arm64.
+	// The threshold sits below that with room for solver changes, but well
+	// clear of chance — and requireModeRecall fails outright if a future change
+	// ever drags it down to chance.
+	requireModeRecall(t, "shoebox", analytical, fdtdPeaks, relTol, df, minFreq, 153, 0.60)
 }
 
 // triangleEigenfreqs returns analytical eigenfrequencies for an equilateral
@@ -268,6 +514,69 @@ func triangleEigenfreqs(sideLength, c, maxFreq float64) []float64 {
 	sort.Float64s(freqs)
 
 	// Remove near-duplicates.
+	unique := freqs[:0]
+
+	for i, f := range freqs {
+		if i == 0 || f-unique[len(unique)-1] > 0.1 {
+			unique = append(unique, f)
+		}
+	}
+
+	return unique
+}
+
+// triangularPrismEigenfreqs returns the analytical eigenfrequencies of an
+// equilateral-triangle prism of side length L extruded to zHeight, with rigid
+// (Neumann) walls:
+//
+//	f_{m,n,q} = √( f2D(m,n)² + (q·c/(2·zHeight))² ),  q = 0, 1, 2, …
+//
+// The 2D cross-section modes come from triangleEigenfreqs; q = 0 reproduces
+// them. A tall extrusion does not push the axial modes out of the analysis
+// band — it packs them in at a spacing of c/(2·zHeight) — so the full 3D set
+// is what an FDTD run of this room actually contains.
+func triangularPrismEigenfreqs(sideLength, zHeight, c, maxFreq float64) []float64 {
+	return prismEigenfreqs(triangleEigenfreqs(sideLength, c, maxFreq), zHeight, c, maxFreq)
+}
+
+// prismEigenfreqs combines a cross-section's 2D mode set with the axial modes
+// of an extrusion of height zHeight:
+//
+//	f_{2D,q} = hypot(f_2D, q·c/(2·zHeight)),  q = 0,1,2,...
+//
+// plus the purely axial family (q ≥ 1 with no transverse component).
+//
+// Every extruded fixture in this file needs this. A 2D-only mode set silently
+// assumes the extrusion contributes nothing, which holds only when the first
+// axial mode sits above the analysis band — and at zHeight = 10 m that mode is
+// at 17.15 Hz, so the assumption is inverted: c/(2·zHeight) is the mode
+// *spacing*, and axial harmonics fill the band rather than avoiding it.
+func prismEigenfreqs(modes2D []float64, zHeight, c, maxFreq float64) []float64 {
+	fz := c / (2 * zHeight) // axial mode spacing
+
+	// The purely axial family (m = n = 0) is a valid mode set too.
+	freqs := make([]float64, 0, len(modes2D))
+
+	for q := 1; float64(q)*fz <= maxFreq; q++ {
+		freqs = append(freqs, float64(q)*fz)
+	}
+
+	for _, f2D := range modes2D {
+		for q := 0; ; q++ {
+			fq := float64(q) * fz
+
+			f := math.Hypot(f2D, fq)
+			if f > maxFreq {
+				break
+			}
+
+			freqs = append(freqs, f)
+		}
+	}
+
+	sort.Float64s(freqs)
+
+	// Remove near-duplicates, as triangleEigenfreqs does.
 	unique := freqs[:0]
 
 	for i, f := range freqs {
@@ -333,10 +642,13 @@ func equilateralTriangleRoom(sideLength, cx, cy, zHeight float64) *ConvexRoom {
 }
 
 func TestIBMValidation_EquilateralTriangle(t *testing.T) {
-	// Equilateral triangle extruded in z. Use tall z to push z-modes
-	// above our analysis band, so we effectively test 2D modes.
+	// Equilateral triangle extruded in z. The extrusion does NOT isolate the
+	// 2D cross-section modes: c/(2·zHeight) ≈ 17.15 Hz is the axial mode
+	// *spacing*, so z-harmonics densely populate the whole analysis band.
+	// We therefore compare against the full 3D prism mode set. See the
+	// chance-level log line below for what that density costs in test power.
 	sideLength := 3.0
-	zHeight := 10.0 // first z-mode at c/(2*zHeight) ≈ 17 Hz, below analysis band
+	zHeight := 10.0 // axial modes every c/(2*zHeight) ≈ 17 Hz
 	c := 343.0
 	h := 0.1 // grid spacing (coarser for feasibility with tall z)
 
@@ -346,17 +658,23 @@ func TestIBMValidation_EquilateralTriangle(t *testing.T) {
 	srcPos := geometry.Vec3{X: 1.3, Y: 0.9, Z: 5.0}
 	rcvPos := geometry.Vec3{X: 1.7, Y: 1.1, Z: 5.0}
 
-	dt := 0.95 * h / (c * math.Sqrt(3))
-	nSteps := int(0.5 / dt) // 500 ms for ~2 Hz frequency resolution
+	const (
+		duration = 0.5 // 500 ms of simulated time
+		minFreq  = 30.0
+		relTol   = 0.005
+	)
 
-	ts, dtActual := runFDTD(room, h, RigidWallBC(), srcPos, rcvPos, nSteps)
+	ts, dtActual := runFDTD(room, h, RigidWallBC(), srcPos, rcvPos, duration)
 
 	maxFreq := 500.0
-	analytical := triangleEigenfreqs(sideLength, c, maxFreq)
-	fdtdPeaks := extractPeakFreqs(ts, dtActual, 30, maxFreq, 40)
+	analytical := triangularPrismEigenfreqs(sideLength, zHeight, c, maxFreq)
+	fdtdPeaks := extractPeakFreqs(ts, dtActual, minFreq, maxFreq, 40)
 
-	t.Logf("dt=%.6g s, nSteps=%d", dtActual, nSteps)
-	t.Logf("analytical triangle modes (up to %.0f Hz): %d", maxFreq, len(analytical))
+	df := logRunResolution(t, dtActual, len(ts), relTol, minFreq)
+	t.Logf("analytical 2D cross-section modes (up to %.0f Hz): %d",
+		maxFreq, len(triangleEigenfreqs(sideLength, c, maxFreq)))
+	t.Logf("analytical 3D prism modes (up to %.0f Hz): %d", maxFreq, len(analytical))
+	logChanceLevel(t, analytical, relTol, df, minFreq, maxFreq)
 	t.Logf("FDTD peaks found: %d", len(fdtdPeaks))
 
 	matched := 0
@@ -379,20 +697,28 @@ func TestIBMValidation_EquilateralTriangle(t *testing.T) {
 
 		relErr := bestDist / bestAnalytical
 
-		if relErr < 0.005 {
+		tol := matchToleranceHz(bestAnalytical, relTol, df)
+		if bestDist < tol {
 			matched++
 		}
 
-		t.Logf("FDTD peak %.1f Hz → analytical %.1f Hz (error %.3f%%)",
-			fp, bestAnalytical, relErr*100)
+		t.Logf("FDTD peak %.1f Hz → analytical %.1f Hz (error %.3f%%, %.2f Hz; tol %.2f Hz)",
+			fp, bestAnalytical, relErr*100, bestDist, tol)
 	}
 
-	t.Logf("matched %d/%d FDTD peaks within 0.5%%", matched, len(fdtdPeaks))
+	t.Logf("matched %d/%d FDTD peaks", matched, len(fdtdPeaks))
 
-	// Target: most well-resolved modes should match.
-	if matched < 5 {
-		t.Errorf("only %d triangle modes matched within 0.5%%, want ≥ 5", matched)
-	}
+	// The old threshold of 5 was a lottery: it sat close enough to the noise
+	// that a one-ulp classification difference decided pass or fail, which is
+	// how this test came to fail only on Apple Silicon. The peak-first count is
+	// no better — the prism's 953 modes below 500 Hz tile the band densely
+	// enough that 40/40 peaks match by construction (chance level 97.5%).
+	//
+	// Recall over the whole band is the informative statistic here: measured
+	// 58% against a 40% chance level, identically on amd64 and arm64. Scoring
+	// the low band instead does not help — the mode spacing there (~1.7 Hz) is
+	// below the 2 Hz FFT resolution, so those modes are not separable at all.
+	requireModeRecall(t, "triangular prism", analytical, fdtdPeaks, relTol, df, minFreq, maxFreq, 0.45)
 }
 
 // besselPrimeZeros returns the first few zeros of J'_m(x) for m = 0, 1, 2, ...
@@ -496,17 +822,26 @@ func TestIBMValidation_CircularRoom(t *testing.T) {
 	srcPos := geometry.Vec3{X: radius + 0.3, Y: radius + 0.2, Z: 5.0}
 	rcvPos := geometry.Vec3{X: radius - 0.4, Y: radius - 0.3, Z: 5.0}
 
-	dt := 0.95 * h / (c * math.Sqrt(3))
-	nSteps := int(0.5 / dt) // 500 ms for ~2 Hz frequency resolution
+	const (
+		duration = 0.5 // 500 ms of simulated time
+		minFreq  = 20.0
+		relTol   = 0.02 // 2% for the polygon approximation of a circle
+	)
 
-	ts, dtActual := runFDTD(room, h, RigidWallBC(), srcPos, rcvPos, nSteps)
+	ts, dtActual := runFDTD(room, h, RigidWallBC(), srcPos, rcvPos, duration)
 
 	maxFreq := 400.0
-	analytical := circularRoomEigenfreqs(radius, c, maxFreq)
-	fdtdPeaks := extractPeakFreqs(ts, dtActual, 20, maxFreq, 30)
+	// The cylinder is extruded to zHeight like the triangular prism, so its
+	// mode set needs the same axial family — the Bessel zeros alone describe a
+	// 2D disc, not this room. Measurably so: against the 2D-only set the
+	// solver's recall comes out 15 points *below* chance, i.e. the peaks avoid
+	// those frequencies, because most of the real modes have a z component.
+	analytical := prismEigenfreqs(circularRoomEigenfreqs(radius, c, maxFreq), zHeight, c, maxFreq)
+	fdtdPeaks := extractPeakFreqs(ts, dtActual, minFreq, maxFreq, 30)
 
-	t.Logf("dt=%.6g s, nSteps=%d", dtActual, nSteps)
+	df := logRunResolution(t, dtActual, len(ts), relTol, minFreq)
 	t.Logf("analytical circular modes (up to %.0f Hz): %d", maxFreq, len(analytical))
+	logChanceLevel(t, analytical, relTol, df, minFreq, maxFreq)
 	t.Logf("FDTD peaks found: %d", len(fdtdPeaks))
 
 	matched := 0
@@ -529,20 +864,24 @@ func TestIBMValidation_CircularRoom(t *testing.T) {
 
 		relErr := bestDist / bestAnalytical
 
-		if relErr < 0.02 { // 2% for polygon approximation of circle
+		tol := matchToleranceHz(bestAnalytical, relTol, df)
+		if bestDist < tol {
 			matched++
 		}
 
-		t.Logf("FDTD peak %.1f Hz → analytical %.1f Hz (error %.3f%%)",
-			fp, bestAnalytical, relErr*100)
+		t.Logf("FDTD peak %.1f Hz → analytical %.1f Hz (error %.3f%%, %.2f Hz; tol %.2f Hz)",
+			fp, bestAnalytical, relErr*100, bestDist, tol)
 	}
 
-	t.Logf("matched %d/%d FDTD peaks within 2%%", matched, len(fdtdPeaks))
+	t.Logf("matched %d/%d FDTD peaks", matched, len(fdtdPeaks))
 
-	// Polygon approximation won't be as precise as rectangular/triangle.
-	if matched < 3 {
-		t.Errorf("only %d circular modes matched within 2%%, want ≥ 3", matched)
-	}
+	// Measured 73% recall against a 57% chance level. The chance level is high
+	// because relTol is 2% here, for the 64-gon's departure from a true circle,
+	// which widens every tolerance window; the 16-point margin is what the
+	// claim rests on. The old threshold of 3 matched peaks was reached at 20%,
+	// *below* the chance level it was scored against — it could not have failed
+	// for any reason connected to the solver.
+	requireModeRecall(t, "cylinder", analytical, fdtdPeaks, relTol, df, minFreq, maxFreq, 0.42)
 }
 
 func TestIBMValidation_EnergyDecaySabine(t *testing.T) {
