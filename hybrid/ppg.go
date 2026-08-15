@@ -56,12 +56,21 @@ type PPG struct {
 }
 
 // ppgNodeKey deduplicates portal filter nodes. Two distinct paths that reach
-// the same portal in the same direction converge on one node, which is what
-// turns the tree into a genuine DAG and lets a group's transfer function be
-// rendered once per entry/exit pair instead of once per path.
+// the same portal in the same direction *at the same depth* converge on one
+// node, which lets a group's transfer function be rendered once per entry/exit
+// pair instead of once per path.
+//
+// The depth is part of the key because (portal, direction) alone does not
+// preserve acyclicity. In a ring of groups one simple path can cross portals P
+// then Q while another crosses Q then P; merging both occurrences would add
+// edges P->Q and Q->P and TopologicalOrder would reject the result. Keying on
+// depth as well makes every edge run from depth d to depth d+1, so the graph is
+// acyclic by construction and no continuation is cross-connected between path
+// histories of different length.
 type ppgNodeKey struct {
 	portalIndex int
 	reversed    bool
+	depth       int
 }
 
 type ppgEdgeKey struct {
@@ -70,6 +79,9 @@ type ppgEdgeKey struct {
 }
 
 // BuildPPG converts a path search tree into a propagation path graph.
+//
+// Portal nodes are shared between paths that reach them the same way at the
+// same depth, which is what keeps the result a DAG (see ppgNodeKey).
 //
 // Because portal nodes are shared between paths, a merged node has no single
 // per-path band mask. ActiveBands is therefore the union across contributing
@@ -104,7 +116,11 @@ func BuildPPG(tree *scene.PathSearchTree) (*PPG, error) {
 			continue
 		}
 
-		key := ppgNodeKey{portalIndex: treeNode.Step.Portal.PortalIndex, reversed: treeNode.Step.Portal.Reversed}
+		key := ppgNodeKey{
+			portalIndex: treeNode.Step.Portal.PortalIndex,
+			reversed:    treeNode.Step.Portal.Reversed,
+			depth:       treeNode.Depth,
+		}
 
 		node, ok := portalNodes[key]
 		if !ok {

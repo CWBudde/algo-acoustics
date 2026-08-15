@@ -1,4 +1,4 @@
-package scene_test
+package scene
 
 import (
 	"math"
@@ -6,14 +6,13 @@ import (
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/geometry"
-	"github.com/cwbudde/algo-acoustics/scene"
 )
 
 // chainScene builds a row of rooms along x, each 4 m x 4 m x 3 m, joined by a
 // door between neighbours. The named material governs every door.
 //
 //	room 0 (x 0..4) | room 1 (x 4..8) | room 2 (x 8..12) ...
-func chainScene(t *testing.T, roomCount int, doorMaterial string) *scene.Scene {
+func chainScene(t *testing.T, roomCount int, doorMaterial string) *Scene {
 	t.Helper()
 
 	const (
@@ -21,39 +20,39 @@ func chainScene(t *testing.T, roomCount int, doorMaterial string) *scene.Scene {
 		height = 3.0
 	)
 
-	rooms := make([]scene.Room, 0, roomCount)
+	rooms := make([]Room, 0, roomCount)
 	for index := range roomCount {
 		rooms = append(rooms, shoeboxAt(geometry.Vec3{X: float64(index) * size}, size, size, height))
 	}
 
-	portals := make([]scene.Portal, 0, roomCount-1)
+	portals := make([]Portal, 0, roomCount-1)
 	for index := range roomCount - 1 {
-		portals = append(portals, scene.Portal{
+		portals = append(portals, Portal{
 			RoomIndices: [2]int{index, index + 1},
 			Polygon:     doorOnX(float64(index+1)*size, 1.4, 2.6, 2.1),
 			Material:    doorMaterial,
-			State:       scene.PortalClosed,
+			State:       PortalClosed,
 		})
 	}
 
-	sc := &scene.Scene{
+	sc := &Scene{
 		Rooms:     rooms,
 		Portals:   portals,
 		Materials: pathTestMaterials(),
-		Sources: []scene.Source{{
+		Sources: []Source{{
 			Position:    geometry.Vec3{X: 2, Y: 2, Z: 1.5},
 			Orientation: geometry.QuatIdentity(),
 		}},
-		Receivers: []scene.Receiver{{
+		Receivers: []Receiver{{
 			Position:    geometry.Vec3{X: float64(roomCount-1)*size + 2, Y: 2, Z: 1.5},
 			Orientation: geometry.QuatIdentity(),
-			Type:        scene.ReceiverOmni,
+			Type:        ReceiverOmni,
 		}},
 		BandSpec:   acoustics.Octave6,
 		SampleRate: 48000,
 	}
 
-	err := scene.Validate(sc)
+	err := Validate(sc)
 	if err != nil {
 		t.Fatalf("chain fixture is invalid: %v", err)
 	}
@@ -61,15 +60,23 @@ func chainScene(t *testing.T, roomCount int, doorMaterial string) *scene.Scene {
 	return sc
 }
 
-func pathTestMaterials() map[string]scene.Material {
+func pathTestMaterials() map[string]Material {
 	materials := graphTestMaterials()
-	materials["quiet_door"] = scene.Material{
+	materials["quiet_door"] = Material{
 		Name: "quiet_door", AbsorptionByBand: []float64{0.08}, SoundReductionIndex: []float64{40},
 	}
-	materials["light_door"] = scene.Material{
+	materials["light_door"] = Material{
 		Name: "light_door", AbsorptionByBand: []float64{0.08}, SoundReductionIndex: []float64{20},
 	}
-	materials["sloped_door"] = scene.Material{
+	// Audible in the bottom band only, and only just: the weighted aggregate of
+	// this spectrum sits far below the -60 dB floor even though band 0 is above
+	// it.
+	materials["selective_door"] = Material{
+		Name:                "selective_door",
+		AbsorptionByBand:    []float64{0.08},
+		SoundReductionIndex: []float64{59, 100, 100, 100, 100, 100},
+	}
+	materials["sloped_door"] = Material{
 		Name:                "sloped_door",
 		AbsorptionByBand:    []float64{0.08},
 		SoundReductionIndex: []float64{5, 10, 20, 40, 70, 90},
@@ -84,50 +91,50 @@ func pathTestMaterials() map[string]scene.Material {
 //
 //	room 2 (x 0..8, y 4..8)
 //	room 0 (x 0..4, y 0..4) | room 1 (x 4..8, y 0..4)
-func flankingScene(t *testing.T) *scene.Scene {
+func flankingScene(t *testing.T) *Scene {
 	t.Helper()
 
-	sc := &scene.Scene{
-		Rooms: []scene.Room{
+	sc := &Scene{
+		Rooms: []Room{
 			shoeboxAt(geometry.Vec3Zero, 4, 4, 3),
 			shoeboxAt(geometry.Vec3{X: 4}, 4, 4, 3),
 			shoeboxAt(geometry.Vec3{Y: 4}, 8, 4, 3),
 		},
-		Portals: []scene.Portal{
+		Portals: []Portal{
 			{
 				RoomIndices: [2]int{0, 1},
 				Polygon:     doorOnX(4, 1.4, 2.6, 2.1),
 				Material:    "light_door",
-				State:       scene.PortalClosed,
+				State:       PortalClosed,
 			},
 			{
 				RoomIndices: [2]int{0, 2},
 				Polygon:     doorOnY(4, 1.4, 2.6, 2.1),
 				Material:    "light_door",
-				State:       scene.PortalClosed,
+				State:       PortalClosed,
 			},
 			{
 				RoomIndices: [2]int{1, 2},
 				Polygon:     doorOnY(4, 5.4, 6.6, 2.1),
 				Material:    "light_door",
-				State:       scene.PortalClosed,
+				State:       PortalClosed,
 			},
 		},
 		Materials: pathTestMaterials(),
-		Sources: []scene.Source{{
+		Sources: []Source{{
 			Position:    geometry.Vec3{X: 2, Y: 2, Z: 1.5},
 			Orientation: geometry.QuatIdentity(),
 		}},
-		Receivers: []scene.Receiver{{
+		Receivers: []Receiver{{
 			Position:    geometry.Vec3{X: 6, Y: 2, Z: 1.5},
 			Orientation: geometry.QuatIdentity(),
-			Type:        scene.ReceiverOmni,
+			Type:        ReceiverOmni,
 		}},
 		BandSpec:   acoustics.Octave6,
 		SampleRate: 48000,
 	}
 
-	err := scene.Validate(sc)
+	err := Validate(sc)
 	if err != nil {
 		t.Fatalf("flanking fixture is invalid: %v", err)
 	}
@@ -135,7 +142,7 @@ func flankingScene(t *testing.T) *scene.Scene {
 	return sc
 }
 
-func searchFromSource(t *testing.T, sc *scene.Scene, cfg scene.PathSearchConfig) *scene.PathSearchTree {
+func searchFromSource(t *testing.T, sc *Scene, cfg PathSearchConfig) *PathSearchTree {
 	t.Helper()
 
 	graph := newGraph(t, sc)
@@ -156,13 +163,13 @@ func searchFromSource(t *testing.T, sc *scene.Scene, cfg scene.PathSearchConfig)
 func TestSearchPathsFindsDirectAndFlankingPathsInThreeRoomChain(t *testing.T) {
 	t.Parallel()
 
-	tree := searchFromSource(t, flankingScene(t), scene.PathSearchConfig{})
+	tree := searchFromSource(t, flankingScene(t), PathSearchConfig{})
 
 	if len(tree.Leaves) != 2 {
 		t.Fatalf("got %d leaves, want the direct and the flanking path", len(tree.Leaves))
 	}
 
-	var direct, flanking *scene.PathNode
+	var direct, flanking *PathNode
 
 	for _, leaf := range tree.Leaves {
 		node := &tree.Nodes[leaf]
@@ -206,7 +213,7 @@ func TestSearchPathsPortalSequenceMatchesTheChain(t *testing.T) {
 	t.Parallel()
 
 	sc := chainScene(t, 3, "light_door")
-	tree := searchFromSource(t, sc, scene.PathSearchConfig{})
+	tree := searchFromSource(t, sc, PathSearchConfig{})
 
 	if len(tree.Leaves) != 1 {
 		t.Fatalf("got %d leaves, want one", len(tree.Leaves))
@@ -228,40 +235,40 @@ func TestSearchPathsCycleDetectionTerminates(t *testing.T) {
 
 	// Four rooms in a ring: 0-1, 1-2, 2-3, 3-0. Without cycle detection the
 	// search would loop forever.
-	sc := &scene.Scene{
-		Rooms: []scene.Room{
+	sc := &Scene{
+		Rooms: []Room{
 			shoeboxAt(geometry.Vec3Zero, 4, 4, 3),
 			shoeboxAt(geometry.Vec3{X: 4}, 4, 4, 3),
 			shoeboxAt(geometry.Vec3{X: 4, Y: 4}, 4, 4, 3),
 			shoeboxAt(geometry.Vec3{Y: 4}, 4, 4, 3),
 		},
-		Portals: []scene.Portal{
-			{RoomIndices: [2]int{0, 1}, Polygon: doorOnX(4, 1.4, 2.6, 2.1), Material: "door", State: scene.PortalClosed},
-			{RoomIndices: [2]int{1, 2}, Polygon: doorOnY(4, 5.4, 6.6, 2.1), Material: "door", State: scene.PortalClosed},
-			{RoomIndices: [2]int{3, 2}, Polygon: doorOnX(4, 5.4, 6.6, 2.1), Material: "door", State: scene.PortalClosed},
-			{RoomIndices: [2]int{0, 3}, Polygon: doorOnY(4, 1.4, 2.6, 2.1), Material: "door", State: scene.PortalClosed},
+		Portals: []Portal{
+			{RoomIndices: [2]int{0, 1}, Polygon: doorOnX(4, 1.4, 2.6, 2.1), Material: "door", State: PortalClosed},
+			{RoomIndices: [2]int{1, 2}, Polygon: doorOnY(4, 5.4, 6.6, 2.1), Material: "door", State: PortalClosed},
+			{RoomIndices: [2]int{3, 2}, Polygon: doorOnX(4, 5.4, 6.6, 2.1), Material: "door", State: PortalClosed},
+			{RoomIndices: [2]int{0, 3}, Polygon: doorOnY(4, 1.4, 2.6, 2.1), Material: "door", State: PortalClosed},
 		},
 		Materials: pathTestMaterials(),
-		Sources: []scene.Source{{
+		Sources: []Source{{
 			Position: geometry.Vec3{X: 2, Y: 2, Z: 1.5}, Orientation: geometry.QuatIdentity(),
 		}},
-		Receivers: []scene.Receiver{{
-			Position: geometry.Vec3{X: 6, Y: 6, Z: 1.5}, Orientation: geometry.QuatIdentity(), Type: scene.ReceiverOmni,
+		Receivers: []Receiver{{
+			Position: geometry.Vec3{X: 6, Y: 6, Z: 1.5}, Orientation: geometry.QuatIdentity(), Type: ReceiverOmni,
 		}},
 		BandSpec:   acoustics.Octave6,
 		SampleRate: 48000,
 	}
 
-	err := scene.Validate(sc)
+	err := Validate(sc)
 	if err != nil {
 		t.Fatalf("ring fixture is invalid: %v", err)
 	}
 
-	tree := searchFromSource(t, sc, scene.PathSearchConfig{PruneFloorDB: -300})
+	tree := searchFromSource(t, sc, PathSearchConfig{PruneFloorDB: -300})
 
 	// Every path must be simple: no group may repeat along it.
 	for index := range tree.Nodes {
-		seen := map[scene.GroupID]bool{}
+		seen := map[GroupID]bool{}
 
 		for _, node := range tree.PathTo(index) {
 			group := tree.Nodes[node].Group
@@ -284,7 +291,7 @@ func TestSearchPathsPrunesBelowFloor(t *testing.T) {
 	// Each door reduces by 40 dB, so two hops exceed the -60 dB floor.
 	sc := chainScene(t, 3, "quiet_door")
 
-	tree := searchFromSource(t, sc, scene.PathSearchConfig{})
+	tree := searchFromSource(t, sc, PathSearchConfig{})
 	if len(tree.Leaves) != 0 {
 		t.Fatalf("got %d leaves, want none past the -60 dB floor", len(tree.Leaves))
 	}
@@ -294,9 +301,39 @@ func TestSearchPathsPrunesBelowFloor(t *testing.T) {
 	}
 
 	// Lowering the floor must reveal the same path.
-	deep := searchFromSource(t, sc, scene.PathSearchConfig{PruneFloorDB: -200})
+	deep := searchFromSource(t, sc, PathSearchConfig{PruneFloorDB: -200})
 	if len(deep.Leaves) != 1 {
 		t.Fatalf("got %d leaves with a -200 dB floor, want one", len(deep.Leaves))
+	}
+}
+
+func TestSearchPathsKeepsAPathWhoseOnlyActiveBandSurvives(t *testing.T) {
+	t.Parallel()
+
+	// The door passes the 125 Hz band at -59 dB and kills everything above it.
+	// The weighted single-number index of that spectrum is well past the -60 dB
+	// floor, but the audible band must keep the path alive regardless.
+	sc := chainScene(t, 2, "selective_door")
+
+	tree := searchFromSource(t, sc, PathSearchConfig{})
+	if len(tree.Leaves) != 1 {
+		t.Fatalf("got %d leaves, want the path its 125 Hz band keeps alive", len(tree.Leaves))
+	}
+
+	leaf := &tree.Nodes[tree.Leaves[0]]
+	if !leaf.ActiveBands[0] {
+		t.Fatal("the 125 Hz band must survive a 59 dB reduction")
+	}
+
+	for band := 1; band < len(leaf.ActiveBands); band++ {
+		if leaf.ActiveBands[band] {
+			t.Fatalf("band %d must be eliminated by a 100 dB reduction", band)
+		}
+	}
+
+	// Guard the premise: the aggregate index alone would have pruned this path.
+	if -leaf.ReductionDB > DefaultPathPruneFloorDB {
+		t.Fatalf("reduction index %v dB does not exercise the aggregate floor", leaf.ReductionDB)
 	}
 }
 
@@ -305,7 +342,7 @@ func TestSearchPathsRespectsMaxDepth(t *testing.T) {
 
 	sc := chainScene(t, 4, "light_door")
 
-	shallow := searchFromSource(t, sc, scene.PathSearchConfig{MaxDepth: 2, PruneFloorDB: -300})
+	shallow := searchFromSource(t, sc, PathSearchConfig{MaxDepth: 2, PruneFloorDB: -300})
 	if len(shallow.Leaves) != 0 {
 		t.Fatalf("got %d leaves at depth 2, want none for a three-portal chain", len(shallow.Leaves))
 	}
@@ -314,7 +351,7 @@ func TestSearchPathsRespectsMaxDepth(t *testing.T) {
 		t.Fatal("hitting MaxDepth must mark the tree as truncated")
 	}
 
-	deep := searchFromSource(t, sc, scene.PathSearchConfig{MaxDepth: 3, PruneFloorDB: -300})
+	deep := searchFromSource(t, sc, PathSearchConfig{MaxDepth: 3, PruneFloorDB: -300})
 	if len(deep.Leaves) != 1 {
 		t.Fatalf("got %d leaves at depth 3, want one", len(deep.Leaves))
 	}
@@ -325,7 +362,7 @@ func TestSearchPathsTruncatedOnMaxNodes(t *testing.T) {
 
 	sc := chainScene(t, 4, "light_door")
 
-	tree := searchFromSource(t, sc, scene.PathSearchConfig{MaxNodes: 2, PruneFloorDB: -300})
+	tree := searchFromSource(t, sc, PathSearchConfig{MaxNodes: 2, PruneFloorDB: -300})
 	if !tree.Truncated {
 		t.Fatal("hitting MaxNodes must mark the tree as truncated")
 	}
@@ -342,7 +379,7 @@ func TestSourceEliminationMasksFullyAttenuatedBands(t *testing.T) {
 	// top bands fall below the floor while the bottom bands survive.
 	sc := chainScene(t, 2, "sloped_door")
 
-	tree := searchFromSource(t, sc, scene.PathSearchConfig{})
+	tree := searchFromSource(t, sc, PathSearchConfig{})
 	if len(tree.Leaves) != 1 {
 		t.Fatalf("got %d leaves, want one", len(tree.Leaves))
 	}
@@ -366,7 +403,7 @@ func TestSearchPathsRootIsALeafWhenSourceAndReceiverShareAGroup(t *testing.T) {
 
 	sourceGroup, _ := graph.GroupOfPosition(sc.Sources[0].Position)
 
-	tree, err := graph.SearchPaths(sourceGroup, scene.PathSearchConfig{})
+	tree, err := graph.SearchPaths(sourceGroup, PathSearchConfig{})
 	if err != nil {
 		t.Fatalf("SearchPaths: %v", err)
 	}
@@ -385,7 +422,7 @@ func TestSearchPathsRejectsUnknownSourceGroup(t *testing.T) {
 
 	graph := newGraph(t, chainScene(t, 2, "door"))
 
-	_, err := graph.SearchPaths(scene.GroupID(99), scene.PathSearchConfig{})
+	_, err := graph.SearchPaths(GroupID(99), PathSearchConfig{})
 	if err == nil {
 		t.Fatal("SearchPaths accepted a group that does not exist")
 	}
@@ -397,14 +434,14 @@ func TestWeightedReductionIndexDBMatchesAFlatPartition(t *testing.T) {
 	// With a flat spectrum the weighted average must return the underlying
 	// single-number reduction exactly, whatever the weights are.
 	for _, reduction := range []float64{0, 10, 35, 60} {
-		tau := scene.TransmissionFromSoundReductionIndex(reduction)
+		tau := TransmissionFromSoundReductionIndex(reduction)
 
 		transmission := make([]float64, 6)
 		for index := range transmission {
 			transmission[index] = tau
 		}
 
-		got := scene.WeightedReductionIndexDB(transmission, nil)
+		got := WeightedReductionIndexDB(transmission, nil)
 		if math.Abs(got-reduction) > 1e-9 {
 			t.Fatalf("WeightedReductionIndexDB(flat %v dB) = %v", reduction, got)
 		}
@@ -417,14 +454,14 @@ func TestWeightedReductionIndexDBIsMonotonic(t *testing.T) {
 	previous := math.Inf(-1)
 
 	for _, reduction := range []float64{0, 5, 10, 20, 40, 80} {
-		tau := scene.TransmissionFromSoundReductionIndex(reduction)
+		tau := TransmissionFromSoundReductionIndex(reduction)
 
 		transmission := make([]float64, 6)
 		for index := range transmission {
 			transmission[index] = tau
 		}
 
-		got := scene.WeightedReductionIndexDB(transmission, nil)
+		got := WeightedReductionIndexDB(transmission, nil)
 		if got <= previous {
 			t.Fatalf("reduction index %v is not above the previous %v", got, previous)
 		}
@@ -433,11 +470,89 @@ func TestWeightedReductionIndexDBIsMonotonic(t *testing.T) {
 	}
 }
 
+func TestSearchPathsRejectsUnusableReductionWeights(t *testing.T) {
+	t.Parallel()
+
+	sc := chainScene(t, 2, "light_door")
+	graph := newGraph(t, sc)
+
+	sourceGroup, ok := graph.GroupOfPosition(sc.Sources[0].Position)
+	if !ok {
+		t.Fatal("the source must belong to a group")
+	}
+
+	cases := []struct {
+		name    string
+		weights []float64
+	}{
+		{name: "all zero", weights: []float64{0, 0, 0, 0, 0, 0}},
+		{name: "negative", weights: []float64{1, -1, 1, 1, 1, 1}},
+		{name: "not finite", weights: []float64{math.Inf(1), 1, 1, 1, 1, 1}},
+		{name: "wrong length", weights: []float64{1, 1, 1}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := graph.SearchPaths(sourceGroup, PathSearchConfig{ReductionWeights: testCase.weights})
+			if err == nil {
+				t.Fatalf("SearchPaths accepted %v weights", testCase.name)
+			}
+		})
+	}
+}
+
+func TestSearchPathsNormalisesCustomReductionWeights(t *testing.T) {
+	t.Parallel()
+
+	sc := chainScene(t, 2, "light_door")
+
+	// The same weighting at two overall scales must give the same index: only
+	// the relative band emphasis is configuration, the scale is not.
+	flat := searchFromSource(t, sc, PathSearchConfig{ReductionWeights: []float64{1, 1, 1, 1, 1, 1}})
+	scaled := searchFromSource(t, sc, PathSearchConfig{ReductionWeights: []float64{7, 7, 7, 7, 7, 7}})
+
+	if len(flat.Leaves) != 1 || len(scaled.Leaves) != 1 {
+		t.Fatalf("got %d and %d leaves, want one each", len(flat.Leaves), len(scaled.Leaves))
+	}
+
+	got := scaled.Nodes[scaled.Leaves[0]].ReductionDB
+	want := flat.Nodes[flat.Leaves[0]].ReductionDB
+
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("reduction index = %v dB with unnormalised weights, want %v dB", got, want)
+	}
+
+	// A flat weighting over a 20 dB door is that same 20 dB.
+	if math.Abs(want-20) > 1e-9 {
+		t.Fatalf("reduction index = %v dB, want the door's 20 dB", want)
+	}
+}
+
+func TestWeightedReductionIndexDBIgnoresUnusableWeights(t *testing.T) {
+	t.Parallel()
+
+	transmission := []float64{0.01, 0.01, 0.01, 0.01, 0.01, 0.01}
+
+	want := WeightedReductionIndexDB(transmission, nil)
+	for _, weights := range [][]float64{
+		{0, 0, 0, 0, 0, 0},
+		{1, -1, 1, 1, 1, 1},
+		{math.NaN(), 1, 1, 1, 1, 1},
+	} {
+		got := WeightedReductionIndexDB(transmission, weights)
+		if math.Abs(got-want) > 1e-9 {
+			t.Fatalf("WeightedReductionIndexDB(%v) = %v, want the default-weight %v", weights, got, want)
+		}
+	}
+}
+
 func TestDefaultReductionWeightsSumToOne(t *testing.T) {
 	t.Parallel()
 
 	for _, bandCount := range []int{1, 6, 8} {
-		weights := scene.DefaultReductionWeights(bandCount)
+		weights := DefaultReductionWeights(bandCount)
 		if len(weights) != bandCount {
 			t.Fatalf("DefaultReductionWeights(%d) has length %d", bandCount, len(weights))
 		}

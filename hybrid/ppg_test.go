@@ -312,6 +312,37 @@ func TestPPGTopologicalOrderIsAcyclic(t *testing.T) {
 	}
 }
 
+func TestBuildPPGStaysAcyclicWhenPathsCrossPortalsInOppositeOrder(t *testing.T) {
+	t.Parallel()
+
+	// A ring of groups: one simple path leaves through portal 1 and then portal
+	// 2, another through portal 2 and then portal 1. Keying portal nodes on
+	// (portal, direction) alone would merge both occurrences of each portal and
+	// produce the edge pair 1->2 and 2->1, which is a cycle even though both
+	// searched paths are simple.
+	builder := newTreeBuilder(6)
+	first := builder.add(0, 1, false, 1, 0.1)
+	firstLeaf := builder.add(first, 2, false, 2, 0.1)
+	second := builder.add(0, 2, false, 2, 0.1)
+	secondLeaf := builder.add(second, 1, false, 1, 0.1)
+	builder.markLeaf(firstLeaf)
+	builder.markLeaf(secondLeaf)
+
+	graph, err := BuildPPG(builder.tree)
+	if err != nil {
+		t.Fatalf("BuildPPG: %v", err)
+	}
+
+	order, err := graph.TopologicalOrder()
+	if err != nil {
+		t.Fatalf("TopologicalOrder: %v", err)
+	}
+
+	if len(order) != len(graph.Nodes) {
+		t.Fatalf("order covers %d of %d nodes", len(order), len(graph.Nodes))
+	}
+}
+
 func TestBuildPPGRejectsEmptyInput(t *testing.T) {
 	t.Parallel()
 

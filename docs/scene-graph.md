@@ -102,8 +102,8 @@ a closed portal — open portals have already been merged into their group.
 
 The search uses an explicit LIFO stack and marks the groups on the current
 path; that marking is the cycle detection, so the search enumerates simple
-paths only. Branches are also cut by `MaxDepth`, `MaxNodes`, and the prune
-floor. Any such cut sets `PathSearchTree.Truncated`, which callers must
+paths only. Branches are also cut by `MaxDepth`, `MaxNodes`, and the per-band
+prune floor. Any such cut sets `PathSearchTree.Truncated`, which callers must
 surface: a silently truncated search under-renders a large building with no
 other symptom.
 
@@ -112,8 +112,14 @@ other symptom.
 `WeightedReductionIndexDB` estimates a single-number reduction index as
 `R = -10*log10(sum(w_b * tau_b))`. This is **not** ISO 717-1, which needs
 third-octave data from 100 Hz to 3150 Hz and a shifting reference curve that
-octave-band scene data cannot supply. It is used only to prune the search; the
-filter network always works from the per-band coefficients.
+octave-band scene data cannot supply. It is recorded per node as a diagnostic
+only; the filter network always works from the per-band coefficients.
+
+It deliberately does **not** prune. For a spectrally selective portal chain the
+normalised weighting can drag the aggregate below the floor while an individual
+band is still audible, so pruning on it would throw away a surviving
+low-frequency contribution that `ActiveBands` had just marked as audible.
+Pruning is the per-band mask's job alone.
 
 Along a chain the per-band coefficients **multiply**, which is exact for
 cascaded intensity transmission ratios, and the single-number index is
@@ -140,10 +146,18 @@ node, tree edges (portal traversals) become portal filter nodes, tree nodes
 (group residencies) become transfer-function edges, and every leaf merges into
 a single receiver node.
 
-Portal nodes are keyed on `(portal index, traversal direction)`, so two paths
-reaching the same portal the same way converge on one node. That is what turns
-the tree into a genuine DAG, and it is why a group's transfer function can be
-rendered once per entry/exit pair rather than once per path.
+Portal nodes are keyed on `(portal index, traversal direction, depth)`, so two
+paths reaching the same portal the same way after the same number of traversals
+converge on one node. That is why a group's transfer function can be rendered
+once per entry/exit pair rather than once per path.
+
+The depth belongs in the key. Keying on `(portal, direction)` alone does not
+preserve acyclicity: in a ring of groups one simple path can cross portals `P`
+then `Q` while another crosses `Q` then `P`, and merging both occurrences would
+add edges `P → Q` and `Q → P`, which `TopologicalOrder` rejects. With the depth
+in the key every edge runs from depth `d` to depth `d + 1`, so the graph is a
+DAG by construction and continuations are never cross-connected between path
+histories of different length.
 
 The cost of sharing is that a merged node has no single per-path band mask.
 `ActiveBands` is therefore the union across contributing paths and

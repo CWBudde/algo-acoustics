@@ -123,7 +123,10 @@ func (g *AcousticSceneGraph) SearchPaths(sourceGroup GroupID, cfg PathSearchConf
 		return nil, fmt.Errorf("source group %d does not exist", sourceGroup)
 	}
 
-	cfg = cfg.withDefaults(g.scene.BandSpec.BandCount())
+	cfg, err := cfg.withDefaults(g.scene.BandSpec.BandCount())
+	if err != nil {
+		return nil, err
+	}
 
 	if cfg.BandCount <= 0 {
 		return nil, errors.New("path search requires a positive band count")
@@ -230,12 +233,12 @@ func (g *AcousticSceneGraph) growPath(
 		return 0, false
 	}
 
+	// The per-band mask above is the only pruning criterion. The weighted
+	// reduction index is recorded but deliberately not used to reject a branch:
+	// for a spectrally selective portal chain the normalised weighting can drag
+	// the aggregate below the floor while a band is still audible, and dropping
+	// the branch would discard that surviving contribution.
 	reduction := WeightedReductionIndexDB(accumulated, cfg.ReductionWeights)
-	if -reduction <= cfg.PruneFloorDB {
-		tree.Truncated = true
-
-		return 0, false
-	}
 
 	child := len(tree.Nodes)
 	tree.Nodes = append(tree.Nodes, PathNode{
@@ -284,7 +287,7 @@ func (g *AcousticSceneGraph) groupsHoldingReceivers() map[GroupID]bool {
 	return groups
 }
 
-func (c PathSearchConfig) withDefaults(sceneBandCount int) PathSearchConfig {
+func (c PathSearchConfig) withDefaults(sceneBandCount int) (PathSearchConfig, error) {
 	if c.MaxDepth <= 0 {
 		c.MaxDepth = DefaultMaxPathDepth
 	}
@@ -301,11 +304,58 @@ func (c PathSearchConfig) withDefaults(sceneBandCount int) PathSearchConfig {
 		c.BandCount = sceneBandCount
 	}
 
-	if len(c.ReductionWeights) != c.BandCount {
-		c.ReductionWeights = DefaultReductionWeights(c.BandCount)
+	if c.BandCount <= 0 {
+		return c, nil
 	}
 
-	return c
+	if len(c.ReductionWeights) == 0 {
+		c.ReductionWeights = DefaultReductionWeights(c.BandCount)
+
+		return c, nil
+	}
+
+	if len(c.ReductionWeights) != c.BandCount {
+		return c, fmt.Errorf("path search reduction weights have length %d, want %d",
+			len(c.ReductionWeights), c.BandCount)
+	}
+
+	// The reduction formula reads the weights as an energy weighting, so they
+	// must be finite, non-negative, and normalisable. An all-zero vector would
+	// make every reduction +Inf and a vector that does not sum to one would
+	// shift the index away from the level it is compared against.
+	normalised := normalizeReductionWeights(c.ReductionWeights)
+	if normalised == nil {
+		return c, errors.New("path search reduction weights must be finite, non-negative, and sum to a positive value")
+	}
+
+	c.ReductionWeights = normalised
+
+	return c, nil
+}
+
+// normalizeReductionWeights returns a copy of weights scaled to sum to one, or
+// nil if they are not a usable energy weighting.
+func normalizeReductionWeights(weights []float64) []float64 {
+	total := 0.0
+
+	for _, weight := range weights {
+		if math.IsNaN(weight) || math.IsInf(weight, 0) || weight < 0 {
+			return nil
+		}
+
+		total += weight
+	}
+
+	if total <= 0 || math.IsInf(total, 0) {
+		return nil
+	}
+
+	normalised := make([]float64, len(weights))
+	for index, weight := range weights {
+		normalised[index] = weight / total
+	}
+
+	return normalised
 }
 
 // activeBands marks the bands whose accumulated transmission is still above the
@@ -352,7 +402,14 @@ func WeightedReductionIndexDB(transmission, weights []float64) float64 {
 		return math.Inf(1)
 	}
 
+	// Weights that are missing, mis-sized, or not a usable energy weighting fall
+	// back to the defaults; usable ones are normalised so a caller-supplied
+	// vector cannot shift the index by its overall scale.
 	if len(weights) != len(transmission) {
+		weights = DefaultReductionWeights(len(transmission))
+	} else if normalised := normalizeReductionWeights(weights); normalised != nil {
+		weights = normalised
+	} else {
 		weights = DefaultReductionWeights(len(transmission))
 	}
 
