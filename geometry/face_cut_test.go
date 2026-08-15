@@ -208,6 +208,28 @@ func TestCutRectangularHolesRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+// A hole only slightly wider than eps is still a legal hole, and the cell
+// covering it must be dropped like any other.
+func TestCutRectangularHolesCutsHolesNarrowerThanTwiceEps(t *testing.T) {
+	t.Parallel()
+
+	frame := NewPlaneFrame(Vec3Zero, Vec3{Z: 1})
+	face := Rect2{UMax: 4, VMax: 3}
+	hole := Rect2{UMin: 1, VMin: 1, UMax: 1 + 1.5*faceCutEps, VMax: 2}
+
+	triangles, err := CutRectangularHoles(frame, face, []Rect2{hole}, faceCutEps)
+	if err != nil {
+		t.Fatalf("CutRectangularHoles: %v", err)
+	}
+
+	for _, triangle := range triangles {
+		centroid := triangle.V0.Add(triangle.V1).Add(triangle.V2).Scale(1.0 / 3.0)
+		if hole.ContainsPoint(frame.To2D(centroid), 0) {
+			t.Fatalf("triangle %+v covers the hole", triangle)
+		}
+	}
+}
+
 func TestCutRectangularHolesIsEdgeManifold(t *testing.T) {
 	t.Parallel()
 
@@ -245,6 +267,47 @@ func TestCutRectangularHolesIsEdgeManifold(t *testing.T) {
 			t.Fatalf("edge %+v used %d times, want at most 2", key, count)
 		}
 	}
+
+	// The use count alone cannot see a T-junction: a long edge meeting two
+	// shorter ones yields three distinct keys, each used twice. Watertightness
+	// additionally requires that no vertex lies in the interior of another edge.
+	vertices := map[Vec3]struct{}{}
+
+	for _, triangle := range triangles {
+		vertices[triangle.V0] = struct{}{}
+		vertices[triangle.V1] = struct{}{}
+		vertices[triangle.V2] = struct{}{}
+	}
+
+	for key := range uses {
+		for vertex := range vertices {
+			if vertex == key.a || vertex == key.b {
+				continue
+			}
+
+			if pointInSegmentInterior(vertex, key.a, key.b) {
+				t.Fatalf("vertex %+v lies inside edge %+v, a T-junction", vertex, key)
+			}
+		}
+	}
+}
+
+// pointInSegmentInterior reports whether p lies strictly between a and b. The
+// grid vertices are exact sums of the cut lines, so an exact colinearity test
+// with a small tolerance is enough here.
+func pointInSegmentInterior(p, a, b Vec3) bool {
+	const eps = 1e-12
+
+	ab := b.Sub(a)
+	ap := p.Sub(a)
+
+	if ab.Cross(ap).Norm() > eps {
+		return false
+	}
+
+	t := ap.Dot(ab) / ab.Dot(ab)
+
+	return t > eps && t < 1-eps
 }
 
 func vec3Less(a, b Vec3) bool {

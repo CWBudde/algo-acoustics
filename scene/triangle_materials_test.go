@@ -129,6 +129,15 @@ func TestValidateTriangleMaterials(t *testing.T) {
 			wantSubstr: "triangle material count",
 		},
 		{
+			name: "explicitly empty table is rejected",
+			room: scene.Room{
+				Kind: scene.RoomKindMesh, Mesh: mesh, MeshMaterial: "hard",
+				TriangleMaterials: []string{},
+			},
+			wantErr:    true,
+			wantSubstr: "triangle material count",
+		},
+		{
 			name: "undefined name is rejected",
 			room: scene.Room{
 				Kind: scene.RoomKindMesh, Mesh: mesh, MeshMaterial: "hard",

@@ -138,6 +138,22 @@ func TestRect2FromPolygonAcceptsRectanglesAndRejectsOthers(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "rectangle with a subdivided edge",
+			points: []Vec2{{U: 0, V: 0}, {U: 2, V: 0}, {U: 4, V: 0}, {U: 4, V: 3}, {U: 0, V: 3}},
+			want:   Rect2{UMax: 4, VMax: 3},
+			wantOK: true,
+		},
+		{
+			name:   "corners visited over a diagonal",
+			points: []Vec2{{U: 0, V: 0}, {U: 4, V: 0}, {U: 4, V: 3}, {U: 0, V: 0}, {U: 0, V: 3}},
+			wantOK: false,
+		},
+		{
+			name:   "bowtie over all four corners",
+			points: []Vec2{{U: 0, V: 0}, {U: 4, V: 0}, {U: 0, V: 3}, {U: 4, V: 3}},
+			wantOK: false,
+		},
+		{
 			name:   "triangle",
 			points: []Vec2{{U: 0, V: 0}, {U: 4, V: 0}, {U: 0, V: 3}},
 			wantOK: false,

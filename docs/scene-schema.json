@@ -57,7 +57,8 @@
             "properties": { "kind": { "const": "shoebox" } }
           },
           "then": {
-            "required": ["shoebox"]
+            "required": ["shoebox"],
+            "not": { "required": ["triangleMaterials"] }
           }
         },
         {

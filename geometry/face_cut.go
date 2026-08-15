@@ -40,7 +40,7 @@ func CutRectangularHoles(frame PlaneFrame, face Rect2, holes []Rect2, eps float6
 	for uIndex := 0; uIndex+1 < len(uCuts); uIndex++ {
 		for vIndex := 0; vIndex+1 < len(vCuts); vIndex++ {
 			cell := Rect2{UMin: uCuts[uIndex], VMin: vCuts[vIndex], UMax: uCuts[uIndex+1], VMax: vCuts[vIndex+1]}
-			if !cell.Valid(eps) || cellIsInsideAnyHole(cell, holes, eps) {
+			if !cell.Valid(eps) || cellIsInsideAnyHole(cell, holes) {
 				continue
 			}
 
@@ -96,11 +96,13 @@ func cutLines(faceMin, faceMax float64, holes []Rect2, bounds func(Rect2) (float
 }
 
 // cellIsInsideAnyHole tests the cell center, which is sufficient because every
-// hole edge is a grid line, so no cell straddles a hole boundary.
-func cellIsInsideAnyHole(cell Rect2, holes []Rect2, eps float64) bool {
+// hole edge is a grid line, so no cell straddles a hole boundary and the center
+// never lands on a hole boundary. The containment test therefore needs no
+// tolerance; shrinking the hole would leave thin but legal holes uncut.
+func cellIsInsideAnyHole(cell Rect2, holes []Rect2) bool {
 	center := Vec2{U: (cell.UMin + cell.UMax) * 0.5, V: (cell.VMin + cell.VMax) * 0.5}
 	for _, hole := range holes {
-		if hole.ContainsPoint(center, -eps) {
+		if hole.ContainsPoint(center, 0) {
 			return true
 		}
 	}

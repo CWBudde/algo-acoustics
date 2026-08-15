@@ -652,7 +652,9 @@ func validateMeshRoom(room Room) error {
 		return errors.New("mesh room requires a mesh definition")
 	}
 
-	if count := len(room.TriangleMaterials); count > 0 && count != len(room.Mesh.Triangles) {
+	// An explicitly present but empty list is a mismatch, not an omission: the
+	// documented contract is absent or one entry per triangle.
+	if count := len(room.TriangleMaterials); room.TriangleMaterials != nil && count != len(room.Mesh.Triangles) {
 		return fmt.Errorf("mesh room triangle material count = %d, want %d", count, len(room.Mesh.Triangles))
 	}
 

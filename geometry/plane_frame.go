@@ -110,7 +110,14 @@ func BoundingRect2(points []Vec2) Rect2 {
 // Rect2FromPolygon reports the polygon as an axis-aligned rectangle in the
 // frame basis. It succeeds only when the polygon really is such a rectangle:
 // every vertex must sit on the bounding rectangle's outline, all four corners
-// must be present, and the rectangle must have positive extent in both axes.
+// must be present, every edge must run along one of the four outline lines, and
+// the rectangle must have positive extent in both axes.
+//
+// Testing the edges as well as the vertices matters: a polygon that visits all
+// four corners in the wrong order, such as a bowtie or a shape closing over a
+// diagonal, has the same vertex set as the rectangle but encloses a different
+// region, and accepting it would silently widen a portal into the whole face.
+// Vertices that merely subdivide an edge are fine and stay accepted.
 func Rect2FromPolygon(points []Vec2, eps float64) (Rect2, bool) {
 	if len(points) < 4 {
 		return Rect2{}, false
@@ -121,26 +128,30 @@ func Rect2FromPolygon(points []Vec2, eps float64) (Rect2, bool) {
 		return Rect2{}, false
 	}
 
+	// An explicit closing vertex repeats the first one; drop it so it is not
+	// mistaken for a degenerate edge.
+	if nearVec2(points[0], points[len(points)-1], eps) {
+		points = points[:len(points)-1]
+		if len(points) < 4 {
+			return Rect2{}, false
+		}
+	}
+
 	corners := [4]bool{}
 
-	for _, point := range points {
-		onU := math.Abs(point.U-rect.UMin) <= eps || math.Abs(point.U-rect.UMax) <= eps
-		onV := math.Abs(point.V-rect.VMin) <= eps || math.Abs(point.V-rect.VMax) <= eps
-
-		if !onU || !onV {
+	for index, point := range points {
+		cornerIndex, ok := outlinePosition(point, rect, eps)
+		if !ok {
 			return Rect2{}, false
 		}
 
-		index := 0
-		if math.Abs(point.U-rect.UMax) <= eps {
-			index |= 1
+		if cornerIndex >= 0 {
+			corners[cornerIndex] = true
 		}
 
-		if math.Abs(point.V-rect.VMax) <= eps {
-			index |= 2
+		if !edgeOnOutline(point, points[(index+1)%len(points)], rect, eps) {
+			return Rect2{}, false
 		}
-
-		corners[index] = true
 	}
 
 	for _, seen := range corners {
@@ -150,6 +161,56 @@ func Rect2FromPolygon(points []Vec2, eps float64) (Rect2, bool) {
 	}
 
 	return rect, true
+}
+
+// outlinePosition classifies a vertex against the rectangle outline. It reports
+// whether the vertex lies on the outline at all, and if it coincides with a
+// corner, that corner's index in the (UMax, VMax) bit encoding; a vertex merely
+// subdividing an edge yields -1.
+func outlinePosition(point Vec2, rect Rect2, eps float64) (int, bool) {
+	onUMin := math.Abs(point.U-rect.UMin) <= eps
+	onUMax := math.Abs(point.U-rect.UMax) <= eps
+	onVMin := math.Abs(point.V-rect.VMin) <= eps
+	onVMax := math.Abs(point.V-rect.VMax) <= eps
+
+	onU := onUMin || onUMax
+	onV := onVMin || onVMax
+
+	if !onU && !onV {
+		return -1, false
+	}
+
+	if !onU || !onV {
+		return -1, true
+	}
+
+	index := 0
+	if onUMax {
+		index |= 1
+	}
+
+	if onVMax {
+		index |= 2
+	}
+
+	return index, true
+}
+
+// edgeOnOutline reports whether the segment from a to b runs along one of the
+// four lines bounding rect, which is what distinguishes a boundary traversal
+// from a diagonal shortcut across the interior.
+func edgeOnOutline(a, b Vec2, rect Rect2, eps float64) bool {
+	sameU := (math.Abs(a.U-rect.UMin) <= eps && math.Abs(b.U-rect.UMin) <= eps) ||
+		(math.Abs(a.U-rect.UMax) <= eps && math.Abs(b.U-rect.UMax) <= eps)
+	sameV := (math.Abs(a.V-rect.VMin) <= eps && math.Abs(b.V-rect.VMin) <= eps) ||
+		(math.Abs(a.V-rect.VMax) <= eps && math.Abs(b.V-rect.VMax) <= eps)
+
+	return sameU || sameV
+}
+
+// nearVec2 reports whether two frame-basis points coincide within eps.
+func nearVec2(a, b Vec2, eps float64) bool {
+	return math.Abs(a.U-b.U) <= eps && math.Abs(a.V-b.V) <= eps
 }
 
 // Valid reports whether the rectangle has positive extent in both axes.
