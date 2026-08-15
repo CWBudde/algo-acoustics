@@ -54,7 +54,8 @@ func TestSphericalGridValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if err := tt.grid.Validate(); (err == nil) != tt.wantOK {
+			err := tt.grid.Validate()
+			if (err == nil) != tt.wantOK {
 				t.Fatalf("Validate() error = %v, want ok = %v", err, tt.wantOK)
 			}
 		})
@@ -256,7 +257,8 @@ func TestSampleBalloonReproducesSourceModel(t *testing.T) {
 	t.Parallel()
 
 	source, err := NewFrequencyDependentCardioid(
-		geometry.Vec3{X: 1}, []float64{125, 1000, 8000}, []float64{0.5, 2, 5})
+		geometry.Vec3{X: 1}, []float64{125, 1000, 8000}, []float64{0.5, 2, 5},
+	)
 	if err != nil {
 		t.Fatalf("NewFrequencyDependentCardioid() error = %v", err)
 	}
@@ -313,11 +315,13 @@ func TestSampleBalloonErrors(t *testing.T) {
 
 	grid := SphericalGrid{AzimuthCount: 4, ElevationCount: 3}
 
-	if _, err := SampleBalloon(nil, []float64{125}, grid, Bilinear); err == nil {
+	_, err := SampleBalloon(nil, []float64{125}, grid, Bilinear)
+	if err == nil {
 		t.Fatal("SampleBalloon() with a nil model succeeded")
 	}
 
-	if _, err := SampleBalloon(OmniModel{}, []float64{125}, SphericalGrid{}, Bilinear); err == nil {
+	_, err = SampleBalloon(OmniModel{}, []float64{125}, SphericalGrid{}, Bilinear)
+	if err == nil {
 		t.Fatal("SampleBalloon() with an invalid grid succeeded")
 	}
 }

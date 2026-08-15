@@ -74,21 +74,6 @@ func LoadGLLReader(r io.ReadSeeker, preset string) (*GLLModel, error) {
 	return model, nil
 }
 
-// loadBalloonResponses reads the deferred balloon measurements from r.
-func (m *GLLModel) loadBalloonResponses(r io.ReadSeeker) error {
-	balloon := m.SourceDefinition.BalloonData
-	if balloon == nil || len(balloon.Responses) > 0 {
-		return nil
-	}
-
-	err := ggll.LoadBalloonResponses(r, balloon)
-	if err != nil {
-		return fmt.Errorf("load balloon responses for source %q: %w", m.SourceKey, err)
-	}
-
-	return nil
-}
-
 // LoadGLLFile adapts a parsed GLL file to the directivity interface.
 //
 // The balloon measurements of a file parsed this way are loaded lazily by
@@ -144,6 +129,21 @@ func (m *GLLModel) GainLinear(freqHz float64, dir geometry.Vec3) float64 {
 	}
 
 	return math.Pow(10, gainDB/20)
+}
+
+// loadBalloonResponses reads the deferred balloon measurements from r.
+func (m *GLLModel) loadBalloonResponses(r io.ReadSeeker) error {
+	balloon := m.SourceDefinition.BalloonData
+	if balloon == nil || len(balloon.Responses) > 0 {
+		return nil
+	}
+
+	err := ggll.LoadBalloonResponses(r, balloon)
+	if err != nil {
+		return fmt.Errorf("load balloon responses for source %q: %w", m.SourceKey, err)
+	}
+
+	return nil
 }
 
 func selectSourceDefinition(file *ggll.File, preset string) (*ggll.SourceDefinition, string, error) {

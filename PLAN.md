@@ -121,11 +121,29 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 
 #### 24.1 Frequency-dependent directivity models (`directivity/`)
 
-- [ ] `FrequencyDependentCardioid`: per-band cardioid orders (wide at low freq, narrow at high freq) with interpolation
-- [ ] `BalloonDirectivity`: tabulated gain on spherical grid per frequency band, nearest-neighbor or bilinear lookup
-- [ ] Integration with GLL loader: extract per-band balloons from GLL data
-- [ ] Unit tests: frequency-dependent behavior, grid-point exactness
-- [ ] Regression: GLL source produces same ISM events as before
+- [x] `FrequencyDependentCardioid`: per-band cardioid orders (wide at low freq, narrow at high freq) with interpolation — orders interpolate linearly in log frequency, held flat outside the table
+- [x] `BalloonDirectivity`: tabulated gain on spherical grid per frequency band, nearest-neighbor or bilinear lookup — levels stored and interpolated in dB (azimuth wraps, elevation clamps at the poles, frequency blends in log frequency), floored at -200 dB so nulls stay finite
+- [x] Integration with GLL loader: extract per-band balloons from GLL data —
+      `(*GLLModel).ExtractBalloon` plus the generic `SampleBalloon`. This first
+      required fixing the loader: `gll-tools` defers balloon responses to a file
+      offset, and `LoadGLL` closed the file before hydrating them, so **GLL
+      sources were silently omnidirectional**. `LoadGLL`/`LoadGLLReader` now
+      hydrate the balloon, which changes GLL-source output.
+- [x] Unit tests: frequency-dependent behavior, grid-point exactness
+- [x] Regression: GLL source produces same ISM events as before — pinned as
+      structural equivalence (a GLL source yields the same paths, times, and
+      distances as an omni source, differing only in band gain) plus a
+      guard that the band gains are not all unity, rather than as absolute gain
+      values: the "before" behaviour was the omnidirectional bug above, so
+      pinning it would have pinned the defect. `ism/gll_directivity_test.go`
+      also checks that a balloon extracted from the GLL source is a faithful
+      stand-in for it inside the solver.
+
+> **Open:** GLL balloon lookups are wrong for Quarter/Vertical/Horizontal/Axial
+> symmetry in `gll-tools` v0.1.1 (its internal grid math cases on different
+> symmetry enum values than `pkg/gll.SymmetryType` defines). Fixed on the
+> `gll-tools` main branch; awaiting a release tag and a `go.mod` bump. The
+> models above are unaffected. See `docs/directivity-gll.md`.
 
 #### 24.2 SOFA file loading (`hrtf/`)
 

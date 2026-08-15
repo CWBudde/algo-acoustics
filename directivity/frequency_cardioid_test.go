@@ -62,7 +62,8 @@ func TestFrequencyDependentCardioidOrderAt(t *testing.T) {
 	t.Parallel()
 
 	model, err := NewFrequencyDependentCardioid(
-		geometry.Vec3{X: 1}, []float64{125, 4000}, []float64{0, 4})
+		geometry.Vec3{X: 1}, []float64{125, 4000}, []float64{0, 4},
+	)
 	if err != nil {
 		t.Fatalf("NewFrequencyDependentCardioid() error = %v", err)
 	}
@@ -98,7 +99,8 @@ func TestFrequencyDependentCardioidNarrowsWithFrequency(t *testing.T) {
 	t.Parallel()
 
 	model, err := NewFrequencyDependentCardioid(
-		geometry.Vec3{X: 1}, []float64{125, 500, 2000, 8000}, []float64{0, 1, 2, 4})
+		geometry.Vec3{X: 1}, []float64{125, 500, 2000, 8000}, []float64{0, 1, 2, 4},
+	)
 	if err != nil {
 		t.Fatalf("NewFrequencyDependentCardioid() error = %v", err)
 	}
