@@ -285,12 +285,13 @@ func runDemoRenderWithDeadline(
 
 	preview := renderDemoPreviewTier(sc, normalized, started)
 
-	// The deadline may already have passed while the preview ran. Starting the
-	// full render anyway would blow the budget by its entire duration, which at
-	// the top of the envelope is far longer than the budget itself.
-	if deadline.exceeded() && preview != nil {
-		return finishDemoResult(sc, previewTierRequest(normalized), preview, warnings, started,
-			timeoutWarning(tierPreview, time.Since(started)))
+	if preview != nil {
+		notice := previewFallbackNotice(normalized, preview, started, deadline)
+		if notice != "" {
+			return finishDemoResult(
+				sc, previewTierRequest(normalized), preview, warnings, started, notice,
+			)
+		}
 	}
 
 	buffer, earlyEvents, err := renderDemoMono(sc, normalized, deadline)
@@ -309,11 +310,35 @@ func runDemoRenderWithDeadline(
 	}, warnings, started, "")
 }
 
-// demoTierBuffer is a rendered tier: the impulse response plus the one figure
-// that cannot be recovered from it afterwards.
+// demoTierBuffer is a rendered tier: the impulse response, the one figure that
+// cannot be recovered from it afterwards, and what it cost to produce.
 type demoTierBuffer struct {
 	buffer          *ir.Buffer
 	earlyEventCount int
+	cost            time.Duration
+}
+
+// previewFallbackNotice decides whether to stop at the preview, and says why.
+//
+// It answers two questions in the order they can be answered: has the budget
+// already run out, and — if not — can what remains plausibly cover the full
+// render? The second check is what makes the timeout useful, because the stage
+// checkpoints alone cannot interrupt a late-field trace once it has started.
+//
+// An empty result means the full render should go ahead.
+func previewFallbackNotice(
+	request demoRequest, preview *demoTierBuffer, started time.Time, deadline renderDeadline,
+) string {
+	if deadline.exceeded() {
+		return timeoutWarning(tierPreview, time.Since(started))
+	}
+
+	projected := projectFullRenderCost(preview.cost, previewTierRequest(request), request)
+	if deadline.affords(projected) {
+		return ""
+	}
+
+	return projectedTimeoutWarning(projected, deadline.remaining())
 }
 
 // renderDemoMono runs the mono render for one set of quality knobs.
@@ -443,12 +468,19 @@ func renderDemoPreviewTier(sc *scene.Scene, request demoRequest, started time.Ti
 	previewRequest := previewTierRequest(request)
 
 	reportDemoProgress("preview", 12, "Rendering preview")
+
+	previewStarted := time.Now()
+
 	buffer, earlyEvents, err := renderDemoMono(sc, previewRequest, renderDeadline{})
 	if err != nil || buffer == nil {
 		return nil
 	}
 
-	tier := &demoTierBuffer{buffer: buffer, earlyEventCount: len(earlyEvents)}
+	tier := &demoTierBuffer{
+		buffer:          buffer,
+		earlyEventCount: len(earlyEvents),
+		cost:            time.Since(previewStarted),
+	}
 	reportDemoTier(demoTierPayload{
 		Tier:            tierPreview,
 		ElapsedMS:       float64(time.Since(started).Milliseconds()),

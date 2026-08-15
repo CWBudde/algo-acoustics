@@ -63,7 +63,8 @@ func subdividedWallMesh(n int) *demoMesh {
 			y1 := y0 + step
 			z1 := z0 + step
 
-			mesh.Triangles = append(mesh.Triangles,
+			mesh.Triangles = append(
+				mesh.Triangles,
 				demoTriangle{
 					V0: demoPoint{Y: y0, Z: z0},
 					V1: demoPoint{Y: y1, Z: z0},
@@ -180,7 +181,8 @@ func TestValidateDemoStructureAcceptsSubdividedGeometry(t *testing.T) {
 	request.Room.Kind = "mesh"
 	request.Room.Mesh = subdividedWallMesh(40)
 
-	if err := validateDemoStructure(request); err != nil {
+	err := validateDemoStructure(request)
+	if err != nil {
 		t.Fatalf("validateDemoStructure() error = %v, want nil", err)
 	}
 }

@@ -12,6 +12,26 @@ terminates that worker, starts a fresh worker, waits for its ready message, and
 ignores results from the retired generation. Cancellation therefore stops the
 computation rather than merely hiding a late result.
 
+## Limits and progressive rendering
+
+A render is synchronous inside its worker, so the demo reports as it goes rather
+than leaving the page blank. A statistical estimate of the room's decay time
+appears within milliseconds, a coarse preview waveform within a few hundred, and
+the full result replaces both when it finishes.
+
+Each render has a 10 s budget. A render that will not fit is not started; the
+preview is returned instead as a complete, playable result carrying a warning,
+and the badge reads "Partial render" rather than "Render complete".
+
+The request envelope — 16,384 rays, reflection order 12, 3 s at 48 kHz, 50
+distinct room surfaces — is defined once in `web/wasm/limits.go`, enforced there,
+and published to the page so the sliders are sized from the values that are
+actually enforced.
+
+See [docs/web-demo-limits.md](../docs/web-demo-limits.md) for the measurements
+behind each limit and why the ray cap is 16,384 rather than the 50,000 originally
+planned.
+
 ## Memory budget
 
 The demo targets a peak of 512 MiB of WASM linear memory. A Go/WASM heap only

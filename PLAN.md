@@ -122,9 +122,16 @@ Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths wit
 
 #### 19.7 Performance constraints — remaining
 
-- [ ] Define demo limits: max 50 surfaces, max 50k rays, IR up to 3 s at 48 kHz
-- [ ] Use progressive rendering from Phase 18 — show Tier 1/2 results immediately, refine in background (depends on Phase 18)
-- [ ] Fallback: if computation exceeds 10 s timeout, return partial result with warning
+- [x] Define demo limits: max 50 surfaces, max 50k rays, IR up to 3 s at 48 kHz —
+      50 surfaces (counted as distinct planes, so subdivision does not inflate
+      the count) and 3 s at 48 kHz as planned; the ray cap is **16,384, not
+      50,000**, because the binding constraint is wall-clock rather than memory:
+      16,384 rays already measure 7.0 s (and 18.0 s at order 12 / 3 s), so 50,000
+      would take roughly a minute. Limits are defined once in
+      `web/wasm/limits.go` and published to the page, which sizes its sliders
+      from them. See [docs/web-demo-limits.md](docs/web-demo-limits.md).
+- [x] Use progressive rendering from Phase 18 — show Tier 1/2 results immediately, refine in background (depends on Phase 18)
+- [x] Fallback: if computation exceeds 10 s timeout, return partial result with warning
 
 ---
 

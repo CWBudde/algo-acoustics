@@ -35,6 +35,8 @@ for the output you need.
   [GPU profiling](profiling-gpu-kernels.md): performance measurement.
 - [WASM memory budget](wasm-memory-budget.md): the browser demo's 512 MiB peak
   target, what enforces it, and the measurements behind the request envelope.
+- [Web demo limits](web-demo-limits.md): the browser demo's request envelope,
+  its progressive tiers, and what happens when a render overruns its budget.
 
 ## Reference
 

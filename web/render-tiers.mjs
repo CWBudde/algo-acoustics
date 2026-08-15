@@ -10,11 +10,6 @@
 // browser.
 
 /**
- * Names of the tiers the demo emits, in the order they arrive.
- */
-export const RENDER_TIERS = Object.freeze(["statistical", "preview"]);
-
-/**
  * Reads the statistical tier, which reports estimates derived from room geometry
  * and absorption with no simulation behind them.
  *

@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	algoacoustics "github.com/cwbudde/algo-acoustics"
@@ -76,6 +77,25 @@ func (d renderDeadline) exceeded() bool {
 	return !d.at.IsZero() && !time.Now().Before(d.at)
 }
 
+// remaining reports how much of the budget is left. An unbounded render always
+// has time left, reported as the largest representable duration.
+func (d renderDeadline) remaining() time.Duration {
+	if d.at.IsZero() {
+		return time.Duration(math.MaxInt64)
+	}
+
+	return max(time.Until(d.at), 0)
+}
+
+// affords reports whether a stage projected to take cost should be started.
+func (d renderDeadline) affords(cost time.Duration) bool {
+	if d.at.IsZero() || cost <= 0 {
+		return true
+	}
+
+	return float64(cost) <= float64(d.remaining())*overrunTolerance
+}
+
 // errRenderCancelled reports that the page asked for the render to stop.
 var errRenderCancelled = errors.New("render cancelled")
 
@@ -101,10 +121,12 @@ func checkDemoRenderAborted(deadline renderDeadline) error {
 // Phase 18 so that the demo, the library, and the docs agree.
 type demoTier string
 
+// Only these two are pushed as tier messages. The full render arrives as the
+// result itself, so announcing it a second time as a tier would have the page
+// draw the same waveform twice.
 const (
 	tierStatistical demoTier = "statistical"
 	tierPreview     demoTier = "preview"
-	tierFinal       demoTier = "final"
 )
 
 // demoTierPayload is one progressive update pushed to the page mid-render.
@@ -130,10 +152,10 @@ type demoTierPayload struct {
 // are collapsed to broadband values because the demo shows a single number; the
 // mid-frequency bands are the ones a listener judges a room by.
 type demoStatistics struct {
-	SabineRT60Secs float64 `json:"sabineRt60Secs"`
-	EyringRT60Secs float64 `json:"eyringRt60Secs"`
-	C80DB          float64 `json:"c80Db"`
-	D50            float64 `json:"d50"`
+	SabineRT60Secs float64
+	EyringRT60Secs float64
+	C80DB          float64
+	D50            float64
 }
 
 // computeDemoStatistics runs Phase 18's statistical tier and reduces it to the
@@ -217,4 +239,48 @@ func timeoutWarning(tier demoTier, elapsed time.Duration) string {
 		"render timeout: exceeded the %.0f s demo budget after %.1f s; returning the %s result",
 		demoRenderTimeout.Seconds(), elapsed.Seconds(), tier,
 	)
+}
+
+// projectedTimeoutWarning explains a render that was not started because it
+// could not have finished in time.
+func projectedTimeoutWarning(projected, remaining time.Duration) string {
+	return fmt.Sprintf(
+		"render timeout: the full render projects to %.0f s against %.1f s left of the %.0f s demo budget; "+
+			"returning the preview result",
+		projected.Seconds(), remaining.Seconds(), demoRenderTimeout.Seconds(),
+	)
+}
+
+// overrunTolerance is how far a projection may exceed the remaining budget
+// before the full render is abandoned unstarted.
+//
+// The projection below is crude, so the tolerance leans towards running the
+// render: being wrong high costs the user detail they asked for, while being
+// wrong low costs them only the overshoot that the stage checkpoints would catch
+// anyway.
+const overrunTolerance = 1.5
+
+// projectFullRenderCost estimates what the full render will cost from what the
+// preview actually cost.
+//
+// This exists because the deadline is only cooperative. A late-field trace is a
+// single uninterruptible call, so a checkpoint placed after it cannot stop a
+// render that has already overrun — measured, the worst case inside the envelope
+// blows a 10 s budget by another 8 s before anything notices. Predicting from a
+// measurement taken on this device, in this browser, on this room is the only
+// way to keep that promise, and it is a far better basis than a constant fitted
+// on some other machine.
+//
+// The model is deliberately simple: ray-tracing cost is close to linear in both
+// ray count and response duration, and those two knobs dominate. Image-source
+// order is not modelled, which is one reason for the tolerance above.
+func projectFullRenderCost(previewCost time.Duration, preview, full demoRequest) time.Duration {
+	if previewCost <= 0 || preview.Render.NumRays <= 0 || preview.Render.DurationSeconds <= 0 {
+		return 0
+	}
+
+	rayRatio := float64(full.Render.NumRays) / float64(preview.Render.NumRays)
+	durationRatio := full.Render.DurationSeconds / preview.Render.DurationSeconds
+
+	return time.Duration(float64(previewCost) * rayRatio * durationRatio)
 }

@@ -61,7 +61,8 @@ func TestCheckDemoRenderAbortedReportsTheDeadline(t *testing.T) {
 		t.Fatalf("error = %v, want errRenderDeadlineExceeded", err)
 	}
 
-	if err := checkDemoRenderAborted(renderDeadline{}); err != nil {
+	err = checkDemoRenderAborted(renderDeadline{})
+	if err != nil {
 		t.Errorf("error = %v, want nil for an unbounded render", err)
 	}
 }
@@ -252,6 +253,164 @@ func TestMidBandAverage(t *testing.T) {
 	}
 }
 
+func TestProjectFullRenderCostScalesWithRaysAndDuration(t *testing.T) {
+	t.Parallel()
+
+	preview := defaultDemoRequest()
+	preview.Render.NumRays = 384
+	preview.Render.DurationSeconds = 1
+
+	tests := []struct {
+		name        string
+		rays        int
+		duration    float64
+		previewCost time.Duration
+		want        time.Duration
+	}{
+		{
+			name:        "same settings project the same cost",
+			rays:        384,
+			duration:    1,
+			previewCost: 200 * time.Millisecond,
+			want:        200 * time.Millisecond,
+		},
+		{
+			name:        "rays scale linearly",
+			rays:        3840,
+			duration:    1,
+			previewCost: 200 * time.Millisecond,
+			want:        2 * time.Second,
+		},
+		{
+			name:        "duration scales linearly",
+			rays:        384,
+			duration:    3,
+			previewCost: 200 * time.Millisecond,
+			want:        600 * time.Millisecond,
+		},
+		{
+			name:        "the worst case in the envelope is projected as hopeless",
+			rays:        maxDemoNumRays,
+			duration:    maxDemoDurationSecs,
+			previewCost: 200 * time.Millisecond,
+			want:        25600 * time.Millisecond,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			full := defaultDemoRequest()
+			full.Render.NumRays = tt.rays
+			full.Render.DurationSeconds = tt.duration
+
+			if got := projectFullRenderCost(tt.previewCost, preview, full); got != tt.want {
+				t.Errorf("projectFullRenderCost() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProjectFullRenderCostWithoutAMeasurement(t *testing.T) {
+	t.Parallel()
+
+	preview := defaultDemoRequest()
+	full := defaultDemoRequest()
+
+	if got := projectFullRenderCost(0, preview, full); got != 0 {
+		t.Errorf("projectFullRenderCost() = %v, want 0 when the preview was not timed", got)
+	}
+}
+
+func TestRenderDeadlineAffords(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cost time.Duration
+		want bool
+	}{
+		{name: "well inside the budget", cost: 2 * time.Second, want: true},
+		{name: "inside the overrun tolerance", cost: 13 * time.Second, want: true},
+		{name: "hopeless", cost: 30 * time.Second, want: false},
+		{name: "unmeasured cost is always allowed", cost: 0, want: true},
+	}
+
+	for _, tt := range tests {
+		// Not parallel, and the deadline is built next to the call: affords()
+		// reads the clock, so a subtest parked waiting for a parallel slot
+		// behind the package's multi-second render tests would measure a budget
+		// that had already drained.
+		t.Run(tt.name, func(t *testing.T) {
+			deadline := renderDeadline{at: time.Now().Add(10 * time.Second)}
+
+			if got := deadline.affords(tt.cost); got != tt.want {
+				t.Errorf("affords(%v) = %v, want %v", tt.cost, got, tt.want)
+			}
+		})
+	}
+
+	if !(renderDeadline{}).affords(time.Hour) {
+		t.Error("an unbounded render refused an expensive stage")
+	}
+}
+
+func TestPreviewFallbackNoticeStopsAHopelessRender(t *testing.T) {
+	t.Parallel()
+
+	request := defaultDemoRequest()
+	request.Render.NumRays = maxDemoNumRays
+	request.Render.DurationSeconds = maxDemoDurationSecs
+
+	started := time.Now()
+	deadline := renderDeadline{at: started.Add(demoRenderTimeout)}
+	// A preview that took a second projects the full render at well over a
+	// minute, which no tolerance can accommodate.
+	preview := &demoTierBuffer{cost: time.Second}
+
+	notice := previewFallbackNotice(request, preview, started, deadline)
+	if notice == "" {
+		t.Fatal("previewFallbackNotice() = \"\", want the render to be abandoned")
+	}
+
+	if !strings.Contains(notice, "projects to") {
+		t.Errorf("notice = %q, want it to explain the projection", notice)
+	}
+}
+
+func TestPreviewFallbackNoticeAllowsAnAffordableRender(t *testing.T) {
+	t.Parallel()
+
+	request := defaultDemoRequest()
+	request.Render.NumRays = 768
+	request.Render.DurationSeconds = 1
+
+	started := time.Now()
+	deadline := renderDeadline{at: started.Add(demoRenderTimeout)}
+	// Twice the preview's rays at the same duration: about 40 ms projected.
+	preview := &demoTierBuffer{cost: 20 * time.Millisecond}
+
+	if notice := previewFallbackNotice(request, preview, started, deadline); notice != "" {
+		t.Errorf("previewFallbackNotice() = %q, want the full render to go ahead", notice)
+	}
+}
+
+func TestPreviewFallbackNoticeReportsAnAlreadySpentBudget(t *testing.T) {
+	t.Parallel()
+
+	notice := previewFallbackNotice(
+		defaultDemoRequest(),
+		&demoTierBuffer{cost: time.Millisecond},
+		time.Now(),
+		expiredDeadline(),
+	)
+
+	if !strings.Contains(notice, "exceeded the") {
+		t.Errorf("notice = %q, want it to report the spent budget", notice)
+	}
+}
+
 // A spent budget must not cost the user their result: the preview tier is
 // bounded by construction, runs regardless, and becomes the answer.
 func TestExpiredDeadlineReturnsThePreviewTierWithAWarning(t *testing.T) {
@@ -278,6 +437,7 @@ func TestExpiredDeadlineReturnsThePreviewTierWithAWarning(t *testing.T) {
 	}
 
 	var timeoutWarnings int
+
 	for _, warning := range result.Warnings {
 		if strings.Contains(warning, "render timeout") {
 			timeoutWarnings++
