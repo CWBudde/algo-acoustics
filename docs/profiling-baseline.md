@@ -167,3 +167,37 @@ Key insight: the CPU baseline is **single-core** (no parallelism implemented). A
 | PDE shoebox sweep    | Yes              | irrelevant | —          | No (separate Poisson solver, not stencil) |
 
 **Recommended GPU focus**: FDTD stencil first (clearest win, no transfer overhead per step), then ray tracing at production ray counts.
+
+## Multi-Room Portal Toggles (Phase 25.4)
+
+Measured on the same i7-1255U, `BenchmarkNetworkColdRender4Rooms` and
+`BenchmarkNetworkPortalStateChange4Rooms`. The scenario is
+`examples/scenes/office_floor.json`: four rooms in a chain, three doors,
+receiver two partitions from the source, image-source order 3, 16 000 rays,
+1.0 s response at 48 kHz.
+
+| Case                              | Time   |
+| --------------------------------- | ------ |
+| Cold render, empty cache          | 2.06 s |
+| Warm portal toggle, prepared plan | 0.47 s |
+
+The Phase 25.4 target of **under 2 s per portal change is met with margin**, but
+only in the warm case, and that qualifier matters:
+
+- **Warm, native.** A toggle merges two groups into one, so exactly one room
+  group is re-simulated and the rest are served from the group-response cache.
+  The benchmark reports `groups-resimulated/op` and `groups-reused/op` so a
+  regression in cache behaviour shows up as a number, not just a slower run.
+- **Cold is not the target.** A cold four-room render is around 2 s on its own,
+  so quoting the target without saying "warm" would be meaningless. The cold
+  benchmark builds a fresh renderer each iteration precisely so it cannot
+  quietly inherit the warm cache.
+- **WASM is not covered.** Single-threaded WASM runs several times slower and
+  the browser demo already needs a multi-second budget per endpoint.
+  `NetworkRendererConfig.DynamicRays` exists to drop the interactive ray count
+  there; the target above is native-only.
+
+The cache is keyed on a room group's signature rather than its identifier,
+because opening a portal renumbers every group. An identifier-keyed cache would
+miss on the whole building instead of just the group that changed — see
+`docs/scene-graph.md`.

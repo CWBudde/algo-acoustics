@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/hybrid"
@@ -43,6 +44,9 @@ type NetworkRendererConfig struct {
 	DynamicRays int
 	// Seed makes the stochastic synthesis reproducible; zero selects 1.
 	Seed int64
+	// CacheBytes budgets the group-response cache; zero selects
+	// DefaultGroupResponseCacheBytes. WASM callers should pass far less.
+	CacheBytes int64
 	// OnTruncation reports every way in which a render fell short of an
 	// exhaustive one. A truncated render still produces plausible output, so a
 	// caller that does not observe this has no other symptom to go by.
@@ -111,11 +115,33 @@ func (t NetworkTruncation) String() string {
 // how many events arrived.
 type NetworkRenderer struct {
 	Config NetworkRendererConfig
+
+	cacheOnce sync.Once
+	cache     *GroupResponseCache
 }
 
 // NewNetworkRenderer constructs the multi-room filter-network renderer.
 func NewNetworkRenderer(cfg NetworkRendererConfig) *NetworkRenderer {
 	return &NetworkRenderer{Config: cfg}
+}
+
+// Cache returns the renderer's group-response cache, creating it on first use.
+// Simulated room-group responses are stored here so that a portal toggle only
+// re-simulates the groups whose signature actually changed.
+func (r *NetworkRenderer) Cache() *GroupResponseCache {
+	r.cacheOnce.Do(func() {
+		if r.cache == nil {
+			r.cache = NewGroupResponseCache(r.Config.CacheBytes)
+		}
+	})
+
+	return r.cache
+}
+
+// SetCache installs a cache, which lets several renderers share one budget.
+func (r *NetworkRenderer) SetCache(cache *GroupResponseCache) {
+	r.cacheOnce.Do(func() {})
+	r.cache = cache
 }
 
 // networkPlan holds the resolved graph, paths, and endpoints of one render.
@@ -133,6 +159,32 @@ type networkPlan struct {
 	// building routinely reuse the same room group between the same two
 	// portals, and each such hop costs a full ISM solve and ray trace.
 	factors map[hopKey]cachedFactor
+
+	// endpointHash covers the source and receiver placement, which a cache key
+	// needs but the group signature does not carry.
+	endpointHash uint64
+}
+
+// groupResponseKey builds the cache key for one hop through a room group.
+func (p *networkPlan) groupResponseKey(
+	group scene.GroupID,
+	from, to groupPort,
+	configHash uint64,
+) (GroupResponseKey, bool) {
+	signature, ok := p.graph.GroupSignature(group)
+	if !ok {
+		return GroupResponseKey{}, false
+	}
+
+	return GroupResponseKey{
+		GroupSignature: signature,
+		EndpointHash:   p.endpointHash,
+		ConfigHash:     configHash,
+		FromKind:       uint8(from.Kind),
+		ToKind:         uint8(to.Kind),
+		FromIndex:      from.Index,
+		ToIndex:        to.Index,
+	}, true
 }
 
 // hopKey identifies one hop by its endpoints: the room group it crosses and the
@@ -176,6 +228,31 @@ func (n factorNeeds) missing(want factorNeeds) factorNeeds {
 
 func (n factorNeeds) empty() bool {
 	return !n.early && !n.late
+}
+
+// factorNeedsOf reports which halves of a factor are already solved. The
+// cross-render cache stores the factor alone, so what it carries has to be read
+// back off the factor itself.
+func factorNeedsOf(factor *GroupFactor) factorNeeds {
+	if factor == nil {
+		return factorNeeds{}
+	}
+
+	return factorNeeds{early: factor.Early != nil, late: factor.LateEnergy != nil}
+}
+
+// cloneFactor shallow-copies a factor so that filling in its missing half never
+// mutates the one another render is holding. Several renderers may share one
+// cache, and the copy shares the already-solved fields rather than duplicating
+// them, since only the unset ones are ever written.
+func cloneFactor(factor *GroupFactor) *GroupFactor {
+	if factor == nil {
+		return nil
+	}
+
+	clone := *factor
+
+	return &clone
 }
 
 // hopKeyAt derives the cache key of one hop of a path.
@@ -493,6 +570,8 @@ func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 		source:   sc.Sources[0],
 		receiver: sc.Receivers[0],
 	}
+
+	plan.endpointHash = endpointHash(sc)
 
 	var found int
 

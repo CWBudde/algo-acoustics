@@ -212,7 +212,7 @@ func TestNetworkRendererScalesWithPortalTransmission(t *testing.T) {
 
 // chainRoomScene builds a row of rooms along x joined by full-wall portals, so
 // the network renderer can be exercised over more than one hop.
-func chainRoomScene(t *testing.T, roomCount int, tau float64) *scene.Scene {
+func chainRoomScene(t *testing.T, roomCount int, tau float64) *scene.Scene { //nolint:unparam // Kept general so fixtures can vary the partition.
 	t.Helper()
 
 	const (
