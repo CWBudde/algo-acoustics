@@ -16,63 +16,91 @@ import (
 // Exactly one simulation runs per hop, whatever the event count at the entry
 // port. That is the whole reason the network composes by convolution rather
 // than by re-emitting events.
-// needLate selects whether the ray-traced late field is computed. SolveEarly
-// needs only the image-source factors, and tracing rays for it would be pure
-// waste.
+//
+// Hops are memoised by their endpoint identity, not by path, so a hop that
+// several paths share through the same group and the same two portals costs one
+// simulation in total rather than one per path.
+//
+// needs selects which fields are simulated. SolveEarly wants only the
+// image-source factors and RenderLateMono only the ray-traced ones; computing
+// the other would be pure waste.
 func (r *NetworkRenderer) renderPathFactors(
 	plan *networkPlan,
 	pathIndex int,
 	cfg ir.RenderConfig,
-	needLate bool,
+	needs factorNeeds,
 ) ([]*GroupFactor, error) {
-	if cached := plan.cachedFactors(pathIndex, needLate); cached != nil {
-		return cached, nil
-	}
-
 	path := plan.paths[pathIndex]
 	factors := make([]*GroupFactor, 0, len(path.groups))
 
 	for index, group := range path.groups {
-		gsc, err := plan.graph.GroupScene(group)
-		if err != nil {
-			return nil, fmt.Errorf("extract group %d: %w", group, err)
+		key := hopKeyAt(path, index)
+		cached := plan.factors[key]
+
+		// A hop cached with only its early field keeps that work and adds the
+		// missing ray trace to the same factor, rather than solving it again.
+		missing := cached.needs.missing(needs)
+		if cached.factor != nil && missing.empty() {
+			factors = append(factors, cached.factor)
+
+			continue
 		}
 
-		first := index == 0
-		last := index == len(path.groups)-1
-
-		var factor *GroupFactor
-
-		switch {
-		case first && last:
-			// PS2R: source and receiver share a group, so the path is an
-			// ordinary single-room render.
-			factor, err = r.solvePS2R(gsc, plan.source, plan.receiver, cfg, needLate)
-		case first:
-			// PS2P: the real source to the exit portal of its own group.
-			exit := portalPort(plan.graph.Scene(), path.portals[index], false)
-			factor, err = r.solvePS2P(gsc, plan.source, exit, cfg, needLate)
-		case last:
-			// SS2R: the entry portal to the real receiver.
-			entry := portalPort(plan.graph.Scene(), path.portals[index-1], true)
-			factor, err = r.solveSS2R(gsc, entry, plan.receiver, cfg, needLate)
-		default:
-			// SS2P: portal to portal through an intermediate group.
-			entry := portalPort(plan.graph.Scene(), path.portals[index-1], true)
-			exit := portalPort(plan.graph.Scene(), path.portals[index], false)
-			factor, err = r.solveSS2P(gsc, entry, exit, cfg, needLate)
-		}
-
+		factor, err := r.solveHop(plan, path, index, cfg, cached.factor, missing)
 		if err != nil {
 			return nil, fmt.Errorf("render group %d of path: %w", group, err)
 		}
 
+		plan.storeFactor(key, factor, cached.needs.union(needs))
 		factors = append(factors, factor)
 	}
 
-	plan.storeFactors(pathIndex, factors, needLate)
-
 	return factors, nil
+}
+
+// solveHop renders the factor of one hop, choosing the path type from where the
+// hop sits along the path. A non-nil into is filled in place, so only the
+// missing halves are simulated.
+func (r *NetworkRenderer) solveHop(
+	plan *networkPlan,
+	path networkPath,
+	index int,
+	cfg ir.RenderConfig,
+	into *GroupFactor,
+	needs factorNeeds,
+) (*GroupFactor, error) {
+	group := path.groups[index]
+
+	gsc, err := plan.graph.GroupScene(group)
+	if err != nil {
+		return nil, fmt.Errorf("extract group %d: %w", group, err)
+	}
+
+	first := index == 0
+	last := index == len(path.groups)-1
+
+	switch {
+	case first && last:
+		// PS2R: source and receiver share a group, so the path is an ordinary
+		// single-room render.
+		return r.solvePS2R(gsc, plan.source, plan.receiver, cfg, into, needs)
+	case first:
+		// PS2P: the real source to the exit portal of its own group.
+		exit := portalPort(plan.graph.Scene(), path.portals[index], false)
+
+		return r.solvePS2P(gsc, plan.source, exit, cfg, into, needs)
+	case last:
+		// SS2R: the entry portal to the real receiver.
+		entry := portalPort(plan.graph.Scene(), path.portals[index-1], true)
+
+		return r.solveSS2R(gsc, entry, plan.receiver, cfg, into, needs)
+	default:
+		// SS2P: portal to portal through an intermediate group.
+		entry := portalPort(plan.graph.Scene(), path.portals[index-1], true)
+		exit := portalPort(plan.graph.Scene(), path.portals[index], false)
+
+		return r.solveSS2P(gsc, entry, exit, cfg, into, needs)
+	}
 }
 
 // renderPaths renders every ranked path and sums their early and late fields.
@@ -90,7 +118,7 @@ func (r *NetworkRenderer) renderPaths(plan *networkPlan, cfg ir.RenderConfig) (e
 	)
 
 	for pathIndex, path := range plan.paths {
-		factors, err := r.renderPathFactors(plan, pathIndex, cfg, true)
+		factors, err := r.renderPathFactors(plan, pathIndex, cfg, factorNeeds{early: true, late: true})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -130,6 +158,35 @@ func (r *NetworkRenderer) renderPaths(plan *networkPlan, cfg ir.RenderConfig) (e
 	return early, hybrid.HistogramToBuffer(summedLate, cfg.SampleRate), nil
 }
 
+// renderLatePaths sums the late field of every ranked path without solving the
+// early field at all.
+func (r *NetworkRenderer) renderLatePaths(plan *networkPlan, cfg ir.RenderConfig) (*raytrace.EnergyHistogram, error) {
+	var histograms []*raytrace.EnergyHistogram
+
+	for pathIndex, path := range plan.paths {
+		factors, err := r.renderPathFactors(plan, pathIndex, cfg, factorNeeds{late: true})
+		if err != nil {
+			return nil, err
+		}
+
+		histogram, err := r.resolvePathLate(plan.graph.Scene(), path, factors)
+		if err != nil {
+			return nil, err
+		}
+
+		if histogram != nil {
+			histograms = append(histograms, histogram)
+		}
+	}
+
+	summed := sumHistograms(histograms)
+	if summed == nil {
+		return nil, errors.New("no late field was rendered")
+	}
+
+	return summed, nil
+}
+
 // resolvePathEarly folds a path's early factors into one banded response,
 // applying the pressure-domain portal filter at each handoff.
 func (r *NetworkRenderer) resolvePathEarly(
@@ -160,51 +217,123 @@ func (r *NetworkRenderer) resolvePathEarly(
 // applying the energy-domain portal filter at each handoff. The pressure domain
 // uses sqrt(tau) where the energy domain uses tau.
 func (r *NetworkRenderer) resolvePathLate(sc *scene.Scene, path networkPath, factors []*GroupFactor) (*raytrace.EnergyHistogram, error) {
+	total, _, err := r.composePathLate(sc, path, factors)
+
+	return total, err
+}
+
+// composePathLate folds a path's late factors into one energy histogram and, in
+// the same pass, folds the terminal hop's per-direction histograms along the
+// identical chain.
+//
+// Carrying the directional histograms through the same portal scaling and
+// convolution is what keeps the arrival directions honest. Reading the terminal
+// hop's own probabilities instead would ignore how the preceding hops shift and
+// spread the arrival times, and — once several paths reach the receiver through
+// different portals — would spatialize every path's energy with one path's
+// directions.
+func (r *NetworkRenderer) composePathLate(
+	sc *scene.Scene,
+	path networkPath,
+	factors []*GroupFactor,
+) (total *raytrace.EnergyHistogram, directional []*raytrace.EnergyHistogram, err error) {
 	running := factors[0].LateEnergy
 	if running == nil {
-		return nil, nil //nolint:nilnil // A path with no late field simply contributes none.
+		return nil, nil, nil
 	}
+
+	// upstream is the chain up to but excluding the terminal hop, already
+	// scaled by the portal that enters it. It is what the terminal hop's
+	// directional histograms must be convolved with.
+	var upstream *raytrace.EnergyHistogram
 
 	for index, factor := range factors[1:] {
 		if factor.LateEnergy == nil {
-			return nil, nil //nolint:nilnil // As above.
+			return nil, nil, nil
 		}
 
 		transmission := portalTransmission(sc, path.portals[index])
 
 		scaled, err := hybrid.ScaleHistogram(running, hybrid.EnergyFilterFromTransmission(transmission))
 		if err != nil {
-			return nil, fmt.Errorf("apply portal energy filter: %w", err)
+			return nil, nil, fmt.Errorf("apply portal energy filter: %w", err)
+		}
+
+		if index == len(factors)-2 {
+			upstream = scaled
 		}
 
 		running, err = hybrid.ConvolveHistograms(scaled, factor.LateEnergy)
 		if err != nil {
-			return nil, fmt.Errorf("compose late field across a portal: %w", err)
+			return nil, nil, fmt.Errorf("compose late field across a portal: %w", err)
 		}
 	}
 
-	return running, nil
+	directional, err = composeDirectionalLate(factors[len(factors)-1].DGHistograms, upstream)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return running, directional, nil
 }
 
-// sumLateHistograms renders and sums the directional late field of every path,
-// keeping the directivity groups of the terminal hop.
+// composeDirectionalLate convolves each of the terminal hop's directional
+// histograms with the upstream chain. A single-hop path has no upstream, so its
+// directional histograms pass through untouched.
+func composeDirectionalLate(
+	terminal []*raytrace.EnergyHistogram,
+	upstream *raytrace.EnergyHistogram,
+) ([]*raytrace.EnergyHistogram, error) {
+	if len(terminal) == 0 {
+		return nil, nil
+	}
+
+	composed := make([]*raytrace.EnergyHistogram, len(terminal))
+
+	for index, histogram := range terminal {
+		if histogram == nil {
+			continue
+		}
+
+		if upstream == nil {
+			composed[index] = histogram
+
+			continue
+		}
+
+		folded, err := hybrid.ConvolveHistograms(upstream, histogram)
+		if err != nil {
+			return nil, fmt.Errorf("compose directional late field across a portal: %w", err)
+		}
+
+		composed[index] = folded
+	}
+
+	return composed, nil
+}
+
+// sumLateHistograms renders and sums the directional late field of every path.
+//
+// Both the total and the per-direction histograms are summed across paths, and
+// the arrival probabilities are derived only afterwards, so every path
+// contributes its own directions in proportion to the energy it delivers.
 func (r *NetworkRenderer) sumLateHistograms(
 	plan *networkPlan,
 	cfg ir.RenderConfig,
 ) (*raytrace.EnergyHistogram, []geometry.Vec3, [][]float64, error) {
 	var (
-		histograms    []*raytrace.EnergyHistogram
-		directions    []geometry.Vec3
-		probabilities [][]float64
+		histograms  []*raytrace.EnergyHistogram
+		directions  []geometry.Vec3
+		directional []*raytrace.EnergyHistogram
 	)
 
 	for pathIndex, path := range plan.paths {
-		factors, err := r.renderPathFactors(plan, pathIndex, cfg, true)
+		factors, err := r.renderPathFactors(plan, pathIndex, cfg, factorNeeds{late: true})
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		histogram, err := r.resolvePathLate(plan.graph.Scene(), path, factors)
+		histogram, pathDirectional, err := r.composePathLate(plan.graph.Scene(), path, factors)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -216,7 +345,11 @@ func (r *NetworkRenderer) sumLateHistograms(
 		terminal := factors[len(factors)-1]
 		if directions == nil && terminal.DGDirections != nil {
 			directions = terminal.DGDirections
-			probabilities = terminal.DGProbabilities
+		}
+
+		directional, err = accumulateDirectional(directional, pathDirectional)
+		if err != nil {
+			return nil, nil, nil, err
 		}
 	}
 
@@ -225,7 +358,30 @@ func (r *NetworkRenderer) sumLateHistograms(
 		return nil, nil, nil, errors.New("no late field was rendered")
 	}
 
-	return summed, directions, probabilities, nil
+	return summed, directions, raytrace.DGProbabilitiesFromHistograms(directional), nil
+}
+
+// accumulateDirectional adds one path's per-direction histograms into the
+// running sum. Every path shares the same directivity-group grid, so the slices
+// line up by index.
+func accumulateDirectional(running, next []*raytrace.EnergyHistogram) ([]*raytrace.EnergyHistogram, error) {
+	if len(next) == 0 {
+		return running, nil
+	}
+
+	if running == nil {
+		return next, nil
+	}
+
+	if len(running) != len(next) {
+		return nil, fmt.Errorf("directivity group counts differ: %d and %d", len(running), len(next))
+	}
+
+	for index, histogram := range next {
+		running[index] = sumHistograms([]*raytrace.EnergyHistogram{running[index], histogram})
+	}
+
+	return running, nil
 }
 
 // sumHistograms adds energy histograms bin by bin.

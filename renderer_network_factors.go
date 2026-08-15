@@ -38,15 +38,19 @@ type groupPort struct {
 // the transfer function of a single room group between two ports.
 //
 // Early carries the pressure-domain image-source response and LateEnergy the
-// energy-domain ray-traced response. Events, DGDirections, and DGProbabilities
-// are populated only for a hop that ends at the real receiver, since only there
-// does the response stay directional.
+// energy-domain ray-traced response. Events, DGDirections, and DGHistograms are
+// populated only for a hop that ends at the real receiver, since only there does
+// the response stay directional.
+//
+// DGHistograms holds one energy histogram per directivity group rather than
+// ready-made probabilities, because the arrival probabilities are only
+// meaningful once the upstream hops and every other path have been folded in.
 type GroupFactor struct {
-	Early           *ir.BandedResponse
-	LateEnergy      *raytrace.EnergyHistogram
-	Events          []ir.Event
-	DGDirections    []geometry.Vec3
-	DGProbabilities [][]float64
+	Early        *ir.BandedResponse
+	LateEnergy   *raytrace.EnergyHistogram
+	Events       []ir.Event
+	DGDirections []geometry.Vec3
+	DGHistograms []*raytrace.EnergyHistogram
 }
 
 // Path-type taxonomy.
@@ -71,11 +75,12 @@ func (r *NetworkRenderer) solvePS2P(
 	source scene.Source,
 	exit groupPort,
 	cfg ir.RenderConfig,
-	needLate bool,
+	into *GroupFactor,
+	needs factorNeeds,
 ) (*GroupFactor, error) {
 	entry := groupPort{Kind: portKindSource, Position: source.Position}
 
-	return r.solveFactor(gsc, entry, exit, cfg, &source, nil, needLate)
+	return r.solveFactor(gsc, entry, exit, cfg, &source, nil, into, needs)
 }
 
 // solveSS2P renders an intermediate hop: an entry portal to an exit portal.
@@ -83,9 +88,10 @@ func (r *NetworkRenderer) solveSS2P(
 	gsc *scene.Scene,
 	entry, exit groupPort,
 	cfg ir.RenderConfig,
-	needLate bool,
+	into *GroupFactor,
+	needs factorNeeds,
 ) (*GroupFactor, error) {
-	return r.solveFactor(gsc, entry, exit, cfg, nil, nil, needLate)
+	return r.solveFactor(gsc, entry, exit, cfg, nil, nil, into, needs)
 }
 
 // solveSS2R renders the terminal hop: an entry portal to the real receiver.
@@ -94,11 +100,12 @@ func (r *NetworkRenderer) solveSS2R(
 	entry groupPort,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
-	needLate bool,
+	into *GroupFactor,
+	needs factorNeeds,
 ) (*GroupFactor, error) {
 	exit := groupPort{Kind: portKindReceiver, Position: receiver.Position}
 
-	return r.solveFactor(gsc, entry, exit, cfg, nil, &receiver, needLate)
+	return r.solveFactor(gsc, entry, exit, cfg, nil, &receiver, into, needs)
 }
 
 // solvePS2R renders the degenerate zero-hop case where source and receiver
@@ -108,12 +115,13 @@ func (r *NetworkRenderer) solvePS2R(
 	source scene.Source,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
-	needLate bool,
+	into *GroupFactor,
+	needs factorNeeds,
 ) (*GroupFactor, error) {
 	entry := groupPort{Kind: portKindSource, Position: source.Position}
 	exit := groupPort{Kind: portKindReceiver, Position: receiver.Position}
 
-	return r.solveFactor(gsc, entry, exit, cfg, &source, &receiver, needLate)
+	return r.solveFactor(gsc, entry, exit, cfg, &source, &receiver, into, needs)
 }
 
 // solveFactor renders one room-group transfer function between two ports.
@@ -122,33 +130,43 @@ func (r *NetworkRenderer) solvePS2R(
 // arrived at the entry port. Composing hops by re-emitting every event, as the
 // Phase 21 one-hop renderer does, costs a full solve per event and is
 // exponential in the number of hops.
+//
+// needs names only the halves still wanted, and into is the partially solved
+// factor to fill, so a hop already carrying its early field never solves it
+// twice.
 func (r *NetworkRenderer) solveFactor(
 	gsc *scene.Scene,
 	entry, exit groupPort,
 	cfg ir.RenderConfig,
 	source *scene.Source,
 	receiver *scene.Receiver,
-	needLate bool,
+	into *GroupFactor,
+	needs factorNeeds,
 ) (*GroupFactor, error) {
 	if r == nil {
 		return nil, errors.New("network renderer is nil")
 	}
 
-	factor := &GroupFactor{}
-
-	early, events, err := r.solveFactorEarly(gsc, entry, exit, cfg, source, receiver)
-	if err != nil {
-		return nil, err
+	factor := into
+	if factor == nil {
+		factor = &GroupFactor{}
 	}
 
-	factor.Early = early
-	factor.Events = events
+	if needs.early {
+		early, events, err := r.solveFactorEarly(gsc, entry, exit, cfg, source, receiver)
+		if err != nil {
+			return nil, err
+		}
 
-	if !needLate {
+		factor.Early = early
+		factor.Events = events
+	}
+
+	if !needs.late {
 		return factor, nil
 	}
 
-	err = r.traceFactorLate(factor, gsc, entry, exit, cfg, source, receiver)
+	err := r.traceFactorLate(factor, gsc, entry, exit, cfg, source, receiver)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +196,7 @@ func (r *NetworkRenderer) solveFactorEarly(
 
 	// Translation leaves arrival directions, distances, and times unchanged, so
 	// the events need no correction on the way back out.
-	localized, _ := networkLocalizedScene(&sub)
+	localized := networkLocalizedScene(&sub)
 
 	events, err := (ism.ISMSolver{}).Solve(localized, ismConfig)
 	if err != nil {
@@ -302,11 +320,12 @@ func (r *NetworkRenderer) traceFactorLateToReceiver(
 
 	if tracer.DirectivityGroups != nil {
 		factor.DGDirections = make([]geometry.Vec3, len(tracer.DirectivityGroups))
+		factor.DGHistograms = make([]*raytrace.EnergyHistogram, len(tracer.DirectivityGroups))
+
 		for index, group := range tracer.DirectivityGroups {
 			factor.DGDirections[index] = receiver.WorldToHeadDir(group.Direction)
+			factor.DGHistograms[index] = group.Histogram
 		}
-
-		factor.DGProbabilities = raytrace.DGHitProbabilities(tracer.DirectivityGroups)
 	}
 
 	return nil
@@ -346,14 +365,14 @@ func unitBandEnergy(bandCount int) []float64 {
 // mesh solver works in world coordinates, so it is returned untouched — which
 // is why the network renderer does not inherit the Phase 21 asymmetry where the
 // image-source path localised coordinates and the ray-tracing path did not.
-func networkLocalizedScene(sc *scene.Scene) (*scene.Scene, geometry.Vec3) {
+func networkLocalizedScene(sc *scene.Scene) *scene.Scene {
 	if sc.Room.Kind != scene.RoomKindShoebox || sc.Room.Shoebox == nil {
-		return sc, geometry.Vec3Zero
+		return sc
 	}
 
 	origin := sc.Room.Shoebox.Origin
 	if origin == geometry.Vec3Zero {
-		return sc, geometry.Vec3Zero
+		return sc
 	}
 
 	localized := *sc
@@ -365,7 +384,7 @@ func networkLocalizedScene(sc *scene.Scene) (*scene.Scene, geometry.Vec3) {
 	localized.Sources = translatedSources(sc.Sources, origin.Scale(-1))
 	localized.Receivers = translatedReceivers(sc.Receivers, origin.Scale(-1))
 
-	return &localized, origin
+	return &localized
 }
 
 // networkRandom returns the renderer's deterministic random source.

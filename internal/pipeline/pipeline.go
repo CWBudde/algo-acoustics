@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 
 	algoacoustics "github.com/cwbudde/algo-acoustics"
 	"github.com/cwbudde/algo-acoustics/acoustics"
@@ -14,6 +15,15 @@ import (
 	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
+
+// warnOnTruncation reports a multi-room render that omitted paths or events.
+//
+// The filter network can only report this; someone has to say it out loud. A
+// truncated render looks entirely plausible, so leaving it unreported would let
+// a large topology silently lose its flanking paths.
+func warnOnTruncation(truncation algoacoustics.NetworkTruncation) {
+	fmt.Fprintln(os.Stderr, "warning: "+truncation.String())
+}
 
 // EarlyConfig configures the image-source method solver.
 type EarlyConfig struct {
@@ -43,7 +53,8 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 	}
 	if sc != nil && sc.RoomCount() > 1 {
 		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
-			ISM: ismConfig,
+			ISM:          ismConfig,
+			OnTruncation: warnOnTruncation,
 		}).(algoacoustics.TransmissionEarlyEngine)
 		if !ok {
 			return nil, errors.New("cross-room engine cannot produce early events")
@@ -71,7 +82,8 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
 	if sc != nil && sc.RoomCount() > 1 {
 		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
-			Raytrace: newLateEngine(cfg).Config,
+			Raytrace:     newLateEngine(cfg).Config,
+			OnTruncation: warnOnTruncation,
 		}).(algoacoustics.CrossRoomLateEngine)
 		if !ok {
 			return nil, errors.New("cross-room engine cannot render the late field on its own")
@@ -98,7 +110,8 @@ func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
 func RenderLateBinaural(sc *scene.Scene, receiver scene.Receiver, cfg LateConfig) (left, right *ir.Buffer, err error) {
 	if sc != nil && sc.RoomCount() > 1 {
 		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
-			Raytrace: newLateEngine(cfg).Config,
+			Raytrace:     newLateEngine(cfg).Config,
+			OnTruncation: warnOnTruncation,
 		}).(algoacoustics.CrossRoomLateEngine)
 		if !ok {
 			return nil, nil, errors.New("cross-room engine cannot render the late field on its own")

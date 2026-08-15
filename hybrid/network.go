@@ -38,6 +38,10 @@ type PathChain struct {
 // Bands that ActiveBands clears are left at zero and never transformed. That is
 // the point of source elimination: a band the portals already killed costs
 // nothing to carry.
+//
+// Factors carrying a quadrature component are composed as complex signals, so
+// that phases add rather than their cosines multiplying. The real projection
+// belongs at render time, not here.
 func (c PathChain) Resolve(maxLength int) (*ir.BandedResponse, error) {
 	if len(c.Factors) == 0 {
 		return nil, errors.New("path chain has no factors")
@@ -80,25 +84,88 @@ func (c PathChain) convolveActive(
 		length = maxLength
 	}
 
+	complexChain := running.HasQuadrature() || next.HasQuadrature()
+
 	out := ir.NewBandedResponse(running.SampleRate, running.BandCount(), length)
+	if complexChain {
+		out = ir.NewComplexBandedResponse(running.SampleRate, running.BandCount(), length)
+	}
 
 	for band := range running.Bands {
 		if !c.bandActive(band) || gains[band] == 0 {
 			continue
 		}
 
-		product, err := conv.Convolve(running.Bands[band], next.Bands[band])
+		err := convolveBand(out, running, next, band, length, gains[band], complexChain)
 		if err != nil {
-			return nil, fmt.Errorf("convolve band %d: %w", band, err)
-		}
-
-		copyLength := min(len(product), length)
-		for index := range copyLength {
-			out.Bands[band][index] = product[index] * gains[band]
+			return nil, err
 		}
 	}
 
 	return out, nil
+}
+
+// convolveBand folds one band of two factors. A complex chain needs the four
+// real convolutions of (a+ib)*(c+id); the phase-free case keeps the single
+// convolution it had before.
+func convolveBand(out, running, next *ir.BandedResponse, band, length int, gain float64, complexChain bool) error {
+	realPart, err := conv.Convolve(running.Bands[band], next.Bands[band])
+	if err != nil {
+		return fmt.Errorf("convolve band %d: %w", band, err)
+	}
+
+	if !complexChain {
+		copyBandProduct(out.Bands[band], realPart, length, gain)
+
+		return nil
+	}
+
+	runningImag := quadratureBand(running, band)
+	nextImag := quadratureBand(next, band)
+
+	crossImag, err := conv.Convolve(runningImag, nextImag)
+	if err != nil {
+		return fmt.Errorf("convolve band %d quadrature: %w", band, err)
+	}
+
+	firstCross, err := conv.Convolve(running.Bands[band], nextImag)
+	if err != nil {
+		return fmt.Errorf("convolve band %d in-phase with quadrature: %w", band, err)
+	}
+
+	secondCross, err := conv.Convolve(runningImag, next.Bands[band])
+	if err != nil {
+		return fmt.Errorf("convolve band %d quadrature with in-phase: %w", band, err)
+	}
+
+	for index := range min(len(realPart), len(crossImag)) {
+		realPart[index] -= crossImag[index]
+	}
+
+	for index := range min(len(firstCross), len(secondCross)) {
+		firstCross[index] += secondCross[index]
+	}
+
+	copyBandProduct(out.Bands[band], realPart, length, gain)
+	copyBandProduct(out.Quadrature[band], firstCross, length, gain)
+
+	return nil
+}
+
+func copyBandProduct(target, product []float64, length int, gain float64) {
+	for index := range min(len(product), length) {
+		target[index] = product[index] * gain
+	}
+}
+
+// quadratureBand returns a factor's out-of-phase band, or a zero band of the
+// same length when the factor is purely real.
+func quadratureBand(response *ir.BandedResponse, band int) []float64 {
+	if response.HasQuadrature() {
+		return response.Quadrature[band]
+	}
+
+	return make([]float64, len(response.Bands[band]))
 }
 
 func (c PathChain) bandActive(band int) bool {
@@ -156,9 +223,22 @@ func SumBandedResponses(responses []*ir.BandedResponse) (*ir.BandedResponse, err
 	out := ir.NewBandedResponse(present[0].SampleRate, bandCount, length)
 
 	for _, response := range present {
+		if response.HasQuadrature() && !out.HasQuadrature() {
+			out.Quadrature = make([][]float64, bandCount)
+			for band := range out.Quadrature {
+				out.Quadrature[band] = make([]float64, length)
+			}
+		}
+
 		for band := range response.Bands {
 			for index, value := range response.Bands[band] {
 				out.Bands[band][index] += value
+			}
+
+			if response.HasQuadrature() {
+				for index, value := range response.Quadrature[band] {
+					out.Quadrature[band][index] += value
+				}
 			}
 		}
 	}

@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	// maxComposedPathEvents caps the sparse event expansion of one path.
-	maxComposedPathEvents = 4096
+	// defaultMaxComposedEventsPerPath caps the sparse event expansion of one
+	// path when NetworkRendererConfig leaves it unset.
+	defaultMaxComposedEventsPerPath = 4096
 	// composedEventFloorDB drops composed events far below the strongest one.
 	composedEventFloorDB = -80.0
 )
@@ -28,29 +29,42 @@ const (
 //
 // The expansion is inherently combinatorial, which is precisely why the dense
 // render composes by convolution instead. It is bounded here by a relative
-// level floor and a hard event cap, and the strongest contributions are kept.
+// level floor and by maxEvents.
+//
+// The two bounds are not equivalent and the caller must not confuse them. The
+// level floor discards only what is inaudible next to the strongest arrival;
+// maxEvents discards whatever is left over, which on a deep path can be most of
+// the reflections. These events feed real renders — the binaural early field,
+// the CLI early and hybrid modes, and the WASM pipeline — not just event dumps,
+// so the number dropped by the cap is returned for the caller to surface.
+// A non-positive maxEvents removes the cap and leaves only the level floor.
 func composePathEvents(
 	sc *scene.Scene,
 	path networkPath,
 	factors []*GroupFactor,
 	bandCount int,
-) []ir.Event {
+	maxEvents int,
+) (events []ir.Event, dropped int) {
 	if len(factors) == 0 {
-		return nil
+		return nil, 0
 	}
 
 	running := cloneComposedEvents(factors[0].Events, bandCount)
 
 	for index, factor := range factors[1:] {
 		gain := hybrid.PressureFilterFromTransmission(portalTransmission(sc, path.portals[index]))
-		running = combineComposedEvents(running, factor.Events, gain, bandCount)
+
+		var cut int
+
+		running, cut = combineComposedEvents(running, factor.Events, gain, bandCount, maxEvents)
+		dropped += cut
 	}
 
 	for index := range running {
 		running[index].Kind = ir.EventTransmission
 	}
 
-	return running
+	return running, dropped
 }
 
 // cloneComposedEvents normalises a hop's events so every one carries an
@@ -69,7 +83,11 @@ func cloneComposedEvents(events []ir.Event, bandCount int) []ir.Event {
 
 // combineComposedEvents forms the cartesian product of two hops' events,
 // applying the portal filter of the handoff between them.
-func combineComposedEvents(running, next []ir.Event, gain hybrid.ScalarFilter, bandCount int) []ir.Event {
+func combineComposedEvents(
+	running, next []ir.Event,
+	gain hybrid.ScalarFilter,
+	bandCount, maxEvents int,
+) (combinedEvents []ir.Event, dropped int) {
 	combined := make([]ir.Event, 0, len(running)*len(next))
 
 	for _, first := range running {
@@ -98,14 +116,15 @@ func combineComposedEvents(running, next []ir.Event, gain hybrid.ScalarFilter, b
 		}
 	}
 
-	return pruneComposedEvents(combined)
+	return pruneComposedEvents(combined, maxEvents)
 }
 
 // pruneComposedEvents keeps the strongest contributions, dropping those far
-// below the peak and capping the total count.
-func pruneComposedEvents(events []ir.Event) []ir.Event {
+// below the peak and capping the total count. It reports only what the count cap
+// removed, since the level floor removes nothing audible.
+func pruneComposedEvents(events []ir.Event, maxEvents int) (kept []ir.Event, dropped int) {
 	if len(events) == 0 {
-		return events
+		return events, 0
 	}
 
 	peak := 0.0
@@ -114,12 +133,12 @@ func pruneComposedEvents(events []ir.Event) []ir.Event {
 	}
 
 	if peak <= 0 {
-		return nil
+		return nil, 0
 	}
 
 	threshold := peak * math.Pow(10, composedEventFloorDB/20)
 
-	kept := make([]ir.Event, 0, len(events))
+	kept = make([]ir.Event, 0, len(events))
 
 	for _, event := range events {
 		if composedEventMagnitude(event) > threshold {
@@ -127,15 +146,16 @@ func pruneComposedEvents(events []ir.Event) []ir.Event {
 		}
 	}
 
-	if len(kept) > maxComposedPathEvents {
+	if maxEvents > 0 && len(kept) > maxEvents {
 		sort.SliceStable(kept, func(i, j int) bool {
 			return composedEventMagnitude(kept[i]) > composedEventMagnitude(kept[j])
 		})
 
-		kept = kept[:maxComposedPathEvents]
+		dropped = len(kept) - maxEvents
+		kept = kept[:maxEvents]
 	}
 
-	return kept
+	return kept, dropped
 }
 
 func composedEventMagnitude(event ir.Event) float64 {

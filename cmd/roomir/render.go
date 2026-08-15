@@ -212,16 +212,20 @@ func renderHybridMode(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.RenderCo
 
 func applyLowFrequencyBlend(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.RenderConfig, buffer *ir.Buffer, cfg renderCommandConfig) (*ir.Buffer, error) {
 	// A multi-room scene has no single room to solve, so the modal response is
-	// computed for the receiver's own room group, excited at the portal that
-	// admits sound to it. See algoacoustics.LowFreqSceneForMultiRoom.
+	// computed for the receiver's own room group, excited at the portal the
+	// strongest propagation path arrives through, and attenuated by that path's
+	// transmission loss. See algoacoustics.LowFreqSceneForMultiRoom.
 	modalScene := sc
-	if sc != nil && sc.RoomCount() > 1 {
-		var err error
+	pressureGain := 1.0
 
-		modalScene, err = algoacoustics.LowFreqSceneForMultiRoom(sc)
+	if sc != nil && sc.RoomCount() > 1 {
+		lowFreq, err := algoacoustics.LowFreqSceneForMultiRoom(sc)
 		if err != nil {
 			return nil, fmt.Errorf("prepare multi-room low-frequency scene: %w", err)
 		}
+
+		modalScene = lowFreq.Scene
+		pressureGain = lowFreq.PressureGain
 	}
 
 	engine := pde.PDELowFreqEngine{
@@ -244,6 +248,9 @@ func applyLowFrequencyBlend(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.Re
 	}
 
 	lowIR := transfer.ToTimeDomain(sc.SampleRate, len(buffer.Samples))
+	for index := range lowIR {
+		lowIR[index] *= pressureGain
+	}
 
 	blended := hybrid.BlendLowFreq(lowIR, buffer, engine.CrossoverHz(), sc.SampleRate)
 	if blended == nil {

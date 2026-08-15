@@ -20,19 +20,50 @@ import (
 // is applied exactly once, when the response is finally rendered to a wideband
 // buffer. Applying it per factor would band-limit the same signal once per hop
 // and progressively hollow out the band edges.
+//
+// Bands holds the in-phase component and Quadrature the optional out-of-phase
+// one, so a factor is a complex signal A*e^(i*phi) rather than its real
+// projection A*cos(phi). Convolution has to compose phases additively —
+// cos(phi1+phi2), not cos(phi1)*cos(phi2) — and only the complex form does. The
+// real projection is taken once, when the composed response is rendered.
+//
+// Quadrature is nil whenever every contributing event has zero phase, which is
+// everything except ISM diffraction. That case keeps the cheap real-only
+// convolution.
 type BandedResponse struct {
 	SampleRate int
 	Bands      [][]float64
+	Quadrature [][]float64
 }
 
-// NewBandedResponse allocates a zeroed response.
+// NewBandedResponse allocates a zeroed response with no quadrature component.
 func NewBandedResponse(sampleRate, bandCount, length int) *BandedResponse {
+	return &BandedResponse{SampleRate: sampleRate, Bands: allocBands(bandCount, length)}
+}
+
+// NewComplexBandedResponse allocates a zeroed response that also carries a
+// quadrature component.
+func NewComplexBandedResponse(sampleRate, bandCount, length int) *BandedResponse {
+	return &BandedResponse{
+		SampleRate: sampleRate,
+		Bands:      allocBands(bandCount, length),
+		Quadrature: allocBands(bandCount, length),
+	}
+}
+
+func allocBands(bandCount, length int) [][]float64 {
 	bands := make([][]float64, bandCount)
 	for index := range bands {
 		bands[index] = make([]float64, length)
 	}
 
-	return &BandedResponse{SampleRate: sampleRate, Bands: bands}
+	return bands
+}
+
+// HasQuadrature reports whether the response carries an out-of-phase component
+// that convolution must preserve.
+func (r *BandedResponse) HasQuadrature() bool {
+	return r != nil && len(r.Quadrature) > 0
 }
 
 // BandCount returns the number of frequency bands.
@@ -59,9 +90,18 @@ func (r *BandedResponse) Clone() *BandedResponse {
 		return nil
 	}
 
-	out := &BandedResponse{SampleRate: r.SampleRate, Bands: make([][]float64, len(r.Bands))}
-	for index, band := range r.Bands {
-		out.Bands[index] = append([]float64(nil), band...)
+	out := &BandedResponse{SampleRate: r.SampleRate, Bands: cloneBands(r.Bands)}
+	if r.HasQuadrature() {
+		out.Quadrature = cloneBands(r.Quadrature)
+	}
+
+	return out
+}
+
+func cloneBands(bands [][]float64) [][]float64 {
+	out := make([][]float64, len(bands))
+	for index, band := range bands {
+		out[index] = append([]float64(nil), band...)
 	}
 
 	return out
@@ -73,6 +113,12 @@ func (r *BandedResponse) Clone() *BandedResponse {
 // amplitude. Because the bandpass weights form a partition of unity, summing
 // the weighted bands reproduces exactly the flat spectrum such an event should
 // have.
+//
+// An event with a nonzero phase contributes A*cos(phi) in phase and A*sin(phi)
+// in quadrature, so that convolving factors composes phases additively. The
+// quadrature bands are allocated only when some event actually carries phase,
+// which keeps the common phase-free case on the real-only path and its output
+// bit-identical.
 func BandedFromEvents(events []Event, cfg RenderConfig) (*BandedResponse, error) {
 	bandCount := cfg.BandSpec.BandCount()
 	if bandCount == 0 {
@@ -89,7 +135,11 @@ func BandedFromEvents(events []Event, cfg RenderConfig) (*BandedResponse, error)
 	}
 
 	length := NewBuffer(cfg.SampleRate, cfg.DurationSeconds).Len()
+
 	out := NewBandedResponse(cfg.SampleRate, bandCount, length)
+	if eventsCarryPhase(events) {
+		out = NewComplexBandedResponse(cfg.SampleRate, bandCount, length)
+	}
 
 	for _, event := range events {
 		sampleIndex := int(math.Round(event.TimeSeconds * float64(cfg.SampleRate)))
@@ -97,19 +147,41 @@ func BandedFromEvents(events []Event, cfg RenderConfig) (*BandedResponse, error)
 			continue
 		}
 
-		amplitude := event.Amplitude * math.Cos(event.PhaseRadians)
+		inPhase := event.Amplitude * math.Cos(event.PhaseRadians)
+		quadrature := event.Amplitude * math.Sin(event.PhaseRadians)
 
 		for band := range bandCount {
-			gain := amplitude
+			weight := 1.0
 			if len(event.BandGain) > 0 {
-				gain *= event.BandGain[band]
+				weight = event.BandGain[band]
 			}
 
-			out.Bands[band][sampleIndex] += gain
+			out.Bands[band][sampleIndex] += inPhase * weight
+			if out.HasQuadrature() {
+				out.Quadrature[band][sampleIndex] += quadrature * weight
+			}
 		}
 	}
 
 	return out, nil
+}
+
+// eventsCarryPhase reports whether any event needs the quadrature component.
+// Only ISM diffraction produces phase, so this is false for most renders.
+//
+// The comparison is against a tolerance rather than zero because an inverting
+// phase of pi has a sine of 1e-16, not 0, and a whole render should not switch
+// to the complex representation over that.
+func eventsCarryPhase(events []Event) bool {
+	const quadratureEpsilon = 1e-12
+
+	for _, event := range events {
+		if math.Abs(math.Sin(event.PhaseRadians))*math.Abs(event.Amplitude) > quadratureEpsilon {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ApplyBandGains multiplies each band by a scalar, which is how a portal filter
@@ -127,6 +199,12 @@ func (r *BandedResponse) ApplyBandGains(gains []float64) error {
 		for index := range r.Bands[band] {
 			r.Bands[band][index] *= gain
 		}
+
+		if r.HasQuadrature() {
+			for index := range r.Quadrature[band] {
+				r.Quadrature[band][index] *= gain
+			}
+		}
 	}
 
 	return nil
@@ -134,6 +212,9 @@ func (r *BandedResponse) ApplyBandGains(gains []float64) error {
 
 // ActiveBands reports which bands carry energy within floorDB of the strongest
 // band. Bands below that floor can be skipped entirely by the filter network.
+//
+// The comparison is on complex magnitude, so a band whose energy sits entirely
+// in quadrature is not mistaken for silence.
 func (r *BandedResponse) ActiveBands(floorDB float64) []bool {
 	if r == nil {
 		return nil
@@ -143,8 +224,13 @@ func (r *BandedResponse) ActiveBands(floorDB float64) []bool {
 	strongest := 0.0
 
 	for band, samples := range r.Bands {
-		for _, sample := range samples {
-			peaks[band] = math.Max(peaks[band], math.Abs(sample))
+		for index, sample := range samples {
+			magnitude := math.Abs(sample)
+			if r.HasQuadrature() {
+				magnitude = math.Hypot(sample, r.Quadrature[band][index])
+			}
+
+			peaks[band] = math.Max(peaks[band], magnitude)
 		}
 
 		strongest = math.Max(strongest, peaks[band])

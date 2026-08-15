@@ -98,19 +98,34 @@ func ClassifyDirection(dgs []DirectivityGroup, dir geometry.Vec3) int {
 // uniformly (fully diffuse assumption). Returns nil if DGs are empty or have
 // no histograms.
 func DGHitProbabilities(dgs []DirectivityGroup) [][]float64 {
-	if len(dgs) == 0 {
+	histograms := make([]*EnergyHistogram, len(dgs))
+	for index, dg := range dgs {
+		histograms[index] = dg.Histogram
+	}
+
+	return DGProbabilitiesFromHistograms(histograms)
+}
+
+// DGProbabilitiesFromHistograms is DGHitProbabilities over bare histograms.
+//
+// It exists for callers that have to transform the per-direction histograms
+// before deriving probabilities — the multi-room filter network convolves each
+// one along its propagation path and sums it across paths, and the ratio is only
+// meaningful once all of that has happened.
+func DGProbabilitiesFromHistograms(histograms []*EnergyHistogram) [][]float64 {
+	if len(histograms) == 0 {
 		return nil
 	}
 
 	slotCount := 0
 
-	for _, dg := range dgs {
-		if dg.Histogram == nil {
+	for _, histogram := range histograms {
+		if histogram == nil {
 			return nil
 		}
 
-		if len(dg.Histogram.Bins) > slotCount {
-			slotCount = len(dg.Histogram.Bins)
+		if len(histogram.Bins) > slotCount {
+			slotCount = len(histogram.Bins)
 		}
 	}
 
@@ -118,8 +133,8 @@ func DGHitProbabilities(dgs []DirectivityGroup) [][]float64 {
 		return nil
 	}
 
-	uniform := 1.0 / float64(len(dgs))
-	probs := make([][]float64, len(dgs))
+	uniform := 1.0 / float64(len(histograms))
+	probs := make([][]float64, len(histograms))
 
 	for d := range probs {
 		probs[d] = make([]float64, slotCount)
@@ -128,36 +143,38 @@ func DGHitProbabilities(dgs []DirectivityGroup) [][]float64 {
 	for k := range slotCount {
 		var totalEnergy float64
 
-		for d := range dgs {
-			if k < len(dgs[d].Histogram.Bins) {
-				for _, e := range dgs[d].Histogram.Bins[k].BandEnergy {
-					totalEnergy += e
-				}
-			}
+		for d := range histograms {
+			totalEnergy += slotEnergy(histograms[d], k)
 		}
 
 		if totalEnergy <= 0 {
-			for d := range dgs {
+			for d := range histograms {
 				probs[d][k] = uniform
 			}
 
 			continue
 		}
 
-		for d := range dgs {
-			var dgEnergy float64
-
-			if k < len(dgs[d].Histogram.Bins) {
-				for _, e := range dgs[d].Histogram.Bins[k].BandEnergy {
-					dgEnergy += e
-				}
-			}
-
-			probs[d][k] = dgEnergy / totalEnergy
+		for d := range histograms {
+			probs[d][k] = slotEnergy(histograms[d], k) / totalEnergy
 		}
 	}
 
 	return probs
+}
+
+// slotEnergy sums one histogram slot across all bands.
+func slotEnergy(histogram *EnergyHistogram, slot int) float64 {
+	if slot >= len(histogram.Bins) {
+		return 0
+	}
+
+	var total float64
+	for _, energy := range histogram.Bins[slot].BandEnergy {
+		total += energy
+	}
+
+	return total
 }
 
 // angleDiffWrapped returns the shortest signed angular difference on [0, 2*pi).

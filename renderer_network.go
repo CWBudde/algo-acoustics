@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/hybrid"
@@ -28,6 +29,12 @@ type NetworkRendererConfig struct {
 	// selects 32. Convolution assembly is the dominant cost, so this is the
 	// main guard against a topology with many weak flanking paths.
 	MaxPaths int
+	// MaxComposedEventsPerPath bounds the sparse event expansion of one path,
+	// which is combinatorial in the number of hops; zero selects
+	// defaultMaxComposedEventsPerPath and a negative value removes the cap.
+	// Removing it is safe only for shallow topologies: the expansion is the
+	// cartesian product of the hops' events.
+	MaxComposedEventsPerPath int
 	// BandFloorDB is the level below which a band is skipped; zero selects
 	// hybrid.DefaultBandFloorDB.
 	BandFloorDB float64
@@ -36,6 +43,57 @@ type NetworkRendererConfig struct {
 	DynamicRays int
 	// Seed makes the stochastic synthesis reproducible; zero selects 1.
 	Seed int64
+	// OnTruncation reports every way in which a render fell short of an
+	// exhaustive one. A truncated render still produces plausible output, so a
+	// caller that does not observe this has no other symptom to go by.
+	OnTruncation func(NetworkTruncation)
+}
+
+// NetworkTruncation records how far a render fell short of exhaustive.
+//
+// A truncated path search or a capped event expansion leaves the output looking
+// entirely reasonable while quietly omitting flanking paths or reflections,
+// which is why the renderer reports it rather than swallowing it.
+type NetworkTruncation struct {
+	// PathSearch reports that the group-graph search hit its depth, node, or
+	// prune-floor limit, so paths beyond it were never enumerated.
+	PathSearch bool
+	// PathsFound is how many paths reached the receiver group.
+	PathsFound int
+	// PathsRendered is how many of those survived the MaxPaths cap.
+	PathsRendered int
+	// EventsDropped counts sparse events discarded by the per-path expansion
+	// cap. The relative level floor is not counted: it discards only what is
+	// inaudible, whereas the cap discards whatever is left over.
+	EventsDropped int
+}
+
+// Truncated reports whether anything was lost.
+func (t NetworkTruncation) Truncated() bool {
+	return t.PathSearch || t.PathsRendered < t.PathsFound || t.EventsDropped > 0
+}
+
+// String renders the truncation as a single human-readable warning line.
+func (t NetworkTruncation) String() string {
+	var reasons []string
+
+	if t.PathSearch {
+		reasons = append(reasons, "the propagation path search hit its depth or node limit")
+	}
+
+	if t.PathsRendered < t.PathsFound {
+		reasons = append(reasons, fmt.Sprintf("only %d of %d paths were rendered", t.PathsRendered, t.PathsFound))
+	}
+
+	if t.EventsDropped > 0 {
+		reasons = append(reasons, fmt.Sprintf("%d composed early events were dropped", t.EventsDropped))
+	}
+
+	if len(reasons) == 0 {
+		return "the multi-room render is exhaustive"
+	}
+
+	return "the multi-room render is not exhaustive: " + strings.Join(reasons, "; ")
 }
 
 // NetworkRenderer renders multi-room propagation as the filter network of
@@ -68,35 +126,78 @@ type networkPlan struct {
 	source   scene.Source
 	receiver scene.Receiver
 
-	// factorCache memoises the per-hop factors of each path, so a render that
-	// needs both the early and the late field simulates each hop once.
-	factorCache []cachedFactors
+	truncation NetworkTruncation
+
+	// factors memoises hops by their endpoint identity rather than by path, so
+	// a hop that several paths share is simulated once. Paths through a
+	// building routinely reuse the same room group between the same two
+	// portals, and each such hop costs a full ISM solve and ray trace.
+	factors map[hopKey]cachedFactor
 }
 
-type cachedFactors struct {
-	factors []*GroupFactor
-	hasLate bool
+// hopKey identifies one hop by its endpoints: the room group it crosses and the
+// portals it enters and leaves by. Entry is portalNone for the hop starting at
+// the primary source, exit is portalNone for the hop ending at the receiver.
+//
+// A group plus an entry portal fixes the direction of travel, because a portal
+// joins exactly two groups, so these three values determine the simulation
+// completely.
+type hopKey struct {
+	group scene.GroupID
+	entry int
+	exit  int
 }
 
-func (p *networkPlan) cachedFactors(pathIndex int, needLate bool) []*GroupFactor {
-	if pathIndex >= len(p.factorCache) {
-		return nil
-	}
+// portalNone marks a hop endpoint that is the real source or receiver rather
+// than a portal.
+const portalNone = -1
 
-	entry := p.factorCache[pathIndex]
-	if entry.factors == nil || (needLate && !entry.hasLate) {
-		return nil
-	}
-
-	return entry.factors
+type cachedFactor struct {
+	factor *GroupFactor
+	needs  factorNeeds
 }
 
-func (p *networkPlan) storeFactors(pathIndex int, factors []*GroupFactor, hasLate bool) {
-	for len(p.factorCache) <= pathIndex {
-		p.factorCache = append(p.factorCache, cachedFactors{})
+// factorNeeds selects which fields of a GroupFactor a caller actually uses.
+// Tracing the late field costs a full ray trace, so a caller that only wants
+// the early events must be able to say so.
+type factorNeeds struct {
+	early bool
+	late  bool
+}
+
+func (n factorNeeds) union(other factorNeeds) factorNeeds {
+	return factorNeeds{early: n.early || other.early, late: n.late || other.late}
+}
+
+// missing returns what a hop still owes to satisfy want.
+func (n factorNeeds) missing(want factorNeeds) factorNeeds {
+	return factorNeeds{early: want.early && !n.early, late: want.late && !n.late}
+}
+
+func (n factorNeeds) empty() bool {
+	return !n.early && !n.late
+}
+
+// hopKeyAt derives the cache key of one hop of a path.
+func hopKeyAt(path networkPath, index int) hopKey {
+	key := hopKey{group: path.groups[index], entry: portalNone, exit: portalNone}
+	if index > 0 {
+		key.entry = path.portals[index-1].PortalIndex
 	}
 
-	p.factorCache[pathIndex] = cachedFactors{factors: factors, hasLate: hasLate}
+	if index < len(path.groups)-1 {
+		key.exit = path.portals[index].PortalIndex
+	}
+
+	return key
+}
+
+func (p *networkPlan) storeFactor(key hopKey, factor *GroupFactor, needs factorNeeds) {
+	if p.factors == nil {
+		p.factors = make(map[hopKey]cachedFactor)
+	}
+
+	p.factors[key] = cachedFactor{factor: factor, needs: needs}
 }
 
 // networkPath is one propagation path reduced to the hops the renderer walks.
@@ -119,26 +220,12 @@ func (r *NetworkRenderer) SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) ([]ir
 		return nil, err
 	}
 
-	var events []ir.Event
-
-	bandCount := sc.BandSpec.BandCount()
-
-	for pathIndex, path := range plan.paths {
-		factors, err := r.renderPathFactors(plan, pathIndex, cfg, false)
-		if err != nil {
-			return nil, err
-		}
-
-		events = append(events, composePathEvents(plan.graph.Scene(), path, factors, bandCount)...)
+	events, err := r.solveEarlyEvents(plan, cfg)
+	if err != nil {
+		return nil, err
 	}
 
-	sort.Slice(events, func(i, j int) bool {
-		if events[i].TimeSeconds != events[j].TimeSeconds {
-			return events[i].TimeSeconds < events[j].TimeSeconds
-		}
-
-		return events[i].DistanceMeters < events[j].DistanceMeters
-	})
+	r.reportTruncation(plan)
 
 	return events, nil
 }
@@ -165,19 +252,30 @@ func (r *NetworkRenderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.
 		return nil, errors.New("combine multi-room mono field")
 	}
 
+	r.reportTruncation(plan)
+
 	return combined, nil
 }
 
 // RenderLateMono renders only the summed late field.
+//
+// It traces the late field alone. Solving the early field here would be pure
+// waste, and doubly so for the CLI hybrid path, which asks for the early field
+// separately.
 func (r *NetworkRenderer) RenderLateMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
 	plan, err := r.prepare(sc)
 	if err != nil {
 		return nil, err
 	}
 
-	_, late, err := r.renderPaths(plan, cfg)
+	late, err := r.renderLatePaths(plan, cfg)
+	if err != nil {
+		return nil, err
+	}
 
-	return late, err
+	r.reportTruncation(plan)
+
+	return hybrid.HistogramToBuffer(late, cfg.SampleRate), nil
 }
 
 // RenderBinaural renders the summed multi-room hybrid BRIR.
@@ -197,7 +295,9 @@ func (r *NetworkRenderer) RenderBinaural(
 
 	plan.receiver = receiver
 
-	events, err := r.SolveEarly(sc, cfg)
+	// One plan serves both fields: preparing a second one would search the
+	// paths again and re-simulate every hop the early field already solved.
+	events, err := r.solveEarlyEvents(plan, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,7 +312,7 @@ func (r *NetworkRenderer) RenderBinaural(
 		return nil, nil, fmt.Errorf("render multi-room binaural early field: %w", err)
 	}
 
-	lateLeft, lateRight, err := r.RenderLateBinaural(sc, receiver, cfg)
+	lateLeft, lateRight, err := r.renderLateBinauralFromPlan(plan, receiver, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -225,6 +325,8 @@ func (r *NetworkRenderer) RenderBinaural(
 	if left == nil || right == nil {
 		return nil, nil, errors.New("combine multi-room binaural field")
 	}
+
+	r.reportTruncation(plan)
 
 	return left, right, nil
 }
@@ -244,6 +346,21 @@ func (r *NetworkRenderer) RenderLateBinaural(
 		return nil, nil, err
 	}
 
+	left, right, err = r.renderLateBinauralFromPlan(plan, receiver, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	r.reportTruncation(plan)
+
+	return left, right, nil
+}
+
+func (r *NetworkRenderer) renderLateBinauralFromPlan(
+	plan *networkPlan,
+	receiver scene.Receiver,
+	cfg ir.RenderConfig,
+) (left, right *ir.Buffer, err error) {
 	plan.receiver = receiver
 
 	group, ok := plan.graph.GroupOfPosition(receiver.Position)
@@ -270,7 +387,7 @@ func (r *NetworkRenderer) RenderLateBinaural(
 		Bins:            bins,
 		BinDuration:     summed.BinDuration,
 		Volume:          volume,
-		BandSpec:        sc.BandSpec,
+		BandSpec:        plan.graph.Scene().BandSpec,
 		SampleRate:      cfg.SampleRate,
 		HRTF:            receiver.HRTF,
 		DGDirections:    directions,
@@ -283,10 +400,54 @@ func (r *NetworkRenderer) RenderLateBinaural(
 	return left, right, nil
 }
 
+// solveEarlyEvents composes the sparse early events of an already-prepared plan,
+// so a binaural render reuses its own plan instead of preparing a second one and
+// re-simulating every hop.
+func (r *NetworkRenderer) solveEarlyEvents(plan *networkPlan, cfg ir.RenderConfig) ([]ir.Event, error) {
+	var events []ir.Event
+
+	bandCount := plan.graph.Scene().BandSpec.BandCount()
+
+	for pathIndex, path := range plan.paths {
+		factors, err := r.renderPathFactors(plan, pathIndex, cfg, factorNeeds{early: true})
+		if err != nil {
+			return nil, err
+		}
+
+		composed, dropped := composePathEvents(plan.graph.Scene(), path, factors, bandCount, r.maxComposedEventsPerPath())
+		plan.truncation.EventsDropped += dropped
+
+		events = append(events, composed...)
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].TimeSeconds != events[j].TimeSeconds {
+			return events[i].TimeSeconds < events[j].TimeSeconds
+		}
+
+		return events[i].DistanceMeters < events[j].DistanceMeters
+	})
+
+	return events, nil
+}
+
+// reportTruncation hands the accumulated truncation to the configured observer.
+func (r *NetworkRenderer) reportTruncation(plan *networkPlan) {
+	if r.Config.OnTruncation == nil || !plan.truncation.Truncated() {
+		return
+	}
+
+	r.Config.OnTruncation(plan.truncation)
+}
+
 // prepare builds the scene graph, searches the paths, and ranks them.
 func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 	if r == nil {
 		return nil, errors.New("network renderer is nil")
+	}
+
+	if sc == nil {
+		return nil, errors.New("scene is nil")
 	}
 
 	if len(sc.Sources) != 1 {
@@ -333,7 +494,9 @@ func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 		receiver: sc.Receivers[0],
 	}
 
-	plan.paths = r.rankPaths(tree, receiverGroup)
+	var found int
+
+	plan.paths, found = r.rankPaths(tree, receiverGroup)
 	if len(plan.paths) == 0 {
 		return nil, fmt.Errorf(
 			"no propagation path from the source reaches the receiver above the %.0f dB floor; "+
@@ -342,12 +505,23 @@ func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 		)
 	}
 
+	// The search may return usable leaves while having abandoned other branches
+	// at the depth, node, or prune-floor limit. Rendering that tree as if it
+	// were exhaustive under-renders a large topology with no other symptom, so
+	// the state is carried through to OnTruncation.
+	plan.truncation = NetworkTruncation{
+		PathSearch:    tree.Truncated,
+		PathsFound:    found,
+		PathsRendered: len(plan.paths),
+	}
+
 	return plan, nil
 }
 
 // rankPaths converts the search leaves into renderable paths, strongest first,
-// and truncates to MaxPaths.
-func (r *NetworkRenderer) rankPaths(tree *scene.PathSearchTree, receiverGroup scene.GroupID) []networkPath {
+// and truncates to MaxPaths. It also returns how many paths reached the
+// receiver before that cap applied.
+func (r *NetworkRenderer) rankPaths(tree *scene.PathSearchTree, receiverGroup scene.GroupID) ([]networkPath, int) {
 	var paths []networkPath
 
 	for _, leaf := range tree.Leaves {
@@ -375,11 +549,12 @@ func (r *NetworkRenderer) rankPaths(tree *scene.PathSearchTree, receiverGroup sc
 		return pathEnergy(paths[i]) > pathEnergy(paths[j])
 	})
 
+	found := len(paths)
 	if limit := r.maxPaths(); len(paths) > limit {
 		paths = paths[:limit]
 	}
 
-	return paths
+	return paths, found
 }
 
 func (r *NetworkRenderer) maxPathHops() int {
@@ -396,6 +571,14 @@ func (r *NetworkRenderer) maxPaths() int {
 	}
 
 	return defaultMaxPaths
+}
+
+func (r *NetworkRenderer) maxComposedEventsPerPath() int {
+	if r.Config.MaxComposedEventsPerPath != 0 {
+		return r.Config.MaxComposedEventsPerPath
+	}
+
+	return defaultMaxComposedEventsPerPath
 }
 
 func (r *NetworkRenderer) bandFloorDB() float64 {

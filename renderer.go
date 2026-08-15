@@ -184,17 +184,22 @@ func (r Renderer) renderCrossRoomMono(sc *scene.Scene, cfg ir.RenderConfig) ([]f
 
 	// Low-frequency modal content now blends into the multi-room response too,
 	// closing a documented Phase 21 limitation. It is computed for the
-	// receiver's own room group, excited at the portal that admits sound to it,
-	// because the modal solver needs a shoebox that contains a source. Only the
-	// mono path can carry it: one monaural transfer function cannot preserve
-	// ear-specific HRTF information, which is why RenderStereo leaves it out.
+	// receiver's own room group, excited at the portal the strongest
+	// propagation path arrives through, because the modal solver needs a shoebox
+	// that contains a source. Only the mono path can carry it: one monaural
+	// transfer function cannot preserve ear-specific HRTF information, which is
+	// why RenderStereo leaves it out.
 	if r.LowFreq != nil {
-		lowFreqScene, lowFreqErr := LowFreqSceneForMultiRoom(sc)
+		lowFreq, lowFreqErr := LowFreqSceneForMultiRoom(sc)
 		if lowFreqErr != nil {
 			return nil, fmt.Errorf("prepare multi-room low-frequency scene: %w", lowFreqErr)
 		}
 
-		buffer, err = r.applyLowFreq(lowFreqScene, cfg, buffer)
+		// The modal solve only knows the receiving room, so the transmission
+		// loss of everything upstream has to be applied to its result. Without
+		// it a partition would attenuate the geometric field while leaving the
+		// modal field at full strength.
+		buffer, err = r.applyLowFreqScaled(lowFreq.Scene, cfg, buffer, lowFreq.PressureGain)
 		if err != nil {
 			return nil, err
 		}
@@ -282,6 +287,18 @@ func combineLateBuffer(
 }
 
 func (r Renderer) applyLowFreq(sc *scene.Scene, cfg ir.RenderConfig, buffer *ir.Buffer) (*ir.Buffer, error) {
+	return r.applyLowFreqScaled(sc, cfg, buffer, 1)
+}
+
+// applyLowFreqScaled blends the modal response in after scaling it by
+// pressureGain, which a multi-room render uses to carry the transmission loss
+// upstream of the receiving room.
+func (r Renderer) applyLowFreqScaled(
+	sc *scene.Scene,
+	cfg ir.RenderConfig,
+	buffer *ir.Buffer,
+	pressureGain float64,
+) (*ir.Buffer, error) {
 	if r.LowFreq == nil {
 		return buffer, nil
 	}
@@ -296,6 +313,12 @@ func (r Renderer) applyLowFreq(sc *scene.Scene, cfg ir.RenderConfig, buffer *ir.
 	}
 
 	lowIR := transfer.ToTimeDomain(cfg.SampleRate, len(buffer.Samples))
+	if pressureGain != 1 {
+		for index := range lowIR {
+			lowIR[index] *= pressureGain
+		}
+	}
+
 	crossoverHz := defaultLowFreqCrossoverHz
 
 	if provider, ok := r.LowFreq.(LowFreqCrossoverProvider); ok {
