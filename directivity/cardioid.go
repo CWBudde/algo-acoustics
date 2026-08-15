@@ -16,8 +16,14 @@ type CardioidModel struct {
 
 // GainLinear returns ((1 + cos(theta)) / 2)^N for the supplied direction.
 func (m CardioidModel) GainLinear(_ float64, dir geometry.Vec3) float64 {
-	axis := m.Axis.Normalize()
-	if axis == geometry.Vec3Zero {
+	return cardioidGain(m.Axis, dir, m.OrderN)
+}
+
+// cardioidGain evaluates the power-cardioid pattern shared by the
+// frequency-independent and frequency-dependent models.
+func cardioidGain(axis, dir geometry.Vec3, order float64) float64 {
+	unitAxis := axis.Normalize()
+	if unitAxis == geometry.Vec3Zero {
 		return 0
 	}
 
@@ -26,10 +32,10 @@ func (m CardioidModel) GainLinear(_ float64, dir geometry.Vec3) float64 {
 		return 0
 	}
 
-	gain := (1 + axis.Dot(unitDir)) / 2
+	gain := (1 + unitAxis.Dot(unitDir)) / 2
 	if gain < 0 {
 		gain = 0
 	}
 
-	return math.Pow(gain, m.OrderN)
+	return math.Pow(gain, order)
 }

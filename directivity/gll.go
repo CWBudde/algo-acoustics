@@ -33,12 +33,18 @@ func LoadGLL(path, preset string) (*GLLModel, error) {
 		return nil, errors.New("gll path is empty")
 	}
 
-	file, err := openGLL(path)
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open gll file %q: %w", path, err)
+	}
+	defer f.Close()
+
+	model, err := LoadGLLReader(f, preset)
+	if err != nil {
+		return nil, fmt.Errorf("load gll file %q: %w", path, err)
 	}
 
-	return LoadGLLFile(file, preset)
+	return model, nil
 }
 
 // LoadGLLReader loads a GLL file from an already-open reader and adapts the selected source definition.
@@ -52,10 +58,42 @@ func LoadGLLReader(r io.ReadSeeker, preset string) (*GLLModel, error) {
 		return nil, fmt.Errorf("parse gll reader: %w", err)
 	}
 
-	return LoadGLLFile(file, preset)
+	model, err := LoadGLLFile(file, preset)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse records only the offset of the balloon responses, so the balloon
+	// has to be hydrated while the reader is still open. Without this the
+	// model has no measurements and radiates omnidirectionally.
+	err = model.loadBalloonResponses(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return model, nil
+}
+
+// loadBalloonResponses reads the deferred balloon measurements from r.
+func (m *GLLModel) loadBalloonResponses(r io.ReadSeeker) error {
+	balloon := m.SourceDefinition.BalloonData
+	if balloon == nil || len(balloon.Responses) > 0 {
+		return nil
+	}
+
+	err := ggll.LoadBalloonResponses(r, balloon)
+	if err != nil {
+		return fmt.Errorf("load balloon responses for source %q: %w", m.SourceKey, err)
+	}
+
+	return nil
 }
 
 // LoadGLLFile adapts a parsed GLL file to the directivity interface.
+//
+// The balloon measurements of a file parsed this way are loaded lazily by
+// gll-tools and cannot be recovered without the original reader, so prefer
+// LoadGLL or LoadGLLReader unless the responses are already populated.
 func LoadGLLFile(file *ggll.File, preset string) (*GLLModel, error) {
 	if file == nil {
 		return nil, errors.New("gll file is nil")
@@ -106,21 +144,6 @@ func (m *GLLModel) GainLinear(freqHz float64, dir geometry.Vec3) float64 {
 	}
 
 	return math.Pow(10, gainDB/20)
-}
-
-func openGLL(path string) (*ggll.File, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open gll file %q: %w", path, err)
-	}
-	defer f.Close()
-
-	file, err := ggll.Parse(f)
-	if err != nil {
-		return nil, fmt.Errorf("parse gll file %q: %w", path, err)
-	}
-
-	return file, nil
 }
 
 func selectSourceDefinition(file *ggll.File, preset string) (*ggll.SourceDefinition, string, error) {
