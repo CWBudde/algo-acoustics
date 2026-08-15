@@ -5,11 +5,55 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cwbudde/algo-acoustics/geometry"
 	ggll "github.com/cwbudde/gll-tools/pkg/gll"
 )
 
 func gllFixturePath() string {
 	return filepath.Join("..", "testdata", "gll", "synthetic_ls.gll")
+}
+
+// The fixture is measured with Quarter symmetry, so its horizontal pattern has
+// to come back four-fold symmetric about the 0°/90° axes. Reading the balloon
+// through the gll-tools grid helpers without repairSymmetryCode unfolds the
+// meridian with the Vertical rule instead and collapses everything past 90°
+// onto a clamped value (0.885 at 135°, 180° and 225° alike) — wrong, and silent.
+func TestGLLModelGainLinearHonoursQuarterSymmetry(t *testing.T) {
+	t.Parallel()
+
+	model, err := LoadGLL(gllFixturePath(), "")
+	if err != nil {
+		t.Fatalf("LoadGLL() error = %v", err)
+	}
+
+	if model.Symmetry != ggll.SymmetryQuarter {
+		t.Fatalf("fixture symmetry = %s, want Quarter", model.Symmetry)
+	}
+
+	horizontalGain := func(deg float64) float64 {
+		rad := deg * math.Pi / 180
+
+		return model.GainLinear(1000, geometry.Vec3{X: math.Cos(rad), Y: math.Sin(rad), Z: 0})
+	}
+
+	// Distinct meridians inside the measured quadrant, so the mirror checks
+	// below cannot pass by everything collapsing onto one value.
+	for _, deg := range []float64{45, 90} {
+		if math.Abs(horizontalGain(deg)-horizontalGain(0)) < 1e-6 {
+			t.Fatalf("gain(%.0f°) = gain(0°) = %v, want a direction-dependent pattern", deg, horizontalGain(0))
+		}
+	}
+
+	for _, deg := range []float64{0, 30, 45, 90} {
+		want := horizontalGain(deg)
+
+		for _, mirror := range []float64{180 - deg, 180 + deg, 360 - deg} {
+			got := horizontalGain(mirror)
+			if math.Abs(got-want) > 1e-9 {
+				t.Fatalf("gain(%.0f°) = %v, want %v from quarter mirror of %.0f°", mirror, got, want, deg)
+			}
+		}
+	}
 }
 
 // TestLoadGLLHydratesBalloonResponses guards the loader against regressing to

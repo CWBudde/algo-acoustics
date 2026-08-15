@@ -163,9 +163,13 @@ func TestISMGLLSourceRespectsOrientation(t *testing.T) {
 
 	solver := ISMSolver{}
 
-	// Turning the source through 180 degrees must present a different part of
+	// Turning the source through 90 degrees must present a different part of
 	// the balloon to the receiver, confirming the model is evaluated in the
 	// source-local frame rather than world space.
+	//
+	// 90 rather than 180 degrees: the fixture is measured with Quarter
+	// symmetry, whose pattern repeats every 180 degrees of yaw, so a half turn
+	// is a no-op on a correctly resolved balloon.
 	forward := testScene(t)
 	forward.Sources[0].Directivity = loadGLLTestModel(t)
 
@@ -176,7 +180,7 @@ func TestISMGLLSourceRespectsOrientation(t *testing.T) {
 
 	turned := testScene(t)
 	turned.Sources[0].Directivity = loadGLLTestModel(t)
-	turned.Sources[0].Orientation = geometry.QuatFromAxisAngle(geometry.Vec3{Z: 1}, math.Pi)
+	turned.Sources[0].Orientation = geometry.QuatFromAxisAngle(geometry.Vec3{Z: 1}, math.Pi/2)
 
 	turnedEvents, err := solver.Solve(&turned, ISMConfig{MaxOrder: 0})
 	if err != nil {
@@ -201,7 +205,7 @@ func TestISMGLLSourceRespectsOrientation(t *testing.T) {
 	}
 
 	if !changed {
-		t.Fatal("rotating the source by 180 degrees did not change the direct band gains")
+		t.Fatal("rotating the source by 90 degrees did not change the direct band gains")
 	}
 }
 

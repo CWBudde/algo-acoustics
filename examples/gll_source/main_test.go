@@ -107,8 +107,14 @@ func TestRunWASMProducesComparisonAndAudioBytes(t *testing.T) {
 		t.Fatalf("FrontEnergyRatio > 1 = %v, want %v", got, want)
 	}
 
-	if got, want := result.RearEnergyRatio < 1, true; got != want {
-		t.Fatalf("RearEnergyRatio < 1 = %v, want %v", got, want)
+	// Both ratios are taken against the same omni reference, so the front/rear
+	// spread is the directivity. An absolute "rear below omni" bound would only
+	// measure the constant the example scales the balloon by.
+	if got, want := result.RearEnergyRatio < rearEnergyBudget*result.FrontEnergyRatio, true; got != want {
+		t.Fatalf(
+			"RearEnergyRatio %v < %v of FrontEnergyRatio %v = %v, want %v",
+			result.RearEnergyRatio, rearEnergyBudget, result.FrontEnergyRatio, got, want,
+		)
 	}
 
 	if len(result.WAVBytes) == 0 {

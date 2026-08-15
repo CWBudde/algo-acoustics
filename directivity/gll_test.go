@@ -2,6 +2,7 @@ package directivity
 
 import (
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,6 +58,57 @@ func TestLoadGLLFileMissingExplicitPreset(t *testing.T) {
 
 	if model.SourceKey != "main" {
 		t.Fatalf("default SourceKey = %q, want main", model.SourceKey)
+	}
+}
+
+// repairSymmetryCode has to translate the parsed enum into the on-disk ordering
+// the gll-tools grid helpers read, or symmetry-reduced balloons resolve to the
+// wrong direction.
+func TestRepairSymmetryCode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		symmetry ggll.SymmetryType
+		want     int32
+	}{
+		{name: "none", symmetry: ggll.SymmetryNone, want: 0},
+		{name: "axial", symmetry: ggll.SymmetryAxial, want: 1},
+		{name: "quarter", symmetry: ggll.SymmetryQuarter, want: 2},
+		{name: "vertical", symmetry: ggll.SymmetryVertical, want: 3},
+		{name: "horizontal", symmetry: ggll.SymmetryHorizontal, want: 4},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := repairSymmetryCode(tc.symmetry)
+			if got != tc.want {
+				t.Fatalf("repairSymmetryCode(%s) = %d, want %d", tc.symmetry, got, tc.want)
+			}
+		})
+	}
+}
+
+// The symmetry workaround in gll.go compensates for a bug in a specific
+// gll-tools release. If the pin moves, re-check whether the remapping is still
+// correct — applying it against a fixed upstream would corrupt lookups again.
+func TestGLLToolsSymmetryWorkaroundStillNeeded(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join("..", "go.mod"))
+	if err != nil {
+		t.Fatalf("read go.mod: %v", err)
+	}
+
+	want := "github.com/cwbudde/gll-tools " + gllToolsVersion
+	if !strings.Contains(string(data), want) {
+		t.Fatalf(
+			"go.mod no longer pins %q; re-verify repairSymmetryCode against the new release "+
+				"and drop it once the grid helpers read ResolutionDescriptor.Symmetry as the enum",
+			want,
+		)
 	}
 }
 
