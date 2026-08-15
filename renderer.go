@@ -169,8 +169,8 @@ func (r Renderer) renderCrossRoomMono(sc *scene.Scene, cfg ir.RenderConfig) ([]f
 		return nil, errors.New("multi-room scene requires a transmission engine")
 	}
 
-	if r.Early != nil || r.Late != nil || r.LateBuffer != nil || r.LowFreq != nil {
-		return nil, errors.New("cross-room transmission cannot be combined with single-room engines")
+	if r.Early != nil || r.Late != nil || r.LateBuffer != nil {
+		return nil, errors.New("cross-room transmission cannot be combined with single-room geometric engines")
 	}
 
 	buffer, err := r.Transmission.RenderMono(sc, cfg)
@@ -180,6 +180,29 @@ func (r Renderer) renderCrossRoomMono(sc *scene.Scene, cfg ir.RenderConfig) ([]f
 
 	if buffer == nil {
 		return nil, errors.New("cross-room transmission returned nil mono buffer")
+	}
+
+	// Low-frequency modal content now blends into the multi-room response too,
+	// closing a documented Phase 21 limitation. It is computed for the
+	// receiver's own room group, excited at the portal the strongest
+	// propagation path arrives through, because the modal solver needs a shoebox
+	// that contains a source. Only the mono path can carry it: one monaural
+	// transfer function cannot preserve ear-specific HRTF information, which is
+	// why RenderStereo leaves it out.
+	if r.LowFreq != nil {
+		lowFreq, lowFreqErr := LowFreqSceneForMultiRoom(sc)
+		if lowFreqErr != nil {
+			return nil, fmt.Errorf("prepare multi-room low-frequency scene: %w", lowFreqErr)
+		}
+
+		// The modal solve only knows the receiving room, so the transmission
+		// loss of everything upstream has to be applied to its result. Without
+		// it a partition would attenuate the geometric field while leaving the
+		// modal field at full strength.
+		buffer, err = r.applyLowFreqScaled(lowFreq.Scene, cfg, buffer, lowFreq.PressureGain)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return append([]float64(nil), buffer.Samples...), nil
@@ -194,10 +217,13 @@ func (r Renderer) renderCrossRoomStereo(
 		return nil, nil, errors.New("multi-room scene requires a transmission engine")
 	}
 
-	if r.Early != nil || r.Late != nil || r.LateBuffer != nil || r.LowFreq != nil {
-		return nil, nil, errors.New("cross-room transmission cannot be combined with single-room engines")
+	if r.Early != nil || r.Late != nil || r.LateBuffer != nil {
+		return nil, nil, errors.New("cross-room transmission cannot be combined with single-room geometric engines")
 	}
 
+	// A configured LowFreq engine is ignored rather than rejected, matching the
+	// single-room stereo path: one monaural transfer function cannot preserve
+	// ear-specific HRTF information.
 	leftBuffer, rightBuffer, renderErr := r.Transmission.RenderBinaural(sc, receiver, cfg)
 	if renderErr != nil {
 		return nil, nil, fmt.Errorf("render binaural cross-room transmission: %w", renderErr)
@@ -261,6 +287,18 @@ func combineLateBuffer(
 }
 
 func (r Renderer) applyLowFreq(sc *scene.Scene, cfg ir.RenderConfig, buffer *ir.Buffer) (*ir.Buffer, error) {
+	return r.applyLowFreqScaled(sc, cfg, buffer, 1)
+}
+
+// applyLowFreqScaled blends the modal response in after scaling it by
+// pressureGain, which a multi-room render uses to carry the transmission loss
+// upstream of the receiving room.
+func (r Renderer) applyLowFreqScaled(
+	sc *scene.Scene,
+	cfg ir.RenderConfig,
+	buffer *ir.Buffer,
+	pressureGain float64,
+) (*ir.Buffer, error) {
 	if r.LowFreq == nil {
 		return buffer, nil
 	}
@@ -275,6 +313,12 @@ func (r Renderer) applyLowFreq(sc *scene.Scene, cfg ir.RenderConfig, buffer *ir.
 	}
 
 	lowIR := transfer.ToTimeDomain(cfg.SampleRate, len(buffer.Samples))
+	if pressureGain != 1 {
+		for index := range lowIR {
+			lowIR[index] *= pressureGain
+		}
+	}
+
 	crossoverHz := defaultLowFreqCrossoverHz
 
 	if provider, ok := r.LowFreq.(LowFreqCrossoverProvider); ok {
