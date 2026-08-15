@@ -89,187 +89,31 @@ CPU profiling and standalone CUDA kernels (FDTD 23× speedup, ray-BVH 511× vs s
 
 Trace/evaluate separation for ray tracer and ISM: cached geometry-only paths with material replay for <100 ms material updates (`raytrace/`, `ism/`). Statistical pre-computation: Sabine/Eyring RT60, critical distance, C80, D50 estimators (<5 ms, within 15% of full simulation) (`metrics/`). Four-tier progressive rendering pipeline (statistical → preview → refined batches → final) with `context.WithCancel` cancellation and 50 ms debounce coalescing (`progressive.go`, `debounce.go`). Incremental `CachedISMSolver` with per-source image-source caching and `scene.RoomHash()` for fast receiver/material re-evaluation. Quality presets (Draft/Preview/Final) with per-field override (`preset.go`). Hybrid statistical tail: Eyring-driven exponential decay noise tail for preview tiers with cosine crossfade to ray-traced late field for Tier 4 (`statistical_tail.go`).
 
+### Phase 19 — Browser Demo Completion
+
+WASM build pipeline and Go/WASM API surface (`web/wasm/`). HTML/JS scaffold, Three.js room visualization with SPL heatmap texture, demo presets. Web Audio auralization: bundled dry samples (speech, clap, music), `ConvolverNode` crossfade on IR update. Rendering in a dedicated worker with real cancellation. Memory budget: 512 MiB peak target with automatic quality reduction (`docs/wasm-memory-budget.md`). Deployment: `web/devserver` typing `.wasm` as `application/wasm` with the demo's cache policy, `web/_headers` for Netlify/Cloudflare, COOP/COEP behind `-coi` but not required (plain worker, no `SharedArrayBuffer`); see `docs/web-deployment.md`. Request envelope defined once in `web/wasm/limits.go` and published to the page to size its sliders — 50 distinct surface planes, 3 s at 48 kHz, and a **16,384-ray cap rather than the 50,000 originally planned**, because wall-clock rather than memory binds. Progressive tiers (statistical → preview → full) sharing Phase 18's Tier 1 via `ComputeStatisticalMetrics`, plus a 10 s render budget that predicts from the timed preview and returns a complete partial result with a warning instead of overrunning; see `docs/web-demo-limits.md`.
+
+### Phase 20 — Release Engineering and Maintenance
+
+Release targets for CLI binaries, web demo assets, and regression bundles; versioned archives with example scenes and docs; build metadata (version, commit, date) in binaries. CI across supported platforms with dedicated jobs for regression baselines, `roombench`, the WASM demo build, and mono/stereo/low-frequency smoke renders. User and contributor documentation (`docs/`) kept in sync with CLI flags and library interfaces. Maintenance procedures: quarterly private-dependency audit, benchmark baseline updates, fixture-first feature workflow (`docs/maintenance.md`).
+
+### Phase 21 — Sound Transmission Between Rooms
+
+Material transmission: `TransmissionByBand` and `SoundReductionIndex` with `tau = 10^(-R/10)` conversion, energy-conservation validation, and transmission data in the materials library. Multi-room scenes: `Rooms []Room`, `Portal` struct with open/closed state, `Portals []Portal` validation, JSON serialization. Secondary source model — portal surface receivers spawn transmission-filtered secondary sources mirrored in the receiving room (ISM) and launched as particles (RT). `ApparentSoundReductionIndex` with flanking-aware variant, validated within 2.5 dB. Portal interaction for the demo: cached open/closed BRIRs with `y(x) = x^(1/n)` aperture crossfade and hard switch to the merged room group. See `docs/sound-transmission.md`.
+
+### Phase 22 — Higher-Order Diffraction and DAPDF
+
+Second-order edge diffraction: edge-to-edge path enumeration with mutual visibility, `SecondOrderDiffractionPaths` (Fermat points on both edges, cascaded coefficients), `MaxDiffractionOrder` config, -60 dB culling, validated against the RAVEN BTME reference. Combined reflection-diffraction paths up to second total order via S2D/D2D/D2R subpath descriptors. DAPDF replacing Keller-cone sampling: piecewise `DAPDF(v, v0, D0)` plus the six closed-form energy integrals. Deflection cylinders (`r = 7*lambda`) with ray-cylinder collision and recursive diffracted rain. Validation against the Svensson Edge Diffraction Toolbox, shadow-zone transition smoothness, and first-order regression at `MaxDiffractionOrder = 1`. See `docs/diffraction.md`.
+
+### Phase 23 — Plane-Polygon Map and ISM Optimizations
+
+`PlanePolygonMap` grouping triangles by plane equivalence; `GenerateMeshImageSources()` mirrors across distinct planes rather than triangles, with point-in-polygon audibility checks on the coplanar set (~4x fewer image sources at 4th order). Per-particle hybrid detection: `RayState` tracking fields (`HasDiffuseHistory`, `PreEDReflOrder`, `EDReflOrder`, `EDOrder`) and `DetectionAllowedHybrid` replacing the time/order-based crossover, with an IS + RT energy conservation test within 2%.
+
 ---
 
 ## Active / Remaining Phases
 
 > Ordered for serial execution. Each phase lists only open tasks.
-
-### Phase 19 — Browser Demo Completion
-
-> Most of Phase 19 is done: WASM build pipeline, Go/WASM API surface, HTML/JS scaffold, Three.js room visualization, Web Audio auralization with ConvolverNode, demo presets, GitHub Pages deployment. Remaining items below.
-
-#### 19.2 Go/WASM API surface — remaining
-
-- [x] Memory budget: target < 512 MB peak for broad device compatibility
-
-#### 19.4 Three.js visualization — remaining
-
-- [x] Optional: SPL heatmap texture on surfaces from simulation results
-
-#### 19.5 Web Audio API — remaining
-
-- [x] Load dry audio samples: speech, clap, music (bundled as small MP3/OGG files)
-- [x] On IR update: crossfade between old and new `ConvolverNode` to avoid clicks
-
-#### 19.6 Deployment — remaining
-
-- [x] Correct MIME type for `.wasm` (`application/wasm`), cache headers for WASM binary
-- [x] If using `SharedArrayBuffer` for Web Workers: set COOP/COEP headers — not
-      required (rendering uses a plain worker with `postMessage`, no shared
-      memory); available behind `web/devserver -coi`. See
-      [docs/web-deployment.md](docs/web-deployment.md).
-
-#### 19.7 Performance constraints — remaining
-
-- [x] Define demo limits: max 50 surfaces, max 50k rays, IR up to 3 s at 48 kHz —
-      50 surfaces (counted as distinct planes, so subdivision does not inflate
-      the count) and 3 s at 48 kHz as planned; the ray cap is **16,384, not
-      50,000**, because the binding constraint is wall-clock rather than memory:
-      16,384 rays already measure 7.0 s (and 18.0 s at order 12 / 3 s), so 50,000
-      would take roughly a minute. Limits are defined once in
-      `web/wasm/limits.go` and published to the page, which sizes its sliders
-      from them. See [docs/web-demo-limits.md](docs/web-demo-limits.md).
-- [x] Use progressive rendering from Phase 18 — show Tier 1/2 results immediately, refine in background (depends on Phase 18)
-- [x] Fallback: if computation exceeds 10 s timeout, return partial result with warning
-
----
-
-### Phase 20 — Release Engineering and Maintenance
-
-#### 20.1 Release artifacts
-
-- [x] Add release targets for CLI binaries, web demo assets, and regression bundles
-- [x] Publish versioned tarball/zip archives with example scenes and docs
-- [x] Add build metadata to binaries (version, commit, build date)
-
-#### 20.2 CI and test coverage gaps
-
-- [x] Add CI jobs for all supported platforms (unit tests, integration tests, formatting checks)
-- [x] Add dedicated regression job for `testdata/regression/` and `cmd/roombench`
-- [x] Add smoke test for WASM demo build
-- [x] Add smoke test rendering mono, stereo, and low-frequency scenes in CI
-
-#### 20.3 Documentation and examples
-
-- [x] Add pages for: scene authoring, HRTF usage, directivity usage, hybrid rendering, regression workflow
-- [x] Add a "compare against another tool" guide
-- [x] Keep example scenes in sync with current CLI flags and library interfaces
-
-#### 20.4 Maintenance budget
-
-- [x] Quarterly dependency audit for `algo-dsp`, `algo-fft`, `algo-pde`, `gll-tools`, `wav`
-- [x] Benchmark baseline update procedure
-- [x] Track new format/solver features with small fixtures before expanding
-
----
-
-### Phase 21 — Sound Transmission Between Rooms
-
-> Basic sound transmission through walls and portals between adjacent rooms. Implements the secondary source model from the RAVEN dissertation (Section 5). See `docs/raven.md` Section 5.
-
-#### 21.1 Material transmission coefficients (`scene/`)
-
-- [x] Add `TransmissionByBand []float64` to `Material` struct
-- [x] Add `SoundReductionIndex []float64` as alternative input (convert via `tau = 10^(-R/10)`)
-- [x] Validation: `0 <= tau <= 1` and `alpha + tau <= 1` (energy conservation)
-- [x] Add transmission data to materials library (concrete ~50 dB, plasterboard ~35 dB, wooden door ~25 dB, glass ~30 dB, open doorway 0 dB)
-- [x] Unit test: round-trip between `SoundReductionIndex` and `TransmissionByBand`
-
-#### 21.2 Multi-room scene definition (`scene/`)
-
-- [x] Extend `Scene` to support `Rooms []Room` instead of single `Room`
-- [x] Define `Portal` struct: two room indices, shared surface polygon, material reference, state (Open/Closed)
-- [x] Add `Portals []Portal` to `Scene` with validation (valid room indices, coplanar walls, open = tau 1.0)
-- [x] JSON serialization for multi-room scenes
-- [x] Unit test: two adjacent shoeboxes sharing a wall with one portal
-
-#### 21.3 Secondary source model (`raytrace/`, `ism/`)
-
-- [x] When ray tracer detects energy at a portal's surface receiver, spawn secondary point source at portal center on receiving-room side
-- [x] Secondary source spectrum filtered by portal transmission: `SS = S * sum(H_S,x * H_x,y)`
-- [x] ISM: mirror secondary source in receiving room with transmitted spectrum as initial energy
-- [x] RT: launch particles from secondary source with energy proportional to transmitted histogram
-- [x] Unit test: two identical rooms with portal — level difference matches `D_n = L_S - L_R + 10*log(S/A_R)` within 3 dB
-
-#### 21.4 Apparent sound reduction index (`metrics/`)
-
-- [x] Implement `ApparentSoundReductionIndex(sourceLevel, receiverLevel, partitionArea, receiverAbsorptionArea float64) float64`
-- [x] Flanking-aware variant: `R' = -10*log(sum(tau_ij))`
-- [x] Validate: two 90 m^3 rooms, 16 m^2 partition — simulated R matches input within 2.5 dB (300 Hz-16 kHz)
-
-#### 21.5 Portal interaction for real-time/web demo (`hybrid/`)
-
-- [x] Cache BRIRs for open and closed portal states
-- [x] Crossfade function: `y(x) = x^(1/n)`, x in [0,1] mapping aperture to interpolation weight
-- [x] Hard switch to merged room group BRIR once fully open
-- [x] Unit test: crossfade produces monotonically increasing energy; no discontinuities
-
----
-
-### Phase 22 — Higher-Order Diffraction and DAPDF
-
-> Extend diffraction beyond first-order UTD: second-order via edge-to-edge paths (BTME) and replace Keller-cone sampling with DAPDF. See `docs/raven.md` Sections 2.5 and 3.3.
-
-#### 22.1 Second-order edge diffraction (`ism/`, `geometry/`)
-
-- [x] Enumerate edge-to-edge diffraction paths with mutual visibility checks
-- [x] Implement `SecondOrderDiffractionPaths`: Fermat-principle points on both edges, intermediate receiver, cascaded diffraction coefficients
-- [x] `MaxDiffractionOrder int` config (default: 1; set to 2 to enable)
-- [x] Contribution culling: skip pairs below -60 dB
-- [x] Unit tests: L-shaped corridor (two corners), double-doorway
-- [x] Validation against RAVEN BTME reference
-
-#### 22.2 Combined reflection-diffraction paths (`ism/`)
-
-- [x] Enumerate source->reflect->diffract->receiver and source->diffract->reflect->receiver up to second total order
-- [x] Reuse IS tree for reflection segments; diffraction via `FindDiffractionPoint`
-- [x] Path construction using subpath descriptors: S2D, D2D, D2R
-
-#### 22.3 DAPDF implementation (`raytrace/`)
-
-- [x] Implement `DAPDF(v, v0, D0 float64) float64` with piecewise definition
-- [x] Implement the six closed-form energy integrals (Eqs. 5.29-5.34 in raven.md)
-- [x] Unit tests: integral = 1.0 for any b > 0; shape matches published plots
-
-#### 22.4 Deflection cylinders (`raytrace/`, `geometry/`)
-
-- [x] `DeflectionCylinder` struct: edge, frequency-dependent radius (r = 7\*lambda)
-- [x] Ray-cylinder collision test
-- [x] DAPDF energy integration for outgoing energy distribution
-- [x] Forward diffracted energy to visible detectors ("diffracted rain"), recursive up to configurable depth (default: 2)
-- [x] Unit test and benchmark vs Keller-cone approach
-
-#### 22.5 Validation
-
-- [x] Single finite wedge: compare against Svensson Edge Diffraction Toolbox at 50 Hz, 500 Hz, 5 kHz, 10 kHz
-- [x] View/shadow zone transition smoothness for both IS (BTME) and RT (DAPDF)
-- [x] L-shaped room: second-order improves shadow-zone by 1-3 dB
-- [x] Regression: existing first-order tests still pass at `MaxDiffractionOrder = 1`
-
----
-
-### Phase 23 — Plane-Polygon Map and ISM Optimizations
-
-> For rooms with many coplanar polygons, mirror across distinct planes instead of individual triangles: IS count drops from `n(n-1)^(i-1)` to `p(p-1)^(i-1)` where `p << n`. See `docs/raven.md` Sections 2.4 and 4.2.
-
-#### 23.1 Plane-Polygon Map (`ism/`, `geometry/`)
-
-- [x] `PlanePolygonMap`: group triangles by plane equivalence (normal + distance tolerance)
-- [x] Modify `GenerateMeshImageSources()` to mirror across planes rather than individual triangles
-- [x] Point-in-polygon test on coplanar set during audibility checks
-- [x] Unit test: 12 polygons on 8 planes -> 8 distinct planes
-- [x] Performance test: 4th-order IS generation ~4x fewer image sources with PPM
-
-#### 23.2 Per-particle hybrid detection logic (`raytrace/`)
-
-- [x] Add tracking fields to `RayState`: `HasDiffuseHistory`, `PreEDReflOrder`, `EDReflOrder`, `EDOrder`
-- [x] Update tracking in reflection/scatter/diffraction handlers
-- [x] Implement `DetectionAllowedHybrid(state, config)` replacing time/order-based crossover
-- [x] Unit tests: specular particle at order 3 with MaxISOrder=3 not detected (order 4 is); scattered particle at order 2 is detected
-- [x] Energy conservation test: IS + RT total equals source energy minus absorption within 2%
-
----
 
 ### Phase 24 — Extended Source Directivity and SOFA Loading
 
