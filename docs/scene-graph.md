@@ -93,6 +93,79 @@ point on a shared wall lies in two rooms and `RoomIndexAt` reports it as
 ambiguous, but if those rooms share a group the point is unambiguous at group
 level. Ambiguity between different groups remains an error.
 
+## Path search
+
+`SearchPaths` enumerates the propagation paths from a source group to every
+group holding a receiver, as a depth-first search across the group graph
+([`raven.md`](raven.md) section 5.1). It runs over **groups**, so every edge is
+a closed portal — open portals have already been merged into their group.
+
+The search uses an explicit LIFO stack and marks the groups on the current
+path; that marking is the cycle detection, so the search enumerates simple
+paths only. Branches are also cut by `MaxDepth`, `MaxNodes`, and the per-band
+prune floor. Any such cut sets `PathSearchTree.Truncated`, which callers must
+surface: a silently truncated search under-renders a large building with no
+other symptom.
+
+### The reduction index is an approximation, deliberately
+
+`WeightedReductionIndexDB` estimates a single-number reduction index as
+`R = -10*log10(sum(w_b * tau_b))`. This is **not** ISO 717-1, which needs
+third-octave data from 100 Hz to 3150 Hz and a shifting reference curve that
+octave-band scene data cannot supply. It is recorded per node as a diagnostic
+only; the filter network always works from the per-band coefficients.
+
+It deliberately does **not** prune. For a spectrally selective portal chain the
+normalised weighting can drag the aggregate below the floor while an individual
+band is still audible, so pruning on it would throw away a surviving
+low-frequency contribution that `ActiveBands` had just marked as audible.
+Pruning is the per-band mask's job alone.
+
+Along a chain the per-band coefficients **multiply**, which is exact for
+cascaded intensity transmission ratios, and the single-number index is
+recomputed from that product. Summing per-portal indices instead would be wrong
+whenever the portals differ in spectral shape.
+
+Portal area, room absorption, and propagation distance are excluded on purpose.
+All three attenuate further, so pruning on transmission alone is conservative
+and never discards a path that would have been audible.
+
+### Source elimination
+
+Each node carries `ActiveBands`, marking the bands whose accumulated
+transmission is still above the floor (default -60 dB, matching the diffraction
+culling convention). A band the portals have already killed need not be
+simulated at all. A branch with no surviving band is pruned outright.
+
+## Propagation path graph
+
+`hybrid.BuildPPG` converts the search tree into the directed acyclic graph that
+serves as the construction plan for the filter network, using exactly the
+mapping of [`raven.md`](raven.md) section 10: the tree root becomes the source
+node, tree edges (portal traversals) become portal filter nodes, tree nodes
+(group residencies) become transfer-function edges, and every leaf merges into
+a single receiver node.
+
+Portal nodes are keyed on `(portal index, traversal direction, depth)`, so two
+paths reaching the same portal the same way after the same number of traversals
+converge on one node. That is why a group's transfer function can be rendered
+once per entry/exit pair rather than once per path.
+
+The depth belongs in the key. Keying on `(portal, direction)` alone does not
+preserve acyclicity: in a ring of groups one simple path can cross portals `P`
+then `Q` while another crosses `Q` then `P`, and merging both occurrences would
+add edges `P → Q` and `Q → P`, which `TopologicalOrder` rejects. With the depth
+in the key every edge runs from depth `d` to depth `d + 1`, so the graph is a
+DAG by construction and continuations are never cross-connected between path
+histories of different length.
+
+The cost of sharing is that a merged node has no single per-path band mask.
+`ActiveBands` is therefore the union across contributing paths and
+`Transmission` their per-band maximum — both conservative, so the filter network
+may simulate a band it could have skipped but never skips one it needed. Exact
+per-path products are recovered by walking the graph and multiplying the portal
+filters along the way.
+
 ## Related
 
 - [Sound transmission](sound-transmission.md) — the Phase 21 one-hop model.
