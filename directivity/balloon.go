@@ -111,14 +111,18 @@ func NewBalloonDirectivity(
 		return nil, fmt.Errorf("balloon grid: %w", err)
 	}
 
+	previous := 0.0
+
 	for index, freq := range bands {
 		if freq <= 0 {
 			return nil, fmt.Errorf("band %d frequency %v is not positive", index, freq)
 		}
 
-		if index > 0 && freq <= bands[index-1] {
-			return nil, fmt.Errorf("band %d frequency %v does not ascend past %v", index, freq, bands[index-1])
+		if freq <= previous {
+			return nil, fmt.Errorf("band %d frequency %v does not ascend past %v", index, freq, previous)
 		}
+
+		previous = freq
 	}
 
 	want := len(bands) * grid.PointCount()

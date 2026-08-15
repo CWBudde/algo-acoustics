@@ -18,10 +18,10 @@ jobs:
         uses: actions/setup-go@v5
 
       - name: Install Go formatters
-        run: go install mvdan.cc/gofumpt@v0.7.0 && go install github.com/daixiang0/gci@v0.13.5
+        run: go install mvdan.cc/gofumpt@v0.10.0 && go install github.com/daixiang0/gci@v0.14.0
 
       - name: Install prettier
-        run: npm install -g prettier@3.6.2
+        run: npm install -g prettier@3.8.0
 
       - name: Run treefmt
         uses: isbecker/treefmt-action@v2

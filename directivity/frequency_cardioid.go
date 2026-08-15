@@ -38,18 +38,24 @@ func NewFrequencyDependentCardioid(
 
 	if len(bands) != len(orders) {
 		return FrequencyDependentCardioid{}, fmt.Errorf(
-			"frequency-dependent cardioid has %d bands but %d orders", len(bands), len(orders))
+			"frequency-dependent cardioid has %d bands but %d orders", len(bands), len(orders),
+		)
 	}
+
+	previous := 0.0
 
 	for index, freq := range bands {
 		if freq <= 0 {
 			return FrequencyDependentCardioid{}, fmt.Errorf("band %d frequency %v is not positive", index, freq)
 		}
 
-		if index > 0 && freq <= bands[index-1] {
+		if freq <= previous {
 			return FrequencyDependentCardioid{}, fmt.Errorf(
-				"band %d frequency %v does not ascend past %v", index, freq, bands[index-1])
+				"band %d frequency %v does not ascend past %v", index, freq, previous,
+			)
 		}
+
+		previous = freq
 
 		if orders[index] < 0 {
 			return FrequencyDependentCardioid{}, fmt.Errorf("band %d order %v is negative", index, orders[index])

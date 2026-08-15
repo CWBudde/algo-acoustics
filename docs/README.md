@@ -9,8 +9,8 @@ for the output you need.
   scenes.
 - [HRTF usage](hrtf-sofa.md): configure binaural receivers and provide measured
   grids from Go.
-- [Directivity usage](directivity-gll.md): use omni, cardioid, and GLL source
-  models.
+- [Directivity usage](directivity-gll.md): use omni, cardioid,
+  frequency-dependent cardioid, tabulated balloon, and GLL source models.
 - [Hybrid rendering](hybrid-rendering.md): choose early, late, hybrid, and
   low-frequency options.
 - [Diffraction](diffraction.md): enable finite-edge BTME paths or stochastic

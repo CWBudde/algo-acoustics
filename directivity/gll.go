@@ -12,6 +12,9 @@ import (
 	ggll "github.com/cwbudde/gll-tools/pkg/gll"
 )
 
+// gllToolsVersion is the pinned dependency repairSymmetryCode works around.
+const gllToolsVersion = "v0.1.1"
+
 type gllBalloon interface {
 	GetResponseAtAngle(theta, phi float64) *ggll.TransferFunction
 }
@@ -22,7 +25,10 @@ type GLLModel struct {
 	Preset           string
 	SourceKey        string
 	SourceDefinition *ggll.SourceDefinition
-	balloon          gllBalloon
+	// Symmetry is the balloon symmetry as parsed, before repairSymmetryCode
+	// rewrites it for lookups.
+	Symmetry ggll.SymmetryType
+	balloon  gllBalloon
 }
 
 // LoadGLL loads a GLL file and adapts the selected source definition.
@@ -74,21 +80,6 @@ func LoadGLLReader(r io.ReadSeeker, preset string) (*GLLModel, error) {
 	return model, nil
 }
 
-// loadBalloonResponses reads the deferred balloon measurements from r.
-func (m *GLLModel) loadBalloonResponses(r io.ReadSeeker) error {
-	balloon := m.SourceDefinition.BalloonData
-	if balloon == nil || len(balloon.Responses) > 0 {
-		return nil
-	}
-
-	err := ggll.LoadBalloonResponses(r, balloon)
-	if err != nil {
-		return fmt.Errorf("load balloon responses for source %q: %w", m.SourceKey, err)
-	}
-
-	return nil
-}
-
 // LoadGLLFile adapts a parsed GLL file to the directivity interface.
 //
 // The balloon measurements of a file parsed this way are loaded lazily by
@@ -104,12 +95,22 @@ func LoadGLLFile(file *ggll.File, preset string) (*GLLModel, error) {
 		return nil, err
 	}
 
+	symmetry := ggll.SymmetryNone
+
+	var balloon gllBalloon
+
+	if source.BalloonData != nil {
+		symmetry = ggll.SymmetryType(source.BalloonData.AngularResolution.Symmetry)
+		balloon = symmetryFixedBalloon{data: source.BalloonData}
+	}
+
 	return &GLLModel{
 		File:             file,
 		Preset:           preset,
 		SourceKey:        sourceKey,
 		SourceDefinition: source,
-		balloon:          source.BalloonData,
+		Symmetry:         symmetry,
+		balloon:          balloon,
 	}, nil
 }
 
@@ -144,6 +145,76 @@ func (m *GLLModel) GainLinear(freqHz float64, dir geometry.Vec3) float64 {
 	}
 
 	return math.Pow(10, gainDB/20)
+}
+
+// loadBalloonResponses reads the deferred balloon measurements from r.
+func (m *GLLModel) loadBalloonResponses(r io.ReadSeeker) error {
+	balloon := m.SourceDefinition.BalloonData
+	if balloon == nil || len(balloon.Responses) > 0 {
+		return nil
+	}
+
+	err := ggll.LoadBalloonResponses(r, balloon)
+	if err != nil {
+		return fmt.Errorf("load balloon responses for source %q: %w", m.SourceKey, err)
+	}
+
+	return nil
+}
+
+// symmetryFixedBalloon looks measurements up through the symmetry encoding the
+// gll-tools grid helpers actually expect. See repairSymmetryCode.
+//
+// The rewrite happens on a shallow copy per lookup rather than on the parsed
+// file: the copy shares the (lazily hydrated) response slice, leaves the caller's
+// *ggll.File untouched, and stays correct when the same file is adapted twice.
+type symmetryFixedBalloon struct {
+	data *ggll.BalloonData
+}
+
+func (b symmetryFixedBalloon) GetResponseAtAngle(theta, phi float64) *ggll.TransferFunction {
+	if b.data == nil {
+		return nil
+	}
+
+	fixed := *b.data
+	fixed.AngularResolution.Symmetry = repairSymmetryCode(ggll.SymmetryType(b.data.AngularResolution.Symmetry))
+
+	return fixed.GetResponseAtAngle(theta, phi)
+}
+
+// repairSymmetryCode works around a symmetry mix-up in gll-tools gllToolsVersion.
+//
+// The parser maps the on-disk symmetry code onto pkg/gll.SymmetryType
+// (0=None, 1=Vertical, 2=Horizontal, 3=Quarter, 4=Axial) and stores that enum
+// in ResolutionDescriptor.Symmetry. The grid helpers behind GetResponseAtAngle
+// never got the memo: they still read the field with the on-disk ordering
+// (1=Axial, 2=Quarter, 3=Vertical, 4=Horizontal). Every symmetry-reduced
+// balloon therefore unfolds the meridian with the wrong rule and returns gains
+// measured in a different direction — silently, with no error.
+//
+// Rewriting the field to the encoding the helpers expect restores correct
+// lookups for all symmetry types. Inside pkg/gll only those two helper call
+// sites read the field, so nothing else observes the substitution. The real
+// symmetry stays available on GLLModel.Symmetry.
+//
+// TestGLLToolsSymmetryWorkaroundStillNeeded pins the dependency version so this
+// remapping cannot survive unnoticed into a release that fixes the bug upstream.
+func repairSymmetryCode(symmetry ggll.SymmetryType) int32 {
+	switch symmetry {
+	case ggll.SymmetryAxial:
+		return 1
+	case ggll.SymmetryQuarter:
+		return 2
+	case ggll.SymmetryVertical:
+		return 3
+	case ggll.SymmetryHorizontal:
+		return 4
+	case ggll.SymmetryNone:
+		return 0
+	default:
+		return int32(symmetry)
+	}
 }
 
 func selectSourceDefinition(file *ggll.File, preset string) (*ggll.SourceDefinition, string, error) {

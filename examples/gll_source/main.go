@@ -164,13 +164,24 @@ func (m exampleDirectivityModel) GainLinear(freqHz float64, dir geometry.Vec3) f
 	return 8 * m.base.GainLinear(freqHz, dir) * cardioid.GainLinear(freqHz, dir)
 }
 
+// rearEnergyBudget is the share of the front energy the rear receiver may still
+// pick up. The two receivers sit the same distance either side of the source, so
+// an omnidirectional source reaches them equally; a forward-facing one must not.
+const rearEnergyBudget = 0.5
+
 func validateComparisons(result exampleResult) error {
 	if result.FrontComparison.GLL <= result.FrontComparison.Omni {
 		return fmt.Errorf("front energy %g is not greater than omni energy %g", result.FrontComparison.GLL, result.FrontComparison.Omni)
 	}
 
-	if result.RearComparison.GLL >= result.RearComparison.Omni {
-		return fmt.Errorf("rear energy %g is not lower than omni energy %g", result.RearComparison.GLL, result.RearComparison.Omni)
+	// Compared against the front receiver, not against omni: the example scales
+	// the balloon up by a constant, so the directional source radiates far more
+	// total power and loses a rear-vs-omni comparison on level alone.
+	if result.RearComparison.GLL >= rearEnergyBudget*result.FrontComparison.GLL {
+		return fmt.Errorf(
+			"rear energy %g is not below %g of front energy %g",
+			result.RearComparison.GLL, rearEnergyBudget, result.FrontComparison.GLL,
+		)
 	}
 
 	return nil
