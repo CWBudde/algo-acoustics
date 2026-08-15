@@ -35,7 +35,7 @@ func shoeboxAt(origin geometry.Vec3, width, depth, height float64) Room { //noli
 // doorOnX builds a floor-standing door polygon on the plane x = atX, wound from
 // the room on the negative side toward the room on the positive side. The door
 // deliberately reaches the floor, matching the shipped two-room fixture.
-func doorOnX(atX, yMin, yMax, height float64) []geometry.Vec3 {
+func doorOnX(atX, yMin, yMax, height float64) []geometry.Vec3 { //nolint:unparam // Kept general so fixtures can vary the door height.
 	return []geometry.Vec3{
 		{X: atX, Y: yMin, Z: 0},
 		{X: atX, Y: yMax, Z: 0},
@@ -46,7 +46,7 @@ func doorOnX(atX, yMin, yMax, height float64) []geometry.Vec3 {
 
 // doorOnY builds a floor-standing door polygon on the plane y = atY, wound from
 // the room on the negative side toward the room on the positive side.
-func doorOnY(atY, xMin, xMax, height float64) []geometry.Vec3 {
+func doorOnY(atY, xMin, xMax, height float64) []geometry.Vec3 { //nolint:unparam // Kept general so fixtures can place the wall anywhere.
 	return []geometry.Vec3{
 		{X: xMax, Y: atY, Z: 0},
 		{X: xMin, Y: atY, Z: 0},

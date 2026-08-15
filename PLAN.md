@@ -193,10 +193,27 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 
 #### 25.2 Path search and source elimination (`scene/`, `hybrid/`)
 
-- [ ] Depth-first path search with cycle detection (LIFO stack) and R_w pruning
-- [ ] Source elimination: skip fully-attenuated frequency bands per propagation path
-- [ ] Convert PST to PPG: filter functions for portals, RIR/BRIR edges for rooms
-- [ ] Unit test: 3-room chain finds direct path and confirms flanking paths
+- [x] Depth-first path search with cycle detection (LIFO stack) and R_w pruning
+      — `(*AcousticSceneGraph).SearchPaths` walks the **group** graph, so every
+      edge is a closed portal. Marking the groups on the current path is the
+      cycle detection, so the search enumerates simple paths only
+- [x] Source elimination: skip fully-attenuated frequency bands per propagation
+      path — `PathNode.ActiveBands`, floored at -60 dB by default
+- [x] Convert PST to PPG: filter functions for portals, RIR/BRIR edges for rooms
+      — `hybrid.BuildPPG`, with portal nodes keyed on (portal, direction) so
+      shared prefixes converge and a group renders once per entry/exit pair
+- [x] Unit test: 3-room chain finds direct path and confirms flanking paths
+
+> RAVEN defines neither how R_w composes along a chain nor an audibility floor.
+> We multiply the per-band coefficients (exact for cascaded intensity ratios)
+> and recompute a weighted single-number index from that product; summing
+> per-portal indices would be wrong when portals differ spectrally.
+> `WeightedReductionIndexDB` is explicitly **not** ISO 717-1 and is used only
+> for pruning. Portal area, room absorption, and distance are excluded, which
+> makes pruning conservative. `PathSearchTree.Truncated` must be surfaced by
+> callers or a large building silently under-renders. PPG node sharing costs
+> exact per-node band masks, so they are widened to the union/maximum across
+> contributing paths — conservative in the same direction.
 
 #### 25.3 Filter network rendering (`hybrid/`, `ir/`)
 
