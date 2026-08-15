@@ -131,8 +131,8 @@ github.com/cwbudde/algo-fft v0.6.11 h1:XgyYQbnzVnGUwVJQPWDyCwMlPbS0ZeuQTAjHTJBpE
 github.com/cwbudde/algo-fft v0.6.11/go.mod h1:H5rJ7JNXvhe3kT4yc41TJB9DEnO7KlhHN7toLO+ZZXU=
 github.com/cwbudde/algo-pde v0.2.1 h1:3AwPKxUGUSdXIoYmuH7N6VphJOk4r8Jz1wGdmXt83oE=
 github.com/cwbudde/algo-pde v0.2.1/go.mod h1:R2fiu/G0NotXtjpTsgAYxMju5ydmP8/Hujkxo84WU74=
-github.com/cwbudde/algo-vecmath v0.1.1 h1:nvZT4lpOx7lFbxU1cbC2wseE3tI6115G9t0/QFFutpE=
-github.com/cwbudde/algo-vecmath v0.1.1/go.mod h1:lc9dLv41D4RCmhXG/CsIesfJXmONI7pQXcFrkxQSfeQ=
+github.com/cwbudde/algo-vecmath v0.1.2 h1:AxonVWCIl+7YD52/e62Bc3JCbo/4cFmIQsA2wZETEiU=
+github.com/cwbudde/algo-vecmath v0.1.2/go.mod h1:lc9dLv41D4RCmhXG/CsIesfJXmONI7pQXcFrkxQSfeQ=
 github.com/cwbudde/gll-tools v0.1.1 h1:M0/EIXmnznsb9TfdhIMVEaZiDl9QfZQvxrV/fWVYwwA=
 github.com/cwbudde/gll-tools v0.1.1/go.mod h1:nSi/85Kr9Pbn5r20lBaExy9s/iOnCWBLWldKihLgXP4=
 github.com/cwbudde/wav v0.1.0 h1:alxIMiBOcVFD94//8+qWW62oFgfeFbYMvpXcg9KJYAk=
