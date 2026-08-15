@@ -377,16 +377,42 @@ Final scores, identical on amd64 and arm64:
 
 | test             | band      | recall | chance | threshold |
 | ---------------- | --------- | ------ | ------ | --------- |
-| shoebox          | 30–153 Hz | 75 %   | 39 %   | ≥ 60 %    |
-| triangular prism | 30–500 Hz | 58 %   | 40 %   | ≥ 45 %    |
-| cylinder         | 20–400 Hz | 73 %   | 57 %   | ≥ 42 %    |
+| shoebox          | 30–153 Hz | 67 %   | 39 %   | ≥ 60 %    |
+| triangular prism | 30–187 Hz | 35 %   | 27 %   | ≥ 30 %    |
+| cylinder         | 20–147 Hz | 36 %   | 28 %   | ≥ 30 %    |
 
-> The prism is scored over the whole band rather than its low end because at
-> `zHeight = 10 m` the 3D modes below 187 Hz are spaced ~1.7 Hz apart, under the
-> 2 Hz FFT resolution — they are not separable at 500 ms at all. That is the cost
-> of keeping the tall extrusion and extending the mode set instead of shrinking
-> z; the +18 pp margin over chance is a real but modest claim, and the shoebox
-> test carries the strong one.
+> **Revised 2026-08-16 after PR review — the first table published here was
+> wrong, and materially so.** It read shoebox 75 %, prism 58 % / 40 % chance over
+> 30–500 Hz, cylinder 73 % / 57 % over 20–400 Hz. Three defects inflated it:
+>
+> - **Recall double-counted.** Each analytical mode scanned the whole peak list
+>   independently, so one detected peak could satisfy dozens of modes. With ~40
+>   peaks against the prism's 953 modes, most of that 58 % was a handful of peaks
+>   counted over and over. Peaks are now consumed at most once, and modes closer
+>   together than the resolution are clustered first, since they are not
+>   separable even in principle.
+> - **The triangle's analytical set was at half its true frequencies.**
+>   `triangleEigenfreqs` used `c/(3L)`; Lamé's closed form for the equilateral
+>   triangle gives `2c/(3L)·√(m²+mn+n²)`. Every transverse mode of the prism was
+>   therefore compared against a frequency the room cannot produce.
+> - **The cylinder's analytical set was truncated.** `besselPrimeZeros` was a
+>   13-entry table stopping at angular order m = 4, so it omitted whole mode
+>   families — including four roots inside its own range. The roots are now
+>   computed to the band edge, giving 32 for this fixture rather than 13.
+>
+> With all three corrected, the prism and cylinder fall **below** their chance
+> levels when scored over the full band — i.e. over 30–500 Hz those fixtures
+> demonstrate nothing, and no threshold could have made them meaningful.
+> Lengthening the run does not help: at 2 s the resolution improves to 0.5 Hz and
+> the set resolves into 73 clusters, but the solver still yields only 40 peaks,
+> capping recall at 55 % by construction.
+>
+> Both are therefore scored on their sparse low bands, where the tolerance
+> windows cover ~27 % of the band instead of ~100 %, and both clear chance by
+> about 8 points. That is a real but weak claim, and weaker than what this
+> document previously asserted. The shoebox — 67 % against 39 % — remains the
+> strong one. `requireModeRecall` fails outright if any of them falls back to its
+> chance level, so that margin, not the threshold, is the real assertion.
 
 #### 26.3 Cross-platform determinism guard
 

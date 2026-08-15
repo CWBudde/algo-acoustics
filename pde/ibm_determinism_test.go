@@ -174,6 +174,104 @@ func TestClassifyGridGolden(t *testing.T) {
 	}
 }
 
+// gridClassHash hashes only the interior/boundary/exterior classification of
+// every node, never the cut fractions.  That split is the point: for a room
+// whose planes are not axis-aligned the fractions carry the last bits of the
+// plane coefficients and are not portable, while the classification is — which
+// is exactly the property Phase 26 established and therefore the one worth
+// pinning.
+func gridClassHash(g *IBMGrid) uint64 {
+	h := fnv.New64a()
+
+	var buf [8]byte
+
+	// g.Class is index-ordered, so hashing it directly is already a
+	// position-dependent digest — no need to walk the grid by coordinate.
+	for _, c := range g.Class {
+		binary.LittleEndian.PutUint64(buf[:], uint64(c))
+		_, _ = h.Write(buf[:])
+	}
+
+	return h.Sum64()
+}
+
+// TestClassifyGridClassGolden pins the classification of rooms whose walls are
+// oblique, which TestClassifyGridGolden cannot cover.
+//
+// That test hashes the cut fractions, so it is restricted to axis-aligned
+// fixtures whose planes are exact in binary — and those never exercise the
+// multi-product FMA path in sideOf that the Phase 26 defect lived in.  The
+// invariant test does run the triangle, but it only asserts a local property
+// (exterior neighbour => 0 < Frac <= 1) and stays satisfied while nodes migrate
+// between Interior, Boundary and Exterior, as long as each architecture is
+// internally consistent — which is precisely the failure mode being guarded
+// against, since amd64 and arm64 were each internally consistent and disagreed
+// with each other.
+//
+// Hashing the classification alone closes that gap: it is portable, and it
+// changes the moment a single node moves between classes.
+func TestClassifyGridClassGolden(t *testing.T) {
+	tests := []struct {
+		name      string
+		room      *ConvexRoom
+		h         float64
+		nx        int
+		ny        int
+		nz        int
+		interior  int
+		boundary  int
+		exterior  int
+		classHash uint64
+	}{
+		{
+			// Oblique walls from math.Sqrt(3): the fraction hash is not
+			// portable here, but the classification is.
+			name:      "triangle_L3_h0.1",
+			room:      equilateralTriangleRoom(3.0, 1.5, 3.0*math.Sqrt(3)/3, 10.0),
+			h:         0.1,
+			nx:        33,
+			ny:        29,
+			nz:        103,
+			interior:  29003,
+			boundary:  8122,
+			exterior:  61446,
+			classHash: 0xb45880fa773af884,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g := ClassifyGrid(tc.room, tc.h)
+			interior, boundary, exterior := gridClassCounts(g)
+			hash := gridClassHash(g)
+
+			t.Logf("ACTUAL nx=%d ny=%d nz=%d interior=%d boundary=%d exterior=%d classHash=0x%016x",
+				g.Nx, g.Ny, g.Nz, interior, boundary, exterior, hash)
+
+			if g.Nx != tc.nx || g.Ny != tc.ny || g.Nz != tc.nz {
+				t.Errorf("grid dims = %dx%dx%d, want %dx%dx%d",
+					g.Nx, g.Ny, g.Nz, tc.nx, tc.ny, tc.nz)
+			}
+
+			if interior != tc.interior {
+				t.Errorf("interior nodes = %d, want %d", interior, tc.interior)
+			}
+
+			if boundary != tc.boundary {
+				t.Errorf("boundary nodes = %d, want %d", boundary, tc.boundary)
+			}
+
+			if exterior != tc.exterior {
+				t.Errorf("exterior nodes = %d, want %d", exterior, tc.exterior)
+			}
+
+			if hash != tc.classHash {
+				t.Errorf("class hash = 0x%016x, want 0x%016x", hash, tc.classHash)
+			}
+		})
+	}
+}
+
 // TestClassifyGridFracInvariant checks the contract that makes the classifier
 // independent of how a node-plane tie rounds:
 //

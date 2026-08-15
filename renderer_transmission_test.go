@@ -77,28 +77,43 @@ func TestTransmissionRendererEarlyIsTranslationInvariant(t *testing.T) {
 	// legitimately permutes them.  Requiring a bijection keeps the physical
 	// claim -- every event survives translation, none appears or vanishes --
 	// without asserting an ordering the arithmetic cannot guarantee.
-	unmatched := make([]bool, len(shiftedEvents))
+	// The matching has to be a true maximum bipartite matching, not first-fit.
+	// Taking the first free candidate makes the outcome depend on event order:
+	// if one base event is compatible with two shifted events while a later base
+	// event is compatible with only the first of them, grabbing the first here
+	// strands the later one and the test fails even though a perfect matching
+	// exists. Kuhn's augmenting-path algorithm has no such dependence, so a
+	// failure below really does mean an event appeared or vanished.
+	matchOf := make([]int, len(shiftedEvents))
+	for i := range matchOf {
+		matchOf[i] = -1
+	}
 
-	for index, baseEvent := range baseEvents {
-		matched := -1
+	var augment func(baseIndex int, seen []bool) bool
 
-		for candidate, taken := range unmatched {
-			if taken {
+	augment = func(baseIndex int, seen []bool) bool {
+		for candidate := range shiftedEvents {
+			if seen[candidate] || !eventsAgreeAfterTranslation(baseEvents[baseIndex], shiftedEvents[candidate]) {
 				continue
 			}
 
-			if eventsAgreeAfterTranslation(baseEvent, shiftedEvents[candidate]) {
-				matched = candidate
+			seen[candidate] = true
 
-				break
+			// Free, or its current partner can be rehoused elsewhere.
+			if matchOf[candidate] == -1 || augment(matchOf[candidate], seen) {
+				matchOf[candidate] = baseIndex
+
+				return true
 			}
 		}
 
-		if matched < 0 {
-			t.Fatalf("base event[%d] has no counterpart after translation: %#v", index, baseEvent)
-		}
+		return false
+	}
 
-		unmatched[matched] = true
+	for index := range baseEvents {
+		if !augment(index, make([]bool, len(shiftedEvents))) {
+			t.Fatalf("base event[%d] has no counterpart after translation: %#v", index, baseEvents[index])
+		}
 	}
 }
 

@@ -283,41 +283,129 @@ func logChanceLevel(t *testing.T, analytical []float64, relTol, df, lo, hi float
 // chance reports the probability of a single mode being covered by luck, given
 // the number of detected peaks in the band: 1 − (1 − 2·tol/W)^P. Comparing the
 // recall rate against it is what stops a pass threshold from encoding a lottery.
+// It scores *clusters* of modes, not individual modes, and consumes each peak
+// at most once. Both corrections matter, and neither is cosmetic:
+//
+//   - Counting each analytical mode separately let a single peak satisfy an
+//     unbounded number of modes. With the prism's 953 modes below 500 Hz and
+//     only ~40 detected peaks, the reported 58 % came largely from reuse: a
+//     solver producing a handful of resonances could clear the threshold.
+//     Peaks are therefore matched bijectively.
+//
+//   - Demanding a distinct peak per mode is equally wrong in the other
+//     direction, because modes closer together than the FFT resolution are not
+//     separable *even in principle*. The prism's 3D modes below 187 Hz sit
+//     ~1.7 Hz apart against a 2 Hz resolution. Modes within a tolerance window
+//     of each other are therefore collapsed into one cluster, and the cluster
+//     counts as recalled if any peak lands in it. That is the strongest claim
+//     the measurement can actually support.
+//
+// chance is computed over clusters for the same reason.
 func modeRecall(analytical, peaks []float64, relTol, df, lo, hi float64) (found, total int, chance float64) {
-	nPeaksInBand := 0
+	// Only in-band peaks may match. The chance model already counts just these,
+	// and letting the matching loop use out-of-band peaks made recall and chance
+	// disagree — an out-of-band peak could lift recall without lifting chance.
+	inBand := make([]float64, 0, len(peaks))
 
 	for _, p := range peaks {
 		if p >= lo && p <= hi {
-			nPeaksInBand++
+			inBand = append(inBand, p)
 		}
 	}
 
+	clusters := clusterModes(analytical, relTol, df, lo, hi)
+	total = len(clusters)
+
+	if total == 0 {
+		return 0, 0, 0
+	}
+
+	used := make([]bool, len(inBand))
 	avgTol := 0.0
 
-	for _, af := range analytical {
-		if af < lo || af > hi {
-			continue
+	for _, c := range clusters {
+		avgTol += c.tol
+
+		// Take the nearest still-unused peak inside the cluster window. Nearest
+		// rather than first, so an early cluster cannot steal a peak that sits
+		// far closer to a later one.
+		best, bestDist := -1, math.Inf(1)
+
+		for i, p := range inBand {
+			if used[i] {
+				continue
+			}
+
+			if d := math.Abs(p - c.center); d < c.tol && d < bestDist {
+				best, bestDist = i, d
+			}
 		}
 
-		total++
-		tol := matchToleranceHz(af, relTol, df)
-		avgTol += tol
-
-		for _, p := range peaks {
-			if math.Abs(p-af) < tol {
-				found++
-
-				break
-			}
+		if best >= 0 {
+			used[best] = true
+			found++
 		}
 	}
 
-	if total > 0 && hi > lo {
+	if hi > lo {
 		avgTol /= float64(total)
-		chance = 1 - math.Pow(math.Max(0, 1-2*avgTol/(hi-lo)), float64(nPeaksInBand))
+		chance = 1 - math.Pow(math.Max(0, 1-2*avgTol/(hi-lo)), float64(len(inBand)))
 	}
 
 	return found, total, chance
+}
+
+// modeCluster is a group of analytical modes that no measurement at this
+// resolution could tell apart, scored as a single target.
+type modeCluster struct {
+	center float64
+	tol    float64
+}
+
+// clusterModes merges modes in [lo, hi] whose separation is below the match
+// tolerance. The cluster's window is widened to span its members, so a cluster
+// is never harder to hit than the individual modes it replaced.
+func clusterModes(analytical []float64, relTol, df, lo, hi float64) []modeCluster {
+	inBand := make([]float64, 0, len(analytical))
+
+	for _, af := range analytical {
+		if af >= lo && af <= hi {
+			inBand = append(inBand, af)
+		}
+	}
+
+	if len(inBand) == 0 {
+		return nil
+	}
+
+	sort.Float64s(inBand)
+
+	var (
+		clusters   []modeCluster
+		start, end = inBand[0], inBand[0]
+	)
+
+	flush := func() {
+		center := (start + end) / 2
+		tol := matchToleranceHz(center, relTol, df) + (end-start)/2
+		clusters = append(clusters, modeCluster{center: center, tol: tol})
+	}
+
+	for _, f := range inBand[1:] {
+		if f-end < matchToleranceHz(f, relTol, df) {
+			end = f
+
+			continue
+		}
+
+		flush()
+
+		start, end = f, f
+	}
+
+	flush()
+
+	return clusters
 }
 
 // requireModeRecall asserts that the solver reproduces the modes in [lo, hi]
@@ -491,14 +579,22 @@ func TestIBMValidation_RectangularEigenfreqs(t *testing.T) {
 }
 
 // triangleEigenfreqs returns analytical eigenfrequencies for an equilateral
-// triangle with side length L (Neumann BC):
+// triangle with side length L (Neumann BC). From Lamé's closed form, the
+// eigenvalues are λ_{m,n} = (16π²/9L²)·(m² + mn + n²), so
 //
-//	f_{m,n} = (c / 3L) · √(m² + mn + n²)
+//	f_{m,n} = c·√λ/(2π) = (2c / 3L) · √(m² + mn + n²)
 //
 // with m ≥ 1, n ≥ 0, m > n (avoiding duplicates).
+//
+// The factor of 2 was missing until 2026-08-16: the base was c/(3L), which put
+// every transverse mode at half its true frequency and meant the triangular
+// prism test was scoring the solver against a mode set the room cannot have.
+// The lowest mode is a quick sanity check — for L = 3 m this gives 2c/3L =
+// 76.2 Hz, consistent with a room whose largest inscribed dimension is 3 m,
+// whereas the old 38.1 Hz implied a ~4.5 m cavity.
 func triangleEigenfreqs(sideLength, c, maxFreq float64) []float64 {
 	var freqs []float64
-	base := c / (3 * sideLength)
+	base := 2 * c / (3 * sideLength)
 
 	maxN := int(math.Ceil(maxFreq / base))
 
@@ -591,6 +687,11 @@ func prismEigenfreqs(modes2D []float64, zHeight, c, maxFreq float64) []float64 {
 // equilateralTriangleRoom constructs a ConvexRoom for an equilateral triangle
 // extruded along z. The triangle has side length L, centered at (cx, cy),
 // with z extent [0, zHeight].
+// The side length is parameterised even though both call sites currently pass
+// 3 m: it is what the analytical mode set is derived from, so hard-coding it
+// here would hide the coupling between the fixture and triangleEigenfreqs.
+//
+//nolint:unparam // deliberate: keeps the geometry/analytics coupling explicit.
 func equilateralTriangleRoom(sideLength, cx, cy, zHeight float64) *ConvexRoom {
 	// Equilateral triangle vertices centered at (cx, cy).
 	h := sideLength * math.Sqrt(3) / 2 // triangle height
@@ -708,40 +809,110 @@ func TestIBMValidation_EquilateralTriangle(t *testing.T) {
 
 	t.Logf("matched %d/%d FDTD peaks", matched, len(fdtdPeaks))
 
-	// The old threshold of 5 was a lottery: it sat close enough to the noise
-	// that a one-ulp classification difference decided pass or fail, which is
-	// how this test came to fail only on Apple Silicon. The peak-first count is
-	// no better — the prism's 953 modes below 500 Hz tile the band densely
-	// enough that 40/40 peaks match by construction (chance level 97.5%).
+	// Scored over 30–187 Hz, not the whole band, and against a much lower
+	// threshold than this test carried until 2026-08-16. Both changes follow
+	// from fixing how recall is counted, and neither is a concession:
 	//
-	// Recall over the whole band is the informative statistic here: measured
-	// 58% against a 40% chance level, identically on amd64 and arm64. Scoring
-	// the low band instead does not help — the mode spacing there (~1.7 Hz) is
-	// below the 2 Hz FFT resolution, so those modes are not separable at all.
-	requireModeRecall(t, "triangular prism", analytical, fdtdPeaks, relTol, df, minFreq, maxFreq, 0.45)
+	// The old figure — 58% against a 40% chance level over 30–500 Hz — was
+	// inflated, because each analytical mode scanned the whole peak list
+	// independently and so a single peak could satisfy dozens of modes. With
+	// ~40 detected peaks and 953 analytical modes, most of that 58% was one
+	// peak counted many times. Consuming each peak once (see modeRecall) drops
+	// the same run to 50% against a 67% chance level, i.e. below chance: over
+	// the full band this fixture demonstrates nothing, and no threshold could
+	// change that.
+	//
+	// Lengthening the run does not rescue it. At 2 s the resolution improves to
+	// 0.5 Hz and the analytical set resolves into 73 clusters, but the solver
+	// still yields only 40 peaks, so recall is capped at 55% by construction.
+	//
+	// The low band is where the measurement carries information: the tolerance
+	// windows cover 27% of it rather than ~100%, and the solver recalls 35%.
+	// That margin is modest but real, and requireModeRecall fails outright if
+	// recall ever falls back to the chance level, so the +8 pp is the actual
+	// assertion. The threshold below is the secondary guard.
+	requireModeRecall(t, "triangular prism", analytical, fdtdPeaks, relTol, df, minFreq, 187, 0.30)
 }
 
-// besselPrimeZeros returns the first few zeros of J'_m(x) for m = 0, 1, 2, ...
-// These are the Neumann boundary condition eigenvalues for a circular drum.
-// Precomputed from standard tables.
-func besselPrimeZeros() []float64 {
-	// Zeros of J'_m(x) for small m, sorted ascending.
-	// J'_0: 3.8317, 7.0156, 10.1735
-	// J'_1: 1.8412, 5.3314, 8.5363
-	// J'_2: 3.0542, 6.7061, 9.9695
-	// J'_3: 4.2012, 8.0152
-	// J'_4: 5.3175, 9.2824
-	return []float64{
-		1.8412, 3.0542, 3.8317, 4.2012, 5.3175, 5.3314,
-		6.7061, 7.0156, 8.0152, 8.5363, 9.2824, 9.9695,
-		10.1735,
+// besselJPrime evaluates J'_m(x) via the standard recurrence
+// J'_m = (J_{m-1} − J_{m+1})/2, with J'_0 = −J_1.
+func besselJPrime(m int, x float64) float64 {
+	if m == 0 {
+		return -math.J1(x)
 	}
+
+	return (math.Jn(m-1, x) - math.Jn(m+1, x)) / 2
+}
+
+// besselPrimeZeros returns every zero of J'_m(x) in (0, maxAlpha], across all
+// angular orders m — the Neumann eigenvalues of a circular cross-section.
+//
+// These are computed rather than tabulated. The previous version was a
+// hard-coded list of 13 zeros ending at 10.1735, which silently truncated the
+// analytical mode set: a 2 m radius scored to 400 Hz needs every root out to
+// α = 2π·R·f/c ≈ 14.66, so whole families of radial and angular modes were
+// missing and the recall test simply never asked about them. A table cannot
+// track a change of radius or band, so it should not be a table.
+//
+// Orders are scanned until the first zero of J'_m exceeds maxAlpha; since
+// j'_{m,1} grows monotonically with m (roughly m + 0.81·m^⅓), nothing is
+// missed after that.
+func besselPrimeZeros(maxAlpha float64) []float64 {
+	const (
+		step   = 1e-3
+		bisect = 60
+	)
+
+	var zeros []float64
+
+	for m := 0; ; m++ {
+		var found []float64
+
+		prev := besselJPrime(m, step)
+
+		for x := 2 * step; x <= maxAlpha; x += step {
+			cur := besselJPrime(m, x)
+
+			if (prev < 0) != (cur < 0) {
+				lo, hi := x-step, x
+
+				for range bisect {
+					mid := (lo + hi) / 2
+					if (besselJPrime(m, lo) < 0) != (besselJPrime(m, mid) < 0) {
+						hi = mid
+					} else {
+						lo = mid
+					}
+				}
+
+				// x = 0 is a root of J'_m for every m ≥ 1 and corresponds to no
+				// acoustic mode, so only strictly positive roots count.
+				if z := (lo + hi) / 2; z > 1e-6 {
+					found = append(found, z)
+				}
+			}
+
+			prev = cur
+		}
+
+		// No root of J'_m below the cap means no higher order has one either.
+		if len(found) == 0 {
+			break
+		}
+
+		zeros = append(zeros, found...)
+	}
+
+	sort.Float64s(zeros)
+
+	return zeros
 }
 
 // circularRoomEigenfreqs returns eigenfrequencies for a circular room with
 // Neumann BC: f_{m,n} = c · α'_{m,n} / (2π·R).
 func circularRoomEigenfreqs(radius, c, maxFreq float64) []float64 {
-	zeros := besselPrimeZeros()
+	// f = c·α/(2πR), so the band edge fixes exactly which roots are needed.
+	zeros := besselPrimeZeros(2 * math.Pi * radius * maxFreq / c)
 	var freqs []float64
 
 	for _, alpha := range zeros {
@@ -875,13 +1046,24 @@ func TestIBMValidation_CircularRoom(t *testing.T) {
 
 	t.Logf("matched %d/%d FDTD peaks", matched, len(fdtdPeaks))
 
-	// Measured 73% recall against a 57% chance level. The chance level is high
-	// because relTol is 2% here, for the 64-gon's departure from a true circle,
-	// which widens every tolerance window; the 16-point margin is what the
-	// claim rests on. The old threshold of 3 matched peaks was reached at 20%,
-	// *below* the chance level it was scored against — it could not have failed
-	// for any reason connected to the solver.
-	requireModeRecall(t, "cylinder", analytical, fdtdPeaks, relTol, df, minFreq, maxFreq, 0.42)
+	// Scored over 20–147 Hz against a 30% threshold, revised 2026-08-16 for two
+	// independent reasons, both of which made the previous 73%/57% figure wrong:
+	//
+	//   * Recall double-counted. Each mode scanned the entire peak list, so one
+	//     peak could satisfy many modes; peaks are now consumed once.
+	//   * The analytical set was incomplete. besselPrimeZeros was a table of 13
+	//     roots ending at 10.1735 that stopped at angular order m = 4, so it
+	//     omitted whole mode families — including four roots inside its own
+	//     range — and every omitted mode was one the solver was never asked to
+	//     produce. Computing the roots to the band edge (α = 2πRf/c ≈ 14.66 for
+	//     this fixture) yields 32 rather than 13.
+	//
+	// Together those give 36% recall against a 28% chance level over the sparse
+	// low band. The chance level stays highish because relTol is 2% here, for
+	// the 64-gon's departure from a true circle, which widens every window; the
+	// +8 pp margin is what the claim rests on, and requireModeRecall fails
+	// outright if recall ever falls back to chance.
+	requireModeRecall(t, "cylinder", analytical, fdtdPeaks, relTol, df, minFreq, 147, 0.30)
 }
 
 func TestIBMValidation_EnergyDecaySabine(t *testing.T) {
