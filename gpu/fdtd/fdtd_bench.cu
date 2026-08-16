@@ -1,7 +1,7 @@
 // fdtd_bench.cu — benchmark harness for the CUDA FDTD stencil kernels.
 //
 // Measures throughput in Gcells/s and effective memory bandwidth for three
-// grid sizes that bracket the target problem range (see PLAN.md §14.1):
+// grid sizes that bracket the target problem range (see docs/profiling-baseline.md):
 //
 //   128³ ~2M active cells, ~24 MB fields  — preview / regression scale
 //   256³ ~16M active cells, ~192 MB fields — production audio scale

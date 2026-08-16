@@ -11,7 +11,7 @@ import (
 	"github.com/cwbudde/algo-acoustics/geometry"
 )
 
-// Demo limits (PLAN.md phase 19.7).
+// Demo limits; see docs/web-demo-limits.md.
 //
 // The demo accepts requests from two places with very different trust: the page
 // itself, whose sliders are already bounded, and window.algoAcousticsDemo, which
@@ -25,9 +25,10 @@ import (
 // points:
 //
 //  1. Memory. A Go/WASM heap only grows, so a request that peaks above the tab's
-//     budget costs the user the tab. This is phase 19.2's concern and is handled
-//     separately by applyDemoMemoryBudget, which reduces quality knobs rather
-//     than rejecting the request.
+//     budget costs the user the tab. That is the memory budget's concern (see
+//     docs/wasm-memory-budget.md) and is handled separately by
+//     applyDemoMemoryBudget, which reduces quality knobs rather than rejecting
+//     the request.
 //  2. Wall-clock. A synchronous WASM render blocks its worker for its whole
 //     duration, and the measured envelope reaches well past what anyone will
 //     wait for. This is what demoRenderTimeout and the tier pipeline address.
@@ -50,7 +51,7 @@ const (
 
 	// maxDemoNumRays caps the Monte Carlo ray budget.
 	//
-	// PLAN.md proposed 50,000. Memory allows it comfortably — 50,000 rays cost
+	// The original roadmap proposed 50,000. Memory allows it comfortably — 50,000 rays cost
 	// about 25 MiB against a 512 MiB budget — but wall-clock does not. Measured
 	// under go_js_wasm_exec, ray cost is close to linear: 3,072 rays render in
 	// 1.5 s, 16,384 in 7.0 s, so 50,000 rays would take roughly 21 s at a 1.35 s

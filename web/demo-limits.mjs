@@ -1,4 +1,4 @@
-// Demo limits (PLAN.md 19.7).
+// Demo limits; see docs/web-demo-limits.md.
 //
 // The request envelope is defined once, in Go (web/wasm/limits.go), and travels
 // to the page on the worker's ready message. These helpers turn it into slider

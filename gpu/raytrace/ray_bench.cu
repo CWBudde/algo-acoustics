@@ -8,7 +8,7 @@
 //   1 000 000 rays — mid-size batch
 //  10 000 000 rays — large batch (production quality)
 //
-// CPU baseline (from PLAN.md §14.1, i7-1255U single-core):
+// CPU baseline (from docs/profiling-baseline.md, i7-1255U single-core):
 //   65 536 rays → 714 ms  →  ~0.092 Mrays/s
 //
 // The Go raytrace package uses a sphere receiver and full diffuse
@@ -219,7 +219,7 @@ int main()
 
     printf("\nNote: OptiX hardware ray tracing (RT cores on Turing/T550) would\n");
     printf("typically add 5-20x over this software BVH traversal.\n");
-    printf("See PLAN.md §14.2 and docs/profiling-14.1-baseline.md for context.\n");
+    printf("See docs/profiling-baseline.md and docs/profiling-gpu-kernels.md for context.\n");
 
     return 0;
 }

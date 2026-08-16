@@ -571,7 +571,8 @@ func TestIBMValidation_RectangularEigenfreqs(t *testing.T) {
 	// packs modes closer than the tolerance window (chance level 92% in the
 	// middle third, 98% in the top), so a peak-first count there is free.
 	//
-	// Measured 75% against a 39% chance level, identically on amd64 and arm64.
+	// Measured 8/12 = 67% against a 39% chance level, identically on amd64 and
+	// arm64. See docs/validation.md, which carries the full table.
 	// The threshold sits below that with room for solver changes, but well
 	// clear of chance — and requireModeRecall fails outright if a future change
 	// ever drags it down to chance.
@@ -826,8 +827,10 @@ func TestIBMValidation_EquilateralTriangle(t *testing.T) {
 	// 0.5 Hz and the analytical set resolves into 73 clusters, but the solver
 	// still yields only 40 peaks, so recall is capped at 55% by construction.
 	//
-	// The low band is where the measurement carries information: the tolerance
-	// windows cover 27% of it rather than ~100%, and the solver recalls 35%.
+	// The low band is where the measurement carries information: the chance
+	// level drops to 27% there rather than the 67% above, and the solver
+	// recalls 35%. (27% is modeRecall's chance level, not the band-coverage
+	// figure logChanceLevel prints — that is 75.3% for this sub-band.)
 	// That margin is modest but real, and requireModeRecall fails outright if
 	// recall ever falls back to the chance level, so the +8 pp is the actual
 	// assertion. The threshold below is the secondary guard.

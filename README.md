@@ -13,7 +13,11 @@ or directional binaural buffer.
 ## Status
 
 Work in progress. The core mono, binaural, hybrid, progressive, and validation
-paths are implemented; [PLAN.md](PLAN.md) records completed and future phases.
+paths are implemented, along with mesh geometry, edge diffraction, multi-room
+transmission, GPU acceleration, and the browser demo. See the
+[documentation index](docs/README.md) for what each subsystem does and where its
+limits are; open work is tracked in
+[issues](https://github.com/cwbudde/algo-acoustics/issues).
 
 ## Docs
 

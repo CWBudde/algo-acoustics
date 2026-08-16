@@ -339,7 +339,7 @@ async function initWasm() {
 
 // applyEngineLimits sizes the render sliders from the envelope the WASM module
 // enforces, so the controls and the engine cannot disagree about what the demo
-// accepts (PLAN.md 19.7).
+// accepts. See docs/web-demo-limits.md.
 function applyEngineLimits(limits) {
   const clamped = applyRangeBounds(document, rangeBoundsFromLimits(limits));
   if (clamped.length === 0) {
@@ -1008,9 +1008,10 @@ function updateRenderButton(title, subtitle, progress) {
 }
 
 // applyRenderTier shows a progressive tier while the render is still running
-// (PLAN.md 19.7). Tiers are informational: they never touch lastRender, the
-// download, or the auralization, all of which stay bound to the render that
-// finishes. What they do is stop the page looking frozen — the statistical tier
+// (see docs/web-demo-limits.md). Tiers are informational: they never touch
+// lastRender, the download, or the auralization, all of which stay bound to the
+// render that finishes. What they do is stop the page looking frozen — the
+// statistical tier
 // puts a decay time on screen within milliseconds, and the preview tier puts a
 // real waveform there before the accurate render is a fraction done.
 function applyRenderTier({ tier, payload }) {

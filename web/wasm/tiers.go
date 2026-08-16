@@ -12,7 +12,7 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-// Progressive rendering and the render deadline (PLAN.md phase 19.7).
+// Progressive rendering and the render deadline; see docs/web-demo-limits.md.
 //
 // A WASM render is synchronous: it occupies its worker from the first call to
 // the last, and nothing the page does can interrupt it. Two consequences shape

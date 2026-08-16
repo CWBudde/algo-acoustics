@@ -1,4 +1,4 @@
-// Progressive render tiers (PLAN.md 19.7).
+// Progressive render tiers; see docs/web-demo-limits.md.
 //
 // The WASM render is synchronous and holds its worker until it finishes, so
 // without intermediate reporting the page would show nothing for as long as the

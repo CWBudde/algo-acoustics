@@ -114,7 +114,7 @@ cmd_deps() {
 		echo
 		red "Sibling dependencies are behind their latest tags."
 		echo "Bump them with:  go get <module>@<version> && go mod tidy"
-		echo "If a bump is deliberately deferred, say so in PLAN.md and re-run."
+		echo "If a bump is deliberately deferred, say so in docs/maintenance.md and re-run."
 	fi
 }
 

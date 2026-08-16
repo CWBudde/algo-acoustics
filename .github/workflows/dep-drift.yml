@@ -55,7 +55,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           title="Dependency drift: siblings behind, or work stuck untagged"
-          body=$'This is filed automatically by `.github/workflows/dep-drift.yml`.\n\n```\n'"$(cat drift.log)"$'\n```\n\nBump with `go get <module>@<version> && go mod tidy`.\nIf a bump is deliberately deferred, record why in `PLAN.md` and close this issue.'
+          body=$'This is filed automatically by `.github/workflows/dep-drift.yml`.\n\n```\n'"$(cat drift.log)"$'\n```\n\nBump with `go get <module>@<version> && go mod tidy`.\nIf a bump is deliberately deferred, record why in `docs/maintenance.md` and close this issue.'
 
           existing=$(gh issue list --state open --search "$title" --json number,title \
             --jq ".[] | select(.title == \"$title\") | .number" | head -1)
