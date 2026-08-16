@@ -819,9 +819,9 @@ When our mesh ISM encounters rooms with many coplanar polygons (common in archit
 
 Our cardioid model is frequency-independent. Real instruments and loudspeakers have strongly frequency-dependent radiation patterns (narrow at high frequencies, omnidirectional at low). Adding frequency dependence to the `Model` interface (`GainLinear(freqHz, direction)` already accepts frequency but our models ignore it) would improve high-frequency early reflections.
 
-**9. SOFA File Loading for HRTFs**
+**9. SOFA File Loading for HRTFs** — _implemented in Phase 24.2._
 
-Our HRTF infrastructure supports the `Dataset` interface and barycentric interpolation, but SOFA file loading is only a stub. The SOFA format is the standard for exchanging HRTF datasets. Full loading support would allow using individualized or high-resolution HRTF measurements.
+`hrtf/sofa` loads `SimpleFreeFieldHRIR` files, so individualized and high-resolution measurements (CIPIC, LISTEN, ARI) can drive binaural rendering. See [HRTF usage](hrtf-sofa.md). What remains open is barycentric interpolation over a loaded set: no triangle topology is built from the measurement sphere, so lookups are nearest-neighbor.
 
 **10. Image Source Tree (IST) for Dynamic Geometry**
 

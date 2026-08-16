@@ -155,12 +155,51 @@ Second-order edge diffraction: edge-to-edge path enumeration with mutual visibil
 
 #### 24.2 SOFA file loading (`hrtf/`)
 
-- [ ] SOFA file reader: parse NetCDF-based SimpleFreeFieldHRIR convention (positions, HRIRs, sample rate, delays)
-- [ ] Build `MeasurementGrid` from loaded data
-- [ ] `LoadSOFA(path string) (*NearestNeighborDataset, error)` convenience function
-- [ ] Support CIPIC, LISTEN, and ARI datasets
-- [ ] Unit test: load small SOFA file, verify measurement count and known HRIR
-- [ ] Integration test: binaural IR with SOFA HRTFs, verify ITD for lateral source
+- [x] SOFA file reader: parse NetCDF-based SimpleFreeFieldHRIR convention
+      (positions, HRIRs, sample rate, delays) — via `github.com/cwbudde/go-sofa`
+      v0.1.0 over the pure-Go `go-hdf5`, rather than a reader written here
+- [x] Build `MeasurementGrid` from loaded data
+- [x] `sofa.Load(path string) (*hrtf.NearestNeighborDataset, error)` convenience
+      function
+- [x] Support CIPIC, LISTEN, and ARI datasets
+- [x] Unit test: load small SOFA file, verify measurement count and known HRIR
+- [x] Integration test: binaural IR with SOFA HRTFs, verify ITD for lateral source
+
+> **Packaging, and an API removal.** The reader lives in a new `hrtf/sofa`
+> package, and the `sofa` build tag is gone along with `hrtf.LoadSOFA` and
+> `hrtf.SOFAAdapter`. `go-hdf5` is pure Go, so nothing forced a build tag; and
+> because the linker only pulls a package's dependencies into binaries that
+> import it, a subpackage keeps HDF5 out of the WASM demo and `roomir` without
+> one — while letting the tests run in the ordinary `just test` pass. The tag
+> never had a CI job, so its code path was untested by construction.
+>
+> Removing those two exported symbols means **the next release must be a minor
+> bump**. Call-site rewrite: `hrtf.LoadSOFA(path)` (which only ever returned an
+> error) → `sofa.Load(path)` from `github.com/cwbudde/algo-acoustics/hrtf/sofa`,
+> returning `*hrtf.NearestNeighborDataset`.
+>
+> Scene JSON deliberately cannot name a `.sofa` path: `scene` is compiled into
+> the browser bundle, so importing the loader there would drag HDF5 in with it.
+>
+> **Upstream first.** `go-sofa` had no tags at all and did not expose the
+> `Type`/`Units` attributes naming each position dataset's coordinate system —
+> without which spherical `SimpleFreeFieldHRIR` positions are indistinguishable
+> from cartesian ones, and reading them wrong misplaces every measurement
+> silently. Both were added upstream and released as `go-sofa` v0.1.0 before
+> this repo took the dependency, per the ordering rule in AGENTS.md.
+>
+> `Load` refuses rather than approximates: non-FIR data, receiver counts other
+> than two, an unknowable coordinate system, and a missing `Data.SamplingRate`
+> all fail with a message naming the cause. That last one is not hypothetical —
+> the ARI file in the go-sofa corpus omits the field entirely, and there is no
+> safe default. Per-ear `Data.Delay` is folded in by keeping the common delay
+> and baking the difference into the later ear's HRIR, since `Lookup` returns a
+> single delay for both ears. See `docs/hrtf-sofa.md`.
+>
+> Dataset support is verified against real files without committing any:
+> `ALGO_SOFA_CORPUS=<dir> go test ./hrtf/sofa/` loads every `.sofa` in a
+> directory and requires each to either produce a usable dataset or fail for a
+> stated reason.
 
 ---
 

@@ -7,6 +7,7 @@ require (
 	github.com/cwbudde/algo-fft v0.8.0
 	github.com/cwbudde/algo-pde v0.2.2
 	github.com/cwbudde/gll-tools v0.1.1
+	github.com/cwbudde/go-sofa v0.1.0
 	github.com/cwbudde/wav v0.1.0
 	github.com/go-audio/audio v1.0.0
 	github.com/golangci/golangci-lint v1.64.8
@@ -53,6 +54,7 @@ require (
 	github.com/ckaznocha/intrange v0.3.0 // indirect
 	github.com/curioswitch/go-reassign v0.3.0 // indirect
 	github.com/cwbudde/algo-vecmath v0.1.3 // indirect
+	github.com/cwbudde/go-hdf5 v0.15.0 // indirect
 	github.com/daixiang0/gci v0.13.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect

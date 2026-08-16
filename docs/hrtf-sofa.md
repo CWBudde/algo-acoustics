@@ -70,13 +70,65 @@ Interpolation is explicit opt-in through `InterpolatingDataset` or
 valid containing triangle exists, and is not currently a scene-JSON dataset
 type.
 
-## SOFA Status
+## Loading SOFA Files
 
-SOFA file loading is not implemented. Without the `sofa` build tag,
-`LoadSOFA` reports that the tag is required; tagged builds expose the adapter
-but still return an error because no concrete SOFA reader is wired in. Convert
-measurements into a `MeasurementGrid` in application code for now; do not treat
-the tagged adapter as full SOFA ingestion.
+`hrtf/sofa` reads measured HRTFs from SOFA (AES69) files into the grid
+described above:
+
+```go
+import "github.com/cwbudde/algo-acoustics/hrtf/sofa"
+
+dataset, err := sofa.Load("CIPIC_subject_003_hrir_final.sofa")
+if err != nil {
+	return err
+}
+
+receiver := scene.Receiver{
+	Position:    geometry.Vec3{X: 4, Y: 2, Z: 1.2},
+	Orientation: geometry.QuatIdentity(),
+	Type:        scene.ReceiverBinaural,
+	HRTF:        *dataset,
+}
+```
+
+The loader reads `SimpleFreeFieldHRIR` and the measured datasets built on it —
+CIPIC, LISTEN, ARI. Source positions are converted from the file's own
+coordinate system into the head frame this library uses: azimuth from +X in the
+XY plane, elevation toward +Z. Receiver positions decide which measurement is
+the left ear, so a file that stores the right ear first still loads correctly.
+
+It is a separate package on purpose. The reader pulls in an HDF5
+implementation, and Go's linker only includes that in binaries importing it, so
+the WASM demo and the `roomir` CLI pay nothing for it. That is also why scene
+JSON cannot name a `.sofa` path: `scene` is compiled into the browser bundle,
+and importing the loader there would drag HDF5 in with it. Load the file in Go
+and assign the dataset to the receiver, as above.
+
+### Limits
+
+`Load` rejects rather than approximates, and says why:
+
+- **Impulse responses only.** Frequency-domain (`TF`, `TF-E`) and
+  second-order-section (`SOS`) files are refused, including SH-encoded HRTFs.
+- **Two receivers.** Files with one receiver or a microphone array are refused.
+- **No resampling.** The file's rate becomes the dataset's rate, and the scene
+  sample rate must match it.
+- **The coordinate system must be knowable.** A file that omits the
+  `SourcePosition` `Type` attribute is only assumed spherical when its
+  convention mandates it; otherwise loading fails rather than guess, because
+  reading spherical positions as cartesian misplaces every measurement
+  silently.
+- **A sample rate must be present.** Some published files omit
+  `Data.SamplingRate` entirely; there is no safe default.
+
+`Data.Delay` is folded into the measurements. Since `Lookup` returns one delay
+for both ears, the common part travels as the delay and the per-ear excess
+becomes leading zeros in that ear's HRIR, preserving the ITD. The sub-sample
+remainder is dropped, which is moot for the datasets above: they carry their
+ITD inside the HRIRs with `Data.Delay` zero.
+
+No triangle topology is built, so a loaded dataset does nearest-neighbor
+lookup. `InterpolatingDataset` falls back to nearest without triangles anyway.
 
 Low-frequency PDE blending is mono-only. `render-stereo` combines binaural ISM
 and directional late-field buffers, but does not apply `Renderer.LowFreq`.
