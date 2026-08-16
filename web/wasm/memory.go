@@ -8,7 +8,7 @@ import (
 	"runtime/debug"
 )
 
-// Memory budget for the browser demo (PLAN.md phase 19.2).
+// Memory budget for the browser demo; see docs/wasm-memory-budget.md.
 //
 // A Go/WASM linear-memory heap only ever grows: the browser never hands pages
 // back, so the highest point a render reaches stays resident for the life of
@@ -28,7 +28,7 @@ import (
 //     method in two rooms and pair the results, so the live event set grows with
 //     the square of the single-room image count.
 const (
-	// demoMemoryBudgetBytes is the phase 19.2 target: peak WASM linear memory
+	// demoMemoryBudgetBytes is the demo target: peak WASM linear memory
 	// stays below this for every request the demo API accepts.
 	demoMemoryBudgetBytes int64 = 512 << 20
 

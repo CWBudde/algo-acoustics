@@ -55,8 +55,8 @@ type GroupFactor struct {
 
 // Path-type taxonomy.
 //
-// PLAN.md names four path types — PS2R, PS2P, SS2R, SS2P — that docs/raven.md
-// never expands. The expansion below is ours, not the reference's. It follows
+// The four path types below — PS2R, PS2P, SS2R, SS2P — are ours; docs/raven.md
+// never expands the taxonomy. See docs/sound-transmission.md. It follows
 // the structure of H_PP directly: raven.md marks only the source and receiver
 // factors as complex and binaural, so a hop ending at a portal is scalar per
 // band while a hop ending at the receiver carries direction through the HRTF.

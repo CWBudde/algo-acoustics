@@ -82,8 +82,8 @@ regression test pins that against the Phase 21 renderer at image-source orders
 
 ### Path types
 
-`PLAN.md` names four path types that `raven.md` never expands. **The expansion
-below is ours, not the reference's.** It follows the structure of `H_PP`
+`raven.md` never expands the path taxonomy. **The four names below are ours, and
+are defined here.** They follow the structure of `H_PP`
 directly: only the source and receiver factors are marked complex and binaural
 there, so a hop ending at a portal is scalar per band while a hop ending at the
 receiver carries direction through the HRTF.

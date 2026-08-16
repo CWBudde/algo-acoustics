@@ -59,7 +59,8 @@ heatmap probe cost regardless of how many planes they form.
 
 ### Rays: 16,384, not the 50,000 originally planned
 
-PLAN.md proposed a 50,000-ray ceiling. Memory allows it easily — 50,000 rays cost
+The original roadmap proposed a 50,000-ray ceiling. Memory allows it easily —
+50,000 rays cost
 about 25 MiB against a 512 MiB budget — but wall-clock does not.
 
 Measured under `go_js_wasm_exec` on the default demo room, ray cost is close to

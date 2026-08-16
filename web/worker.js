@@ -47,8 +47,9 @@ self.addEventListener("message", async (event) => {
       });
     };
 
-    // Progressive tiers (PLAN.md 19.7). Go calls this from inside the render,
-    // which is synchronous and holds this worker for its whole duration.
+    // Progressive tiers (docs/web-demo-limits.md). Go calls this from inside
+    // the render, which is synchronous and holds this worker for its whole
+    // duration.
     // postMessage still delivers, because it queues the message on the page's
     // thread rather than needing this worker's own event loop.
     self.algoAcousticsDemoTier = (tier, payload) => {

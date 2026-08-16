@@ -49,6 +49,35 @@ GOPRIVATE=github.com/cwbudde/* GONOSUMDB=github.com/cwbudde/* \
 go mod verify
 ```
 
+## Dependency Currency
+
+The quarterly audit above is the slow loop. The fast loop is the release guard,
+`scripts/release-guard.sh`, exposed as `just check-deps`, `just check-unreleased`,
+and `just tag-release vX.Y.Z`, plus a weekly
+[`dep-drift`](../.github/workflows/dep-drift.yml) workflow that files an issue and
+a Renovate config that groups the whole `cwbudde` family into a single bump PR.
+
+The rules those commands enforce — why the family must not drift onto different
+`algo-fft` versions, why releases flow up the dependency graph rather than
+sideways, and why an incompatible change requires a **minor** bump even though
+semver exempts `v0.x` — are stated in full under "Releasing, and Not Drifting" in
+[AGENTS.md](../AGENTS.md). Read that before tagging anything.
+
+**Record a deliberately deferred bump here**, in this section, as a short dated
+note naming the module, the version held back, and why. Both the release guard
+and the weekly drift workflow point operators at this file. An undocumented old
+pin is indistinguishable from a forgotten one, which is the failure this whole
+mechanism exists to prevent.
+
+Currently deferred:
+
+- **2026-08-16 — `algo-approx` v0.1.0, latest v0.2.0.** Not actionable here.
+  It is not a direct requirement of this module (`go mod why` reports the main
+  module does not need it); it reaches the graph through `algo-dsp`, which pins
+  v0.1.0. Per the release ordering rule, `algo-dsp` must take the bump and cut a
+  tag first — bumping a consumer ahead of its dependency is what forces
+  pseudo-versions into `go.mod`. `just check-deps` fails on this until then.
+
 ## Benchmark Baseline Updates
 
 Baseline updates are a consequence of an understood change, not a maintenance

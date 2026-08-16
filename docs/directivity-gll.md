@@ -191,7 +191,7 @@ compared, or written out without keeping megabytes of measurement data alive.
 Extraction fails with a clear error when the balloon has no loaded responses,
 which is the case for a model built by `LoadGLLFile`.
 
-## Known GLL Symmetry Limitation
+## Known GLL Symmetry Limitation (worked around here)
 
 With `gll-tools` v0.1.1, the version pinned in `go.mod`, balloon lookups are
 incorrect for sources whose balloon uses Quarter, Vertical, Horizontal, or
@@ -201,13 +201,23 @@ enum values than `pkg/gll.SymmetryType` defines.
 The symptom is off-axis gains that rise above the on-axis level and then
 flatline as indices are clamped past the end of the response array, and two
 different sources that return identical patterns. Sources with `SymmetryNone`
-are unaffected. A fix exists upstream and is expected in the next `gll-tools`
-release.
+are unaffected.
+
+**This adapter works around it.** `repairSymmetryCode` (`directivity/gll.go`)
+looks measurements up through the encoding those grid helpers actually read, so
+the affected symmetries render correctly today rather than silently wrong. The
+rewrite happens on a shallow copy per lookup, leaving the caller's `*ggll.File`
+untouched. This was not a hypothetical exposure: the checked-in test fixture is
+itself Quarter-symmetric, so the defect was live in our own tests.
+
+The workaround is temporary. A fix exists on the `gll-tools` main branch and is
+awaiting a release tag.
+`TestGLLToolsSymmetryWorkaroundStillNeeded` pins `gllToolsVersion` and fails when
+the pin moves, so **`repairSymmetryCode` must be removed as part of the `go.mod`
+bump** — it would otherwise double-apply against a fixed upstream.
 
 This affects the GLL lookup only. `FrequencyDependentCardioid` and
-`BalloonDirectivity` do not use the `gll-tools` grid math and are unaffected,
-though a balloon extracted from an affected GLL file inherits the incorrect
-values.
+`BalloonDirectivity` do not use the `gll-tools` grid math and are unaffected.
 
 ## Serialization Scope
 
