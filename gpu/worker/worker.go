@@ -45,6 +45,15 @@ type callResult struct {
 // The binary must accept a single argument: the Unix socket path to listen on.
 // ctx is used only for the initial connection; the worker runs until Close.
 func Start(ctx context.Context, serverBin string) (*Worker, error) {
+	// The bulk data path needs the Linux-only shared memory transport, so fail
+	// here rather than mid-transfer.  Start is the single funnel for Probe and
+	// StartIfAvailable, and the error wraps ErrGPUUnavailable, so callers take
+	// the documented CPU fallback instead of seeing a late, opaque failure.
+	err := platformSupported()
+	if err != nil {
+		return nil, err
+	}
+
 	// Choose a temporary socket path.
 	sockPath := filepath.Join(os.TempDir(),
 		fmt.Sprintf("algo_gpu_%d.sock", os.Getpid()))
@@ -56,7 +65,7 @@ func Start(ctx context.Context, serverBin string) (*Worker, error) {
 	cmd.Stdout = os.Stderr                                           // server log → caller's stderr
 	cmd.Stderr = os.Stderr
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		return nil, fmt.Errorf("start GPU server %q: %w", serverBin, err)
 	}

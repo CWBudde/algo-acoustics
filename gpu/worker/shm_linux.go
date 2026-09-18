@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -79,11 +78,6 @@ func closeShm(name string, data []byte) error {
 	return nil
 }
 
-// float32sToBytes reinterprets []float32 as []byte without copying.
-func float32sToBytes(f []float32) []byte {
-	if len(f) == 0 {
-		return nil
-	}
-
-	return unsafe.Slice((*byte)(unsafe.Pointer(&f[0])), len(f)*4)
-}
+// platformSupported reports whether this build has a working shared memory
+// transport.  On Linux it always does.
+func platformSupported() error { return nil }
