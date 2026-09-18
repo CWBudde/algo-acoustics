@@ -7,6 +7,72 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — breaking
+
+The root package `algoacoustics` held three unrelated jobs and 85 exported
+declarations, only 11 of which were used outside it. It now holds only the
+renderer and its engine contracts (18 declarations). Two groups moved out.
+
+**Multi-room propagation moved to `github.com/cwbudde/algo-acoustics/crossroom`.**
+It stays public. Symbols were de-stuttered for the new package name:
+
+| Before (`algoacoustics.`) | After (`crossroom.`) |
+| --- | --- |
+| `NewCrossRoomEngine` | `NewEngine` |
+| `CrossRoomEngineConfig` | `EngineConfig` |
+| `CrossRoomEngine` | `Engine` |
+| `CrossRoomLateEngine` | `LateEngine` |
+| `TransmissionEarlyEngine` | `EarlyEngine` |
+| `NetworkRenderer` | `Network` |
+| `NewNetworkRenderer` | `NewNetwork` |
+| `NetworkRendererConfig` | `NetworkConfig` |
+| `NetworkPlan` | `Plan` |
+| `NetworkTruncation` | `Truncation` |
+| `TransmissionRenderer` | `OneHop` |
+| `NewTransmissionRenderer` | `NewOneHop` |
+| `TransmissionRendererConfig` | `OneHopConfig` |
+| `GroupResponseCache` | `ResponseCache` |
+| `NewGroupResponseCache` | `NewResponseCache` |
+| `DefaultGroupResponseCacheBytes` | `DefaultCacheBytes` |
+| `LowFreqSceneForMultiRoom` | `LowFreqScene` |
+| `MultiRoomLowFreq` | `LowFreq` |
+
+Call-site rewrite:
+
+```go
+// before
+engine := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{...})
+// after
+engine := crossroom.NewEngine(sc, crossroom.EngineConfig{...})
+```
+
+`algoacoustics.CrossRoomEngine` still exists in the root package as an alias for
+`BinauralLateBufferEngine`, documenting the `Renderer.Transmission` field.
+`crossroom.Engine` declares the same method set independently, so an engine from
+either package satisfies the other without an import between them.
+
+**Removed from the public API** — these were exported only for cross-file use
+inside the old root package and could not be meaningfully constructed by a
+caller: `GroupResponseKey`, `GroupFactor`, and `GroupResponseCache`'s `Get`,
+`Put` and `InvalidateSignature`. `ResponseCache.Stats` and `CacheStats` remain.
+
+**Progressive preview machinery moved to `internal/preview`** and is no longer
+public: `RenderProgressive`, `ProgressiveConfig`, `Tier`, `TierResult`,
+`UpdateFunc`, `StatisticalMetrics`, `ComputeStatisticalMetrics`, `QualityPreset`,
+`PresetConfig`, `StatisticalTailConfig`, `SynthesizeStatisticalTail`,
+`ReplaceStatisticalTail`, `Debouncer` and `NewDebouncer`. It served the WASM demo
+rather than the rendering contract, and no caller outside this module used it.
+
+**`RaytraceEngineConfig` moved to `raytrace.EngineConfig`.**
+`algoacoustics.RaytraceEngineConfig` remains as a type alias, so existing call
+sites compile unchanged. The new home lets the root adapter and the cross-room
+engines share one config without depending on each other. The direction-group
+defaulting, previously duplicated in three places, is now
+`raytrace.EngineConfig.DirectionGroupCounts`.
+
+This is pure code motion: `just test-regression` and `just test-integration`
+produce identical output before and after.
+
 ## [v0.1.0]
 
 First tagged release. Everything below was already on `main`; this entry records

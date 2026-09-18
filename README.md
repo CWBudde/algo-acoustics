@@ -8,7 +8,10 @@ A Go-native room acoustics toolkit for offline simulation of sound propagation,
 early reflections, diffuse late reverberation, low-frequency modal blending, and
 optional binaural rendering. The shipped `NewISMEngine` produces sparse early
 events; `NewRaytraceEngine` preserves banded late-field energy as a dense mono
-or directional binaural buffer.
+or directional binaural buffer. Propagation between rooms lives in the
+[`crossroom`](https://pkg.go.dev/github.com/cwbudde/algo-acoustics/crossroom)
+package, whose `NewEngine` picks between the one-hop fast path and the
+multi-room filter network.
 
 ## Status
 

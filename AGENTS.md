@@ -45,7 +45,10 @@ Scene → validate
                  time/frequency crossover → final IR → WAV/export
 ```
 
-Orchestrated by `Renderer` in `renderer.go` at the module root.
+Orchestrated by `Renderer` in `renderer.go` at the module root. The root package
+holds only `Renderer`, the engine interfaces, and the stock ISM/raytrace
+adapters; multi-room work lives in `crossroom/` and the interactive preview
+machinery in `internal/preview/`.
 
 ### Key Interfaces
 
@@ -57,23 +60,27 @@ Orchestrated by `Renderer` in `renderer.go` at the module root.
 
 ### Package Roles
 
-| Package         | Role                                                                            |
-| --------------- | ------------------------------------------------------------------------------- |
-| `acoustics`     | Physical constants, octave band specs (`Octave6`, `Octave8`)                    |
-| `geometry`      | Vec3, Ray, Plane, Triangle, BVH, intersection tests, quaternions                |
-| `scene`         | Room definition (shoebox/mesh), materials, sources, receivers, validation       |
-| `directivity`   | Source directivity models behind `Model` interface                              |
-| `hrtf`          | HRTF dataset lookup/interpolation; tagged SOFA adapter is still a loading stub  |
-| `ir`            | Sparse `Event` → dense `Buffer` rendering, band gain aggregation, normalization |
-| `ism`           | Image-source method solver (early specular reflections)                         |
-| `raytrace`      | Monte Carlo ray tracer (late-field diffuse energy histograms)                   |
-| `pde`           | Helmholtz solver for low-frequency modal content                                |
-| `hybrid`        | Crossover blending of early/late events and geometric/modal IRs                 |
-| `metrics`       | IR comparison, acoustic metrics                                                 |
-| `export`        | WAV/JSON/CSV output                                                             |
-| `cmd/roomir`    | Main CLI (validate, render, render-stereo, dump-events)                         |
-| `cmd/roombench` | Regression benchmark runner                                                     |
-| `web/wasm`      | WASM entry point exposing `renderScene()` to JavaScript                         |
+| Package              | Role                                                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `acoustics`          | Physical constants, octave band specs (`Octave6`, `Octave8`)                                                                            |
+| `geometry`           | Vec3, Ray, Plane, Triangle, BVH, intersection tests, quaternions                                                                        |
+| `scene`              | Room definition (shoebox/mesh), materials, sources, receivers, validation                                                               |
+| `directivity`        | Source directivity models behind `Model` interface                                                                                      |
+| `hrtf`               | HRTF dataset lookup/interpolation; tagged SOFA adapter is still a loading stub                                                          |
+| `ir`                 | Sparse `Event` → dense `Buffer` rendering, band gain aggregation, normalization                                                         |
+| `ism`                | Image-source method solver (early specular reflections)                                                                                 |
+| `raytrace`           | Monte Carlo ray tracer (late-field diffuse energy histograms)                                                                           |
+| `pde`                | Helmholtz solver for low-frequency modal content                                                                                        |
+| `hybrid`             | Crossover blending of early/late events and geometric/modal IRs                                                                         |
+| `crossroom`          | Multi-room propagation: the one-hop fast path, the filter network, the dispatch between them, and the multi-room low-frequency stand-in |
+| `metrics`            | IR comparison, acoustic metrics                                                                                                         |
+| `export`             | WAV/JSON/CSV output                                                                                                                     |
+| `internal/pipeline`  | Shared render helpers used by the CLI and the WASM demo                                                                                 |
+| `internal/preview`   | Progressive tiers, quality presets, statistical tail synthesis, render debouncing                                                       |
+| `internal/buildinfo` | Version string stamped in via ldflags at release                                                                                        |
+| `cmd/roomir`         | Main CLI (validate, render, render-stereo, dump-events)                                                                                 |
+| `cmd/roombench`      | Regression benchmark runner                                                                                                             |
+| `web/wasm`           | WASM entry point exposing `renderScene()` to JavaScript                                                                                 |
 
 ### Data Flow Types
 

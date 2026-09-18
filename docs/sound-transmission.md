@@ -50,7 +50,7 @@ The built-in transmission renderer supports:
 
 This renderer stays the fast path for exactly that shape, so its output is
 unchanged. Anything beyond it — portal chains above all — is handled by the
-multi-room filter network below, which `NewCrossRoomEngine` selects
+multi-room filter network below, which `crossroom.NewEngine` selects
 automatically.
 
 ## Metrics and Interactive Aperture
@@ -61,7 +61,7 @@ energy coefficients as `-10*log10(sum(tau_ij))`.
 
 ## Multi-Room Filter Network
 
-`NetworkRenderer` renders propagation across any number of rooms as the filter
+`crossroom.Network` renders propagation across any number of rooms as the filter
 network of `docs/raven.md` section 5.2: a path is the product
 
 ```text
@@ -140,7 +140,7 @@ triggers no new simulation.
 
 The open endpoint is now a **physically merged room group**, not the `tau = 1`
 all-pass stand-in it used to be. Nothing in the demo changed to achieve that:
-`NewCrossRoomEngine` routes any open portal to the filter network, because the
+`crossroom.NewEngine` routes any open portal to the filter network, because the
 Phase 21 renderer models "open" as a fully transmissive partition with the two
 rooms still geometrically separate, while the scene graph cuts the aperture out
 of both walls and merges the volumes into one cavity.
