@@ -14,6 +14,7 @@ linters:
     - err113 # sentinel errors too verbose for this codebase
     - exhaustive # don't require exhaustive switch on enums
     - exhaustruct # don't require all struct fields populated
+    - exhaustruct_v5 # renamed from exhaustruct in v2.13; same rationale
     - gochecknoglobals # constants and singletons are fine
     - godox # allow TODO/FIXME comments
     - gomodguard # deprecated; gomodguard_v2 is enabled below

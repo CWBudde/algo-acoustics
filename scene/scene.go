@@ -12,7 +12,7 @@ import (
 // receivers. Room preserves the original single-room Go and JSON API; new
 // multi-room scenes use Rooms instead.
 //
-
+//nolint:recvcheck // MarshalJSON stays value-based so a Scene value still marshals; UnmarshalJSON must mutate the receiver.
 type Scene struct {
 	Room       Room                `json:"-"`
 	Rooms      []Room              `json:"-"`
