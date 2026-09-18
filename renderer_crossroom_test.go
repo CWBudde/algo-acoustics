@@ -5,9 +5,13 @@ import (
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/acoustics"
+	"github.com/cwbudde/algo-acoustics/crossroom"
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/hrtf"
+	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
+	"github.com/cwbudde/algo-acoustics/ism"
+	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
@@ -28,6 +32,53 @@ func TestRendererRejectsNilCrossRoomBuffers(t *testing.T) {
 	}
 }
 
+// TestRendererRoutesMultiRoomMonoAndBinaural drives Renderer through a real
+// cross-room engine rather than the fake above, so it covers the routing that
+// nilCrossRoomEngine deliberately short-circuits.
+func TestRendererRoutesMultiRoomMonoAndBinaural(t *testing.T) {
+	t.Parallel()
+
+	sc := twoRoomScene(0.5)
+	renderCfg := twoRoomRenderConfig(sc)
+	transmission := crossroom.NewOneHop(crossroom.OneHopConfig{
+		ISM: ism.ISMConfig{MaxOrder: 0},
+		Raytrace: raytrace.EngineConfig{
+			Launch: raytrace.LaunchConfig{
+				NumRays:        256,
+				MaxBounces:     2,
+				MaxTimeSeconds: renderCfg.DurationSeconds,
+				SpeedOfSound:   acoustics.SpeedOfSound,
+			},
+			ReceiverRadius:     0.3,
+			BinDurationSeconds: 0.005,
+		},
+		Hybrid: hybrid.HybridConfig{
+			CrossoverMode:        hybrid.TimeBased,
+			CrossoverTimeSeconds: 0.03,
+			SmoothenCrossover:    true,
+		},
+	})
+	renderer := Renderer{Transmission: transmission}
+
+	mono, err := renderer.RenderMono(sc, renderCfg)
+	if err != nil {
+		t.Fatalf("RenderMono() error = %v", err)
+	}
+
+	if !hasSignal(mono) {
+		t.Fatal("RenderMono() returned silence")
+	}
+
+	left, right, err := renderer.RenderStereo(sc, renderCfg)
+	if err != nil {
+		t.Fatalf("RenderStereo() error = %v", err)
+	}
+
+	if !hasSignal(left) || !hasSignal(right) {
+		t.Fatal("RenderStereo() returned a silent channel")
+	}
+}
+
 type nilCrossRoomEngine struct{}
 
 func (nilCrossRoomEngine) RenderMono(*scene.Scene, ir.RenderConfig) (*ir.Buffer, error) {
@@ -43,8 +94,9 @@ func (nilCrossRoomEngine) RenderBinaural(
 }
 
 // twoRoomScene is a minimal multi-room scene with a binaural receiver, which
-// RenderStereo requires. Renderer only routes here — the engine is a fake — so
-// the geometry needs to be well-formed, not acoustically interesting.
+// RenderStereo requires. Two shoeboxes joined by a closed portal is the whole
+// setup: enough for a real one-hop engine to carry energy through the
+// partition, and well-formed enough for the fake engine above to be reached.
 func twoRoomScene(tau float64) *scene.Scene {
 	wallMaterials := [6]string{"wall", "wall", "wall", "wall", "wall", "wall"}
 
@@ -85,4 +137,14 @@ func twoRoomScene(tau float64) *scene.Scene {
 
 func twoRoomRenderConfig(sc *scene.Scene) ir.RenderConfig {
 	return ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 0.08, BandSpec: sc.BandSpec}
+}
+
+func hasSignal(samples []float64) bool {
+	for _, sample := range samples {
+		if sample != 0 {
+			return true
+		}
+	}
+
+	return false
 }
