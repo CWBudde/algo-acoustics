@@ -71,12 +71,12 @@ mechanism exists to prevent.
 
 Currently deferred:
 
-- **2026-08-16 — `algo-approx` v0.1.0, latest v0.2.0.** Not actionable here.
-  It is not a direct requirement of this module (`go mod why` reports the main
-  module does not need it); it reaches the graph through `algo-dsp`, which pins
-  v0.1.0. Per the release ordering rule, `algo-dsp` must take the bump and cut a
-  tag first — bumping a consumer ahead of its dependency is what forces
-  pseudo-versions into `go.mod`. `just check-deps` fails on this until then.
+- **2026-09-18 — nothing is deferred.** The one open entry, `algo-approx` held at
+  v0.1.0 against a released v0.2.0, is resolved. `algo-dsp` took the bump and
+  released it as v0.7.1, so v0.2.0 arrived here transitively when that tag was
+  consumed — which is what the release ordering rule is meant to produce, and why
+  no direct requirement on `algo-approx` was ever added to this module.
+  `just check-deps` now reports every sibling at its latest tag.
 
 ## Benchmark Baseline Updates
 
