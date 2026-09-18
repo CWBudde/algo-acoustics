@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	algoacoustics "github.com/cwbudde/algo-acoustics"
+	"github.com/cwbudde/algo-acoustics/internal/preview"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
@@ -32,7 +32,7 @@ import (
 // warning. A coarse impulse response with an explanation beats a blocked worker
 // and no result at all.
 //
-// The demo deliberately does not call algoacoustics.RenderProgressive itself.
+// The demo deliberately does not call preview.RenderProgressive itself.
 // That function covers a single mono hybrid render; the demo must also serve
 // early-only, late-only, and connected-room requests, and its final tier has to
 // stay bit-identical to what the non-progressive path produced before this
@@ -41,7 +41,7 @@ import (
 
 const (
 	// previewTierMaxOrder caps the image-source order of the preview tier. It
-	// mirrors ProgressiveConfig.PreviewISMOrder's default.
+	// mirrors preview.ProgressiveConfig.PreviewISMOrder's default.
 	previewTierMaxOrder = 2
 
 	// previewTierNumRays is the preview tier's ray budget. It is far below
@@ -162,7 +162,7 @@ type demoStatistics struct {
 // broadband figures the demo displays. The second result reports whether the
 // estimators produced anything: a mesh room has no shoebox volume to work from.
 func computeDemoStatistics(sc *scene.Scene) (demoStatistics, bool) {
-	metrics := algoacoustics.ComputeStatisticalMetrics(sc)
+	metrics := preview.ComputeStatisticalMetrics(sc)
 	if metrics == nil || len(metrics.SabineRT60ByBand) == 0 {
 		return demoStatistics{}, false
 	}
