@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
@@ -10,7 +10,7 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-func dynamicTestConfig() NetworkRendererConfig {
+func dynamicTestConfig() NetworkConfig {
 	cfg := networkTestConfig()
 	cfg.ISM = ism.ISMConfig{MaxOrder: 1}
 
@@ -19,11 +19,11 @@ func dynamicTestConfig() NetworkRendererConfig {
 
 // dynamicRenderer builds a renderer with a working ray-tracing configuration,
 // which the dense render needs even when only the early field is compared.
-func dynamicRenderer(floorDB float64) *NetworkRenderer {
+func dynamicRenderer(floorDB float64) *Network {
 	cfg := dynamicTestConfig()
 	cfg.BandFloorDB = floorDB
 
-	return NewNetworkRenderer(cfg)
+	return NewNetwork(cfg)
 }
 
 // TestNetworkPlanApplyInvalidatesOnlyTheMergedGroup pins the property the whole
@@ -220,7 +220,7 @@ func TestNetworkPlanDynamicMatchesColdRender(t *testing.T) {
 
 	// Rebuild the same configuration from scratch. The reference needs its own
 	// renderer as well as its own scene: sharing this one would let both sides
-	// read the same GroupResponseCache, so a stale-keying bug could hand them
+	// read the same ResponseCache, so a stale-keying bug could hand them
 	// the same wrong factors and the comparison would still pass.
 	cold := chainRoomScene(t, 3, 0.25)
 	cold.Portals[1].State = scene.PortalOpen
@@ -294,7 +294,7 @@ func TestPortalCacheRendersAllThreeStates(t *testing.T) {
 	sc.Receivers[0].HRTF = hrtf.NoopDataset{SampleRateHz: sc.SampleRate}
 	cfg := transmissionTestRenderConfig(sc)
 
-	renderer := NewNetworkRenderer(dynamicTestConfig())
+	renderer := NewNetwork(dynamicTestConfig())
 
 	cache, err := renderer.PortalCache(sc, sc.Receivers[0], cfg, 0)
 	if err != nil {
@@ -367,22 +367,22 @@ func buffersMatch(first, second *ir.Buffer) bool {
 func TestCrossRoomEngineSelectionFollowsPortalState(t *testing.T) {
 	t.Parallel()
 
-	closedEngine := NewCrossRoomEngine(transmissionTestScene(0.25), CrossRoomEngineConfig{})
-	if _, ok := closedEngine.(*TransmissionRenderer); !ok {
+	closedEngine := NewEngine(transmissionTestScene(0.25), EngineConfig{})
+	if _, ok := closedEngine.(*OneHop); !ok {
 		t.Fatalf("a closed portal selected %T, want the Phase 21 fast path", closedEngine)
 	}
 
 	open := transmissionTestScene(0.25)
 	open.Portals[0].State = scene.PortalOpen
 
-	openEngine := NewCrossRoomEngine(open, CrossRoomEngineConfig{})
-	if _, ok := openEngine.(*NetworkRenderer); !ok {
+	openEngine := NewEngine(open, EngineConfig{})
+	if _, ok := openEngine.(*Network); !ok {
 		t.Fatalf("an open portal selected %T, want the filter network", openEngine)
 	}
 
 	// A portal chain is beyond the Phase 21 shape whatever its state.
-	chained := NewCrossRoomEngine(chainRoomScene(t, 3, 0.25), CrossRoomEngineConfig{})
-	if _, ok := chained.(*NetworkRenderer); !ok {
+	chained := NewEngine(chainRoomScene(t, 3, 0.25), EngineConfig{})
+	if _, ok := chained.(*Network); !ok {
 		t.Fatalf("a portal chain selected %T, want the filter network", chained)
 	}
 }

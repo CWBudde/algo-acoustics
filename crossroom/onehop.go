@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"errors"
@@ -17,31 +17,26 @@ import (
 
 const transmissionPortalOffsetMeters = 1e-5
 
-// CrossRoomEngine renders a source and receiver separated by one or more
-// portals between the same adjacent room pair. Its method set intentionally
-// matches BinauralLateBufferEngine, while the alias documents field semantics.
-type CrossRoomEngine = BinauralLateBufferEngine
-
-// TransmissionRendererConfig configures the one-hop secondary-source model.
-type TransmissionRendererConfig struct {
+// OneHopConfig configures the one-hop secondary-source model.
+type OneHopConfig struct {
 	ISM      ism.ISMConfig
-	Raytrace RaytraceEngineConfig
+	Raytrace raytrace.EngineConfig
 	Hybrid   hybrid.HybridConfig
 }
 
-// TransmissionRenderer implements the Phase 21 one-hop secondary-source
+// OneHop implements the Phase 21 one-hop secondary-source
 // model. Full acoustic scene-graph traversal remains a Phase 25 concern.
-type TransmissionRenderer struct {
-	Config TransmissionRendererConfig
+type OneHop struct {
+	Config OneHopConfig
 }
 
-// NewTransmissionRenderer constructs the built-in one-hop renderer.
-func NewTransmissionRenderer(cfg TransmissionRendererConfig) *TransmissionRenderer {
-	return &TransmissionRenderer{Config: cfg}
+// NewOneHop constructs the built-in one-hop renderer.
+func NewOneHop(cfg OneHopConfig) *OneHop {
+	return &OneHop{Config: cfg}
 }
 
 // SolveEarly renders transmitted direct and specular pressure events.
-func (r *TransmissionRenderer) SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) ([]ir.Event, error) {
+func (r *OneHop) SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) ([]ir.Event, error) {
 	if r == nil {
 		return nil, errors.New("transmission renderer is nil")
 	}
@@ -117,7 +112,7 @@ func (r *TransmissionRenderer) SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) 
 }
 
 // RenderLateMono traces transmitted diffuse energy and synthesizes a mono IR.
-func (r *TransmissionRenderer) RenderLateMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
+func (r *OneHop) RenderLateMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
 	histogram, _, err := r.traceLate(sc, cfg, false)
 	if err != nil {
 		return nil, err
@@ -127,7 +122,7 @@ func (r *TransmissionRenderer) RenderLateMono(sc *scene.Scene, cfg ir.RenderConf
 }
 
 // RenderLateBinaural traces transmitted directional energy and applies HRTFs.
-func (r *TransmissionRenderer) RenderLateBinaural(
+func (r *OneHop) RenderLateBinaural(
 	sc *scene.Scene,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
@@ -181,7 +176,7 @@ func (r *TransmissionRenderer) RenderLateBinaural(
 }
 
 // RenderMono renders the complete transmitted hybrid response.
-func (r *TransmissionRenderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
+func (r *OneHop) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
 	events, err := r.SolveEarly(sc, cfg)
 	if err != nil {
 		return nil, err
@@ -208,7 +203,7 @@ func (r *TransmissionRenderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) 
 }
 
 // RenderBinaural renders the complete transmitted hybrid BRIR.
-func (r *TransmissionRenderer) RenderBinaural(
+func (r *OneHop) RenderBinaural(
 	sc *scene.Scene,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
@@ -245,7 +240,7 @@ func (r *TransmissionRenderer) RenderBinaural(
 	return left, right, nil
 }
 
-func (r *TransmissionRenderer) traceLate(
+func (r *OneHop) traceLate(
 	sc *scene.Scene,
 	cfg ir.RenderConfig,
 	directional bool,
@@ -305,7 +300,7 @@ func (r *TransmissionRenderer) traceLate(
 	return histogram, destinationTracer, nil
 }
 
-func (r *TransmissionRenderer) tracePortalSurfaces(
+func (r *OneHop) tracePortalSurfaces(
 	sc *scene.Scene,
 	context transmissionContext,
 	launch raytrace.LaunchConfig,
@@ -342,7 +337,7 @@ func (r *TransmissionRenderer) tracePortalSurfaces(
 	return incident, nil
 }
 
-func (r *TransmissionRenderer) newTransmissionDestinationTracer(
+func (r *OneHop) newTransmissionDestinationTracer(
 	destinationScene *scene.Scene,
 	launch raytrace.LaunchConfig,
 	directional bool,
@@ -357,16 +352,7 @@ func (r *TransmissionRenderer) newTransmissionDestinationTracer(
 		return tracer
 	}
 
-	azimuth := r.Config.Raytrace.DirectionGroupAzimuth
-	if azimuth <= 0 {
-		azimuth = defaultDirectionGroupAzimuth
-	}
-
-	elevation := r.Config.Raytrace.DirectionGroupElevation
-	if elevation <= 0 {
-		elevation = defaultDirectionGroupElevation
-	}
-
+	azimuth, elevation := r.Config.Raytrace.DirectionGroupCounts()
 	tracer.DirectivityGroups = raytrace.NewDirectivityGroups(azimuth, elevation)
 
 	return tracer

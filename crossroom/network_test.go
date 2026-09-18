@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
@@ -13,10 +13,10 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-func networkTestConfig() NetworkRendererConfig {
-	return NetworkRendererConfig{
+func networkTestConfig() NetworkConfig {
+	return NetworkConfig{
 		ISM: ism.ISMConfig{MaxOrder: 1},
-		Raytrace: RaytraceEngineConfig{
+		Raytrace: raytrace.EngineConfig{
 			Launch:             raytrace.LaunchConfig{NumRays: 2000, MaxBounces: 20},
 			ReceiverRadius:     0.5,
 			BinDurationSeconds: 0.005,
@@ -45,18 +45,18 @@ func TestNetworkRendererMatchesPhase21OneHopEarlyLevel(t *testing.T) {
 		sc := transmissionTestScene(tau)
 		cfg := transmissionTestRenderConfig(sc)
 
-		legacy := NewTransmissionRenderer(TransmissionRendererConfig{ISM: ism.ISMConfig{MaxOrder: order}})
+		legacy := NewOneHop(OneHopConfig{ISM: ism.ISMConfig{MaxOrder: order}})
 
 		legacyEvents, err := legacy.SolveEarly(sc, cfg)
 		if err != nil {
-			t.Fatalf("order %d: TransmissionRenderer.SolveEarly: %v", order, err)
+			t.Fatalf("order %d: OneHop.SolveEarly: %v", order, err)
 		}
 
-		network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: order}})
+		network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: order}})
 
 		networkEvents, err := network.SolveEarly(transmissionTestScene(tau), cfg)
 		if err != nil {
-			t.Fatalf("order %d: NetworkRenderer.SolveEarly: %v", order, err)
+			t.Fatalf("order %d: Network.SolveEarly: %v", order, err)
 		}
 
 		if len(legacyEvents) == 0 {
@@ -94,18 +94,18 @@ func TestNetworkRendererMatchesPhase21EventForEvent(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	legacy := NewTransmissionRenderer(TransmissionRendererConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
+	legacy := NewOneHop(OneHopConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
 
 	legacyEvents, err := legacy.SolveEarly(sc, cfg)
 	if err != nil {
-		t.Fatalf("TransmissionRenderer.SolveEarly: %v", err)
+		t.Fatalf("OneHop.SolveEarly: %v", err)
 	}
 
-	network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
+	network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
 
 	networkEvents, err := network.SolveEarly(transmissionTestScene(0.25), cfg)
 	if err != nil {
-		t.Fatalf("NetworkRenderer.SolveEarly: %v", err)
+		t.Fatalf("Network.SolveEarly: %v", err)
 	}
 
 	if len(networkEvents) != len(legacyEvents) {
@@ -158,7 +158,7 @@ func TestNetworkRendererReportsFullPropagationDistance(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
+	network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
 
 	events, err := network.SolveEarly(sc, cfg)
 	if err != nil {
@@ -186,7 +186,7 @@ func TestNetworkRendererReportsFullPropagationDistance(t *testing.T) {
 func TestNetworkRendererScalesWithPortalTransmission(t *testing.T) {
 	t.Parallel()
 
-	network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
+	network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
 
 	quiet := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(quiet)
@@ -287,7 +287,7 @@ func TestNetworkRendererHandlesPortalChains(t *testing.T) {
 	sc := chainRoomScene(t, 3, 0.25)
 	cfg := ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 0.1, BandSpec: sc.BandSpec}
 
-	network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
+	network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
 
 	events, err := network.SolveEarly(sc, cfg)
 	if err != nil {
@@ -300,7 +300,7 @@ func TestNetworkRendererHandlesPortalChains(t *testing.T) {
 
 	// The Phase 21 renderer refuses the same scene, which is why the network
 	// renderer exists.
-	legacy := NewTransmissionRenderer(TransmissionRendererConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
+	legacy := NewOneHop(OneHopConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
 
 	_, err = legacy.SolveEarly(sc, cfg)
 	if err == nil {
@@ -315,7 +315,7 @@ func TestNetworkRendererChainAttenuatesWithEachPortal(t *testing.T) {
 
 	const tau = 0.25
 
-	network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
+	network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
 
 	twoRoom := chainRoomScene(t, 2, tau)
 	threeRoom := chainRoomScene(t, 3, tau)
@@ -348,7 +348,7 @@ func TestNetworkRendererRejectsMultipleReceivers(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	sc.Receivers = append(sc.Receivers, sc.Receivers[0])
 
-	network := NewNetworkRenderer(networkTestConfig())
+	network := NewNetwork(networkTestConfig())
 
 	_, err := network.SolveEarly(sc, transmissionTestRenderConfig(sc))
 	if err == nil {
@@ -367,7 +367,7 @@ func TestNetworkRendererRendersMonoAcrossAPortal(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	network := NewNetworkRenderer(networkTestConfig())
+	network := NewNetwork(networkTestConfig())
 
 	buffer, err := network.RenderMono(sc, cfg)
 	if err != nil {
@@ -394,7 +394,7 @@ func TestNetworkRendererRendersBinauralAcrossAPortal(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	network := NewNetworkRenderer(networkTestConfig())
+	network := NewNetwork(networkTestConfig())
 
 	left, right, err := network.RenderBinaural(sc, sc.Receivers[0], cfg)
 	if err != nil {
@@ -413,23 +413,23 @@ func TestNetworkRendererImplementsCrossRoomEngine(t *testing.T) {
 
 	// Compile-time satisfaction is the point; the assertions below also pin
 	// the optional early and late interfaces the pipeline selects on.
-	var engine CrossRoomEngine = NewNetworkRenderer(networkTestConfig())
+	var engine Engine = NewNetwork(networkTestConfig())
 
-	if _, ok := engine.(TransmissionEarlyEngine); !ok {
-		t.Fatal("NetworkRenderer does not satisfy TransmissionEarlyEngine")
+	if _, ok := engine.(EarlyEngine); !ok {
+		t.Fatal("Network does not satisfy EarlyEngine")
 	}
 
-	if _, ok := engine.(CrossRoomLateEngine); !ok {
-		t.Fatal("NetworkRenderer does not satisfy CrossRoomLateEngine")
+	if _, ok := engine.(LateEngine); !ok {
+		t.Fatal("Network does not satisfy LateEngine")
 	}
 
-	var legacy CrossRoomEngine = NewTransmissionRenderer(TransmissionRendererConfig{})
+	var legacy Engine = NewOneHop(OneHopConfig{})
 
-	if _, ok := legacy.(TransmissionEarlyEngine); !ok {
-		t.Fatal("TransmissionRenderer does not satisfy TransmissionEarlyEngine")
+	if _, ok := legacy.(EarlyEngine); !ok {
+		t.Fatal("OneHop does not satisfy EarlyEngine")
 	}
 
-	if _, ok := legacy.(CrossRoomLateEngine); !ok {
-		t.Fatal("TransmissionRenderer does not satisfy CrossRoomLateEngine")
+	if _, ok := legacy.(LateEngine); !ok {
+		t.Fatal("OneHop does not satisfy LateEngine")
 	}
 }

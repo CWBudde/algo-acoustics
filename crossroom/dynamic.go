@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"encoding/binary"
@@ -47,7 +47,7 @@ func (c PortalStateChange) EffectiveState() scene.PortalState {
 // A group that is new to the plan still hits the response cache when the same
 // configuration was rendered before — reopening a door that was open a moment
 // ago costs nothing — so AddedSignatures is an upper bound on the simulation
-// work, not a measurement of it. GroupResponseCache.Stats reports the actual
+// work, not a measurement of it. ResponseCache.Stats reports the actual
 // hit and miss counts.
 type ChangeSet struct {
 	// RemovedSignatures lists the room groups the change dissolved. Their
@@ -63,18 +63,18 @@ type ChangeSet struct {
 	ReusedGroups int
 }
 
-// NetworkPlan is a prepared multi-room render that survives portal toggles.
-type NetworkPlan struct {
-	renderer   *NetworkRenderer
+// Plan is a prepared multi-room render that survives portal toggles.
+type Plan struct {
+	renderer   *Network
 	scene      *scene.Scene
-	plan       *networkPlan
+	plan       *pathPlan
 	signatures map[scene.GroupID]uint64
 	cfg        ir.RenderConfig
 }
 
 // Prepare resolves the scene graph and propagation paths once, so that later
 // portal toggles only re-simulate what actually changed.
-func (r *NetworkRenderer) Prepare(sc *scene.Scene, cfg ir.RenderConfig) (*NetworkPlan, error) {
+func (r *Network) Prepare(sc *scene.Scene, cfg ir.RenderConfig) (*Plan, error) {
 	if r == nil {
 		return nil, errors.New("network renderer is nil")
 	}
@@ -90,7 +90,7 @@ func (r *NetworkRenderer) Prepare(sc *scene.Scene, cfg ir.RenderConfig) (*Networ
 		return nil, err
 	}
 
-	return &NetworkPlan{
+	return &Plan{
 		renderer:   r,
 		scene:      copied,
 		plan:       inner,
@@ -101,7 +101,7 @@ func (r *NetworkRenderer) Prepare(sc *scene.Scene, cfg ir.RenderConfig) (*Networ
 
 // Scene returns the plan's own copy of the scene, whose portal states the plan
 // mutates.
-func (p *NetworkPlan) Scene() *scene.Scene {
+func (p *Plan) Scene() *scene.Scene {
 	if p == nil {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (p *NetworkPlan) Scene() *scene.Scene {
 // including groups on the far side of the toggled portal. For a four-room chain
 // opening one door merges exactly two groups into one, so exactly one signature
 // is new and only that group is simulated again.
-func (p *NetworkPlan) Apply(change PortalStateChange) (ChangeSet, error) {
+func (p *Plan) Apply(change PortalStateChange) (ChangeSet, error) {
 	if p == nil || p.renderer == nil {
 		return ChangeSet{}, errors.New("network plan is nil")
 	}
@@ -175,7 +175,7 @@ func (p *NetworkPlan) Apply(change PortalStateChange) (ChangeSet, error) {
 }
 
 // RenderMono renders the prepared plan's summed mono response.
-func (p *NetworkPlan) RenderMono() (*ir.Buffer, error) {
+func (p *Plan) RenderMono() (*ir.Buffer, error) {
 	if p == nil {
 		return nil, errors.New("network plan is nil")
 	}
@@ -198,7 +198,7 @@ func (p *NetworkPlan) RenderMono() (*ir.Buffer, error) {
 }
 
 // RenderBinaural renders the prepared plan's summed BRIR.
-func (p *NetworkPlan) RenderBinaural(receiver scene.Receiver) (hybrid.BRIR, error) {
+func (p *Plan) RenderBinaural(receiver scene.Receiver) (hybrid.BRIR, error) {
 	if p == nil {
 		return hybrid.BRIR{}, errors.New("network plan is nil")
 	}
@@ -218,7 +218,7 @@ func (p *NetworkPlan) RenderBinaural(receiver scene.Receiver) (hybrid.BRIR, erro
 // all-pass stand-in the demo used before Phase 25.4. Both are rendered because
 // docs/raven.md section 5.3 crossfades toward the all-pass filter and only
 // hard-switches to the merged response at full aperture.
-func (r *NetworkRenderer) PortalCache(
+func (r *Network) PortalCache(
 	sc *scene.Scene,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
@@ -250,7 +250,7 @@ func (r *NetworkRenderer) PortalCache(
 // renderPortalState renders one portal configuration. transparent replaces the
 // portal material with a fully transmissive one, which is the all-pass filter
 // state without merging the geometry.
-func (r *NetworkRenderer) renderPortalState(
+func (r *Network) renderPortalState(
 	sc *scene.Scene,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
@@ -281,7 +281,7 @@ func (r *NetworkRenderer) renderPortalState(
 		copied.Portals[portalIndex].Material = name
 	}
 
-	left, right, err := r.crossRoomEngineFor(copied).RenderBinaural(copied, receiver, cfg)
+	left, right, err := r.engineFor(copied).RenderBinaural(copied, receiver, cfg)
 	if err != nil {
 		return hybrid.BRIR{}, err //nolint:wrapcheck // The callers name the state.
 	}
@@ -289,22 +289,22 @@ func (r *NetworkRenderer) renderPortalState(
 	return hybrid.BRIR{Left: left, Right: right}, nil
 }
 
-// crossRoomEngineFor picks the engine for a portal endpoint while keeping this
+// engineFor picks the engine for a portal endpoint while keeping this
 // renderer's own settings.
 //
-// Routing through CrossRoomEngineConfig would drop DynamicRays, Seed, the path
+// Routing through EngineConfig would drop DynamicRays, Seed, the path
 // and floor limits, and the shared response cache — and DynamicRays in
 // particular is the whole reason the WASM demo can afford the merged endpoint.
-func (r *NetworkRenderer) crossRoomEngineFor(sc *scene.Scene) CrossRoomEngine {
-	if sceneMatchesOneHopTransmission(sc) {
-		return NewTransmissionRenderer(TransmissionRendererConfig{
+func (r *Network) engineFor(sc *scene.Scene) Engine {
+	if matchesOneHop(sc) {
+		return NewOneHop(OneHopConfig{
 			ISM:      r.Config.ISM,
 			Raytrace: r.Config.Raytrace,
 			Hybrid:   r.Config.Hybrid,
 		})
 	}
 
-	network := NewNetworkRenderer(r.Config)
+	network := NewNetwork(r.Config)
 	network.SetCache(r.Cache())
 
 	return network
@@ -403,7 +403,7 @@ func writeModelIdentity(hash io.Writer, value any) {
 // forgotten field a correctness bug rather than a missed optimisation — and a
 // field-by-field list silently stops covering the struct the moment someone
 // adds an option to it.
-func (r *NetworkRenderer) configHash(cfg ir.RenderConfig) uint64 {
+func (r *Network) configHash(cfg ir.RenderConfig) uint64 {
 	hash := fnv.New64a()
 
 	_, _ = fmt.Fprintf(hash, "render:%d|%v|", cfg.SampleRate, cfg.DurationSeconds)

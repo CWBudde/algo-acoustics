@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"errors"
@@ -9,10 +9,10 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-// MultiRoomLowFreq is the modal stand-in for a multi-room render: the
+// LowFreq is the modal stand-in for a multi-room render: the
 // single-room scene whose modes are solved, plus the pressure gain of
 // everything upstream of it.
-type MultiRoomLowFreq struct {
+type LowFreq struct {
 	// Scene is the receiver's room group, localized to the origin and holding
 	// the substitute source.
 	Scene *scene.Scene
@@ -24,7 +24,7 @@ type MultiRoomLowFreq struct {
 	PressureGain float64
 }
 
-// LowFreqSceneForMultiRoom builds the single-room scene whose modal response
+// LowFreqScene builds the single-room scene whose modal response
 // stands in for a multi-room render's low-frequency content.
 //
 // Modal behaviour below the Schroeder frequency is dominated by the room the
@@ -47,7 +47,7 @@ type MultiRoomLowFreq struct {
 // blend's crossover region largely masks. It is refused rather than fudged when
 // the receiver's group is not a single shoebox, since the solver has no mesh
 // formulation.
-func LowFreqSceneForMultiRoom(sc *scene.Scene) (*MultiRoomLowFreq, error) {
+func LowFreqScene(sc *scene.Scene) (*LowFreq, error) {
 	if sc == nil {
 		return nil, errors.New("scene is nil")
 	}
@@ -95,7 +95,7 @@ func LowFreqSceneForMultiRoom(sc *scene.Scene) (*MultiRoomLowFreq, error) {
 	// one. Localizing here is what the geometric factors already do.
 	localized := networkLocalizedScene(sub)
 
-	return &MultiRoomLowFreq{Scene: localized, PressureGain: gain}, nil
+	return &LowFreq{Scene: localized, PressureGain: gain}, nil
 }
 
 // lowFreqSubstituteSource returns the source that excites the receiver's group
@@ -145,7 +145,7 @@ func strongestPathToGroup(
 	sc *scene.Scene,
 	sourceGroup, receiverGroup scene.GroupID,
 ) (networkPath, error) {
-	renderer := NewNetworkRenderer(NetworkRendererConfig{})
+	renderer := NewNetwork(NetworkConfig{})
 
 	tree, err := graph.SearchPaths(sourceGroup, scene.PathSearchConfig{
 		MaxDepth:     renderer.maxPathHops(),

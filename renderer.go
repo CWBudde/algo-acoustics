@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/cwbudde/algo-acoustics/crossroom"
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/pde"
@@ -31,6 +32,13 @@ type BinauralLateBufferEngine interface {
 	LateBufferEngine
 	RenderBinaural(sc *scene.Scene, receiver scene.Receiver, cfg ir.RenderConfig) (left, right *ir.Buffer, err error)
 }
+
+// CrossRoomEngine renders a source and receiver separated by one or more
+// portals. The alias documents the semantics of Renderer.Transmission;
+// crossroom.Engine declares the same method set independently, so an
+// engine from that package satisfies this without either package importing the
+// other.
+type CrossRoomEngine = BinauralLateBufferEngine
 
 // LowFreqEngine generates a transfer function for low-frequency rendering.
 type LowFreqEngine interface {
@@ -190,7 +198,7 @@ func (r Renderer) renderCrossRoomMono(sc *scene.Scene, cfg ir.RenderConfig) ([]f
 	// transfer function cannot preserve ear-specific HRTF information, which is
 	// why RenderStereo leaves it out.
 	if r.LowFreq != nil {
-		lowFreq, lowFreqErr := LowFreqSceneForMultiRoom(sc)
+		lowFreq, lowFreqErr := crossroom.LowFreqScene(sc)
 		if lowFreqErr != nil {
 			return nil, fmt.Errorf("prepare multi-room low-frequency scene: %w", lowFreqErr)
 		}

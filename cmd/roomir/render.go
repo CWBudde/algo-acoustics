@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	algoacoustics "github.com/cwbudde/algo-acoustics"
+	"github.com/cwbudde/algo-acoustics/crossroom"
 	"github.com/cwbudde/algo-acoustics/export"
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/internal/pipeline"
@@ -214,12 +214,12 @@ func applyLowFrequencyBlend(cmd *cobra.Command, sc *scene.Scene, renderCfg ir.Re
 	// A multi-room scene has no single room to solve, so the modal response is
 	// computed for the receiver's own room group, excited at the portal the
 	// strongest propagation path arrives through, and attenuated by that path's
-	// transmission loss. See algoacoustics.LowFreqSceneForMultiRoom.
+	// transmission loss. See crossroom.LowFreqScene.
 	modalScene := sc
 	pressureGain := 1.0
 
 	if sc != nil && sc.RoomCount() > 1 {
-		lowFreq, err := algoacoustics.LowFreqSceneForMultiRoom(sc)
+		lowFreq, err := crossroom.LowFreqScene(sc)
 		if err != nil {
 			return nil, fmt.Errorf("prepare multi-room low-frequency scene: %w", err)
 		}

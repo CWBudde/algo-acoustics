@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
@@ -11,23 +11,23 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-func cacheTestFactor(bandCount, length int) *GroupFactor {
-	return &GroupFactor{Early: ir.NewBandedResponse(48000, bandCount, length)}
+func cacheTestFactor(bandCount, length int) *groupFactor {
+	return &groupFactor{Early: ir.NewBandedResponse(48000, bandCount, length)}
 }
 
 func TestGroupResponseCacheRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	cache := NewGroupResponseCache(0)
-	key := GroupResponseKey{GroupSignature: 1}
+	cache := NewResponseCache(0)
+	key := cacheKey{GroupSignature: 1}
 
-	if _, ok := cache.Get(key); ok {
+	if _, ok := cache.get(key); ok {
 		t.Fatal("an empty cache returned a hit")
 	}
 
-	cache.Put(key, cacheTestFactor(6, 128))
+	cache.put(key, cacheTestFactor(6, 128))
 
-	got, ok := cache.Get(key)
+	got, ok := cache.get(key)
 	if !ok || got == nil {
 		t.Fatal("the stored factor was not returned")
 	}
@@ -47,10 +47,10 @@ func TestGroupResponseCacheEvictsByByteBudget(t *testing.T) {
 
 	// Each factor holds 6 bands x 128 samples x 8 bytes = 6144 bytes, so a
 	// 16 KiB budget admits two and evicts on the third.
-	cache := NewGroupResponseCache(16 << 10)
+	cache := NewResponseCache(16 << 10)
 
 	for index := range 3 {
-		cache.Put(GroupResponseKey{GroupSignature: uint64(index + 1)}, cacheTestFactor(6, 128))
+		cache.put(cacheKey{GroupSignature: uint64(index + 1)}, cacheTestFactor(6, 128))
 	}
 
 	stats := cache.Stats()
@@ -63,11 +63,11 @@ func TestGroupResponseCacheEvictsByByteBudget(t *testing.T) {
 	}
 
 	// The oldest entry must be the one that went.
-	if _, ok := cache.Get(GroupResponseKey{GroupSignature: 1}); ok {
+	if _, ok := cache.get(cacheKey{GroupSignature: 1}); ok {
 		t.Fatal("the least recently used entry survived eviction")
 	}
 
-	if _, ok := cache.Get(GroupResponseKey{GroupSignature: 3}); !ok {
+	if _, ok := cache.get(cacheKey{GroupSignature: 3}); !ok {
 		t.Fatal("the most recently stored entry was evicted")
 	}
 }
@@ -75,22 +75,22 @@ func TestGroupResponseCacheEvictsByByteBudget(t *testing.T) {
 func TestGroupResponseCacheKeepsRecentlyUsedEntries(t *testing.T) {
 	t.Parallel()
 
-	cache := NewGroupResponseCache(16 << 10)
+	cache := NewResponseCache(16 << 10)
 
-	first := GroupResponseKey{GroupSignature: 1}
-	second := GroupResponseKey{GroupSignature: 2}
+	first := cacheKey{GroupSignature: 1}
+	second := cacheKey{GroupSignature: 2}
 
-	cache.Put(first, cacheTestFactor(6, 128))
-	cache.Put(second, cacheTestFactor(6, 128))
+	cache.put(first, cacheTestFactor(6, 128))
+	cache.put(second, cacheTestFactor(6, 128))
 
 	// Touching the first entry must move it ahead of the second.
-	if _, ok := cache.Get(first); !ok {
+	if _, ok := cache.get(first); !ok {
 		t.Fatal("the first entry is missing")
 	}
 
-	cache.Put(GroupResponseKey{GroupSignature: 3}, cacheTestFactor(6, 128))
+	cache.put(cacheKey{GroupSignature: 3}, cacheTestFactor(6, 128))
 
-	if _, ok := cache.Get(first); !ok {
+	if _, ok := cache.get(first); !ok {
 		t.Fatal("a recently used entry was evicted before an older one")
 	}
 }
@@ -98,17 +98,17 @@ func TestGroupResponseCacheKeepsRecentlyUsedEntries(t *testing.T) {
 func TestGroupResponseCacheInvalidateSignature(t *testing.T) {
 	t.Parallel()
 
-	cache := NewGroupResponseCache(0)
+	cache := NewResponseCache(0)
 
-	cache.Put(GroupResponseKey{GroupSignature: 7, FromIndex: 0}, cacheTestFactor(2, 16))
-	cache.Put(GroupResponseKey{GroupSignature: 7, FromIndex: 1}, cacheTestFactor(2, 16))
-	cache.Put(GroupResponseKey{GroupSignature: 9}, cacheTestFactor(2, 16))
+	cache.put(cacheKey{GroupSignature: 7, FromIndex: 0}, cacheTestFactor(2, 16))
+	cache.put(cacheKey{GroupSignature: 7, FromIndex: 1}, cacheTestFactor(2, 16))
+	cache.put(cacheKey{GroupSignature: 9}, cacheTestFactor(2, 16))
 
-	if removed := cache.InvalidateSignature(7); removed != 2 {
+	if removed := cache.invalidateSignature(7); removed != 2 {
 		t.Fatalf("InvalidateSignature removed %d entries, want 2", removed)
 	}
 
-	if _, ok := cache.Get(GroupResponseKey{GroupSignature: 9}); !ok {
+	if _, ok := cache.get(cacheKey{GroupSignature: 9}); !ok {
 		t.Fatal("an unrelated group was invalidated")
 	}
 }
@@ -116,15 +116,15 @@ func TestGroupResponseCacheInvalidateSignature(t *testing.T) {
 func TestGroupResponseCacheHandlesNilReceiver(t *testing.T) {
 	t.Parallel()
 
-	var cache *GroupResponseCache
+	var cache *ResponseCache
 
-	if _, ok := cache.Get(GroupResponseKey{}); ok {
+	if _, ok := cache.get(cacheKey{}); ok {
 		t.Fatal("a nil cache reported a hit")
 	}
 
-	cache.Put(GroupResponseKey{}, cacheTestFactor(1, 1))
+	cache.put(cacheKey{}, cacheTestFactor(1, 1))
 
-	if got := cache.InvalidateSignature(1); got != 0 {
+	if got := cache.invalidateSignature(1); got != 0 {
 		t.Fatalf("a nil cache invalidated %d entries", got)
 	}
 
@@ -137,12 +137,12 @@ func TestConfigHashReactsToSettingsThatChangeAResponse(t *testing.T) {
 	t.Parallel()
 
 	cfg := ir.RenderConfig{SampleRate: 48000, DurationSeconds: 1}
-	base := NewNetworkRenderer(dynamicTestConfig())
+	base := NewNetwork(dynamicTestConfig())
 
-	rays := NewNetworkRenderer(dynamicTestConfig())
+	rays := NewNetwork(dynamicTestConfig())
 	rays.Config.Raytrace.Launch.NumRays = 9999
 
-	order := NewNetworkRenderer(dynamicTestConfig())
+	order := NewNetwork(dynamicTestConfig())
 	order.Config.ISM.MaxOrder = 5
 
 	if base.configHash(cfg) == rays.configHash(cfg) {
@@ -166,22 +166,22 @@ func TestConfigHashCoversEverySolverSetting(t *testing.T) {
 	t.Parallel()
 
 	cfg := ir.RenderConfig{SampleRate: 48000, DurationSeconds: 1}
-	base := NewNetworkRenderer(dynamicTestConfig()).configHash(cfg)
+	base := NewNetwork(dynamicTestConfig()).configHash(cfg)
 
 	cases := []struct {
 		name   string
-		mutate func(*NetworkRendererConfig)
+		mutate func(*NetworkConfig)
 	}{
-		{"ISM diffraction", func(c *NetworkRendererConfig) { c.ISM.EnableDiffraction = true }},
-		{"ISM diffraction order", func(c *NetworkRendererConfig) { c.ISM.MaxDiffractionOrder = 2 }},
-		{"ray time limit", func(c *NetworkRendererConfig) { c.Raytrace.Launch.MaxTimeSeconds = 3 }},
-		{"diffuse rain", func(c *NetworkRendererConfig) { c.Raytrace.Launch.DiffuseRain = true }},
-		{"ray speed of sound", func(c *NetworkRendererConfig) { c.Raytrace.Launch.SpeedOfSound = 340 }},
-		{"energy termination", func(c *NetworkRendererConfig) { c.Raytrace.Launch.EnergyTerminationThreshold = 1e-7 }},
-		{"reflection strategy", func(c *NetworkRendererConfig) { c.Raytrace.Launch.ReflectionStrategy = 1 }},
-		{"direction groups", func(c *NetworkRendererConfig) { c.Raytrace.DirectionGroupAzimuth = 12 }},
-		{"path hops", func(c *NetworkRendererConfig) { c.MaxPathHops = 6 }},
-		{"path count", func(c *NetworkRendererConfig) { c.MaxPaths = 3 }},
+		{"ISM diffraction", func(c *NetworkConfig) { c.ISM.EnableDiffraction = true }},
+		{"ISM diffraction order", func(c *NetworkConfig) { c.ISM.MaxDiffractionOrder = 2 }},
+		{"ray time limit", func(c *NetworkConfig) { c.Raytrace.Launch.MaxTimeSeconds = 3 }},
+		{"diffuse rain", func(c *NetworkConfig) { c.Raytrace.Launch.DiffuseRain = true }},
+		{"ray speed of sound", func(c *NetworkConfig) { c.Raytrace.Launch.SpeedOfSound = 340 }},
+		{"energy termination", func(c *NetworkConfig) { c.Raytrace.Launch.EnergyTerminationThreshold = 1e-7 }},
+		{"reflection strategy", func(c *NetworkConfig) { c.Raytrace.Launch.ReflectionStrategy = 1 }},
+		{"direction groups", func(c *NetworkConfig) { c.Raytrace.DirectionGroupAzimuth = 12 }},
+		{"path hops", func(c *NetworkConfig) { c.MaxPathHops = 6 }},
+		{"path count", func(c *NetworkConfig) { c.MaxPaths = 3 }},
 	}
 
 	for _, testCase := range cases {
@@ -191,7 +191,7 @@ func TestConfigHashCoversEverySolverSetting(t *testing.T) {
 			changed := dynamicTestConfig()
 			testCase.mutate(&changed)
 
-			if NewNetworkRenderer(changed).configHash(cfg) == base {
+			if NewNetwork(changed).configHash(cfg) == base {
 				t.Fatalf("changing %s did not change the config hash", testCase.name)
 			}
 		})
