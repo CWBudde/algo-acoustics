@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
@@ -75,13 +75,13 @@ func TestCrossRoomEngineRejectsTheFastPathAboveTwoRooms(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := sceneMatchesOneHopTransmission(test.scene); got != test.want {
-				t.Fatalf("sceneMatchesOneHopTransmission = %v, want %v", got, test.want)
+			if got := matchesOneHop(test.scene); got != test.want {
+				t.Fatalf("matchesOneHop = %v, want %v", got, test.want)
 			}
 
-			_, isNetwork := NewCrossRoomEngine(test.scene, CrossRoomEngineConfig{}).(*NetworkRenderer)
+			_, isNetwork := NewEngine(test.scene, EngineConfig{}).(*Network)
 			if isNetwork == test.want {
-				t.Fatalf("NewCrossRoomEngine returned network = %v, want %v", isNetwork, !test.want)
+				t.Fatalf("NewEngine returned network = %v, want %v", isNetwork, !test.want)
 			}
 		})
 	}
@@ -110,7 +110,7 @@ func TestCrossRoomEngineAddingARoomKeepsTheDirectPathOnTheNetwork(t *testing.T) 
 		State:    scene.PortalClosed,
 	})
 
-	if sceneMatchesOneHopTransmission(sc) {
+	if matchesOneHop(sc) {
 		t.Fatal("a three-room scene still took the one-hop fast path")
 	}
 }
@@ -121,7 +121,7 @@ func TestCrossRoomEngineAddingARoomKeepsTheDirectPathOnTheNetwork(t *testing.T) 
 func TestNetworkRendererRejectsNilScene(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewNetworkRenderer(networkTestConfig()).SolveEarly(nil, ir.RenderConfig{})
+	_, err := NewNetwork(networkTestConfig()).SolveEarly(nil, ir.RenderConfig{})
 	if err == nil {
 		t.Fatal("SolveEarly accepted a nil scene")
 	}
@@ -140,15 +140,15 @@ func TestNetworkRendererReportsPathSearchTruncation(t *testing.T) {
 	sc := officeFloorRenderScene(t, 1)
 	cfg := ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 0.2, BandSpec: sc.BandSpec}
 
-	var reported []NetworkTruncation
+	var reported []Truncation
 
-	network := NewNetworkRenderer(NetworkRendererConfig{
+	network := NewNetwork(NetworkConfig{
 		ISM:         ism.ISMConfig{MaxOrder: 0},
 		BandFloorDB: -90,
 		// One hop reaches the neighbouring office, so the deeper branches are
 		// abandoned at the depth limit and the tree is not exhaustive.
 		MaxPathHops:  1,
-		OnTruncation: func(truncation NetworkTruncation) { reported = append(reported, truncation) },
+		OnTruncation: func(truncation Truncation) { reported = append(reported, truncation) },
 	})
 
 	_, err := network.SolveEarly(sc, cfg)
@@ -177,12 +177,12 @@ func TestNetworkRendererReportsDroppedComposedEvents(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	var reported NetworkTruncation
+	var reported Truncation
 
-	network := NewNetworkRenderer(NetworkRendererConfig{
+	network := NewNetwork(NetworkConfig{
 		ISM:                      ism.ISMConfig{MaxOrder: 2},
 		MaxComposedEventsPerPath: 4,
-		OnTruncation:             func(truncation NetworkTruncation) { reported = truncation },
+		OnTruncation:             func(truncation Truncation) { reported = truncation },
 	})
 
 	events, err := network.SolveEarly(sc, cfg)
@@ -207,7 +207,7 @@ func TestNetworkRendererUncappedCompositionKeepsEveryEvent(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	capped, err := NewNetworkRenderer(NetworkRendererConfig{
+	capped, err := NewNetwork(NetworkConfig{
 		ISM:                      ism.ISMConfig{MaxOrder: 2},
 		MaxComposedEventsPerPath: 4,
 	}).SolveEarly(sc, cfg)
@@ -215,7 +215,7 @@ func TestNetworkRendererUncappedCompositionKeepsEveryEvent(t *testing.T) {
 		t.Fatalf("capped SolveEarly: %v", err)
 	}
 
-	uncapped, err := NewNetworkRenderer(NetworkRendererConfig{
+	uncapped, err := NewNetwork(NetworkConfig{
 		ISM:                      ism.ISMConfig{MaxOrder: 2},
 		MaxComposedEventsPerPath: -1,
 	}).SolveEarly(sc, cfg)
@@ -236,7 +236,7 @@ func TestNetworkRendererSharesFactorsAcrossPaths(t *testing.T) {
 
 	sc := twinPortalScene()
 
-	network := NewNetworkRenderer(NetworkRendererConfig{
+	network := NewNetwork(NetworkConfig{
 		ISM:         ism.ISMConfig{MaxOrder: 0},
 		BandFloorDB: -90,
 	})
@@ -322,7 +322,7 @@ func TestNetworkRendererLateOnlySkipsTheEarlySolve(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	network := NewNetworkRenderer(networkTestConfig())
+	network := NewNetwork(networkTestConfig())
 
 	plan, err := network.prepare(sc)
 	if err != nil {
@@ -354,7 +354,7 @@ func TestNetworkRendererKeepsEarlyWorkWhenTheLateFieldIsAddedLater(t *testing.T)
 	sc := transmissionTestScene(0.25)
 	cfg := transmissionTestRenderConfig(sc)
 
-	network := NewNetworkRenderer(networkTestConfig())
+	network := NewNetwork(networkTestConfig())
 
 	plan, err := network.prepare(sc)
 	if err != nil {

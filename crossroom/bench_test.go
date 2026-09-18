@@ -1,6 +1,7 @@
-package algoacoustics
+package crossroom
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/cwbudde/algo-acoustics/geometry"
@@ -16,7 +17,7 @@ import (
 func benchmarkFourRoomScene(b *testing.B) *scene.Scene {
 	b.Helper()
 
-	sc, err := scene.LoadSceneFile("examples/scenes/office_floor.json")
+	sc, err := scene.LoadSceneFile(filepath.Join("..", "examples", "scenes", "office_floor.json"))
 	if err != nil {
 		b.Fatalf("load office floor fixture: %v", err)
 	}
@@ -26,10 +27,10 @@ func benchmarkFourRoomScene(b *testing.B) *scene.Scene {
 	return sc
 }
 
-func benchmarkNetworkConfig() NetworkRendererConfig {
-	return NetworkRendererConfig{
+func benchmarkNetworkConfig() NetworkConfig {
+	return NetworkConfig{
 		ISM: ism.ISMConfig{MaxOrder: 3},
-		Raytrace: RaytraceEngineConfig{
+		Raytrace: raytrace.EngineConfig{
 			Launch:             raytrace.LaunchConfig{NumRays: 16000, MaxBounces: 30},
 			ReceiverRadius:     0.5,
 			BinDurationSeconds: 0.005,
@@ -51,7 +52,7 @@ func BenchmarkNetworkColdRender4Rooms(b *testing.B) {
 		// A fresh renderer each iteration, so this really is the cold cost.
 		// Reusing one would let the group-response cache carry work across
 		// iterations and quietly turn this into a second warm benchmark.
-		renderer := NewNetworkRenderer(benchmarkNetworkConfig())
+		renderer := NewNetwork(benchmarkNetworkConfig())
 
 		_, err := renderer.RenderMono(sc, cfg)
 		if err != nil {
@@ -70,7 +71,7 @@ func BenchmarkNetworkColdRender4Rooms(b *testing.B) {
 // over the whole run rather than taken from whichever iteration happened to be
 // last.
 func BenchmarkNetworkPortalStateChange4Rooms(b *testing.B) {
-	benchmarkPortalStateChange(b, func(plan *NetworkPlan) error {
+	benchmarkPortalStateChange(b, func(plan *Plan) error {
 		_, err := plan.RenderMono()
 
 		return err
@@ -84,20 +85,20 @@ func BenchmarkNetworkPortalStateChange4Rooms(b *testing.B) {
 // on top of the mono path, so the mono benchmark alone cannot support a claim
 // about BRIR latency.
 func BenchmarkNetworkPortalStateChange4RoomsBinaural(b *testing.B) {
-	benchmarkPortalStateChange(b, func(plan *NetworkPlan) error {
+	benchmarkPortalStateChange(b, func(plan *Plan) error {
 		_, err := plan.RenderBinaural(plan.Scene().Receivers[0])
 
 		return err
 	})
 }
 
-func benchmarkPortalStateChange(b *testing.B, render func(*NetworkPlan) error) {
+func benchmarkPortalStateChange(b *testing.B, render func(*Plan) error) {
 	b.Helper()
 
 	sc := benchmarkFourRoomScene(b)
 	sc.Receivers[0].HRTF = hrtf.NoopDataset{SampleRateHz: sc.SampleRate}
 	cfg := ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 1.0, BandSpec: sc.BandSpec}
-	renderer := NewNetworkRenderer(benchmarkNetworkConfig())
+	renderer := NewNetwork(benchmarkNetworkConfig())
 
 	plan, err := renderer.Prepare(sc, cfg)
 	if err != nil {

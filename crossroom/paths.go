@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"errors"
@@ -20,20 +20,20 @@ import (
 // Hops are memoised by their endpoint identity, not by path, so a hop that
 // several paths share through the same group and the same two portals costs one
 // simulation in total rather than one per path. Behind that per-render memo sits
-// the signature-keyed GroupResponseCache, which carries a hop across renders so
+// the signature-keyed ResponseCache, which carries a hop across renders so
 // a portal toggle re-simulates only the groups it actually changed.
 //
 // needs selects which fields are simulated. SolveEarly wants only the
 // image-source factors and RenderLateMono only the ray-traced ones; computing
 // the other would be pure waste.
-func (r *NetworkRenderer) renderPathFactors(
-	plan *networkPlan,
+func (r *Network) renderPathFactors(
+	plan *pathPlan,
 	pathIndex int,
 	cfg ir.RenderConfig,
 	needs factorNeeds,
-) ([]*GroupFactor, error) {
+) ([]*groupFactor, error) {
 	path := plan.paths[pathIndex]
-	factors := make([]*GroupFactor, 0, len(path.groups))
+	factors := make([]*groupFactor, 0, len(path.groups))
 	configHash := r.configHash(cfg)
 
 	for index, group := range path.groups {
@@ -41,7 +41,7 @@ func (r *NetworkRenderer) renderPathFactors(
 		cached := plan.factors[key]
 
 		from, to := r.hopPorts(plan, path, index, index == 0, index == len(path.groups)-1)
-		responseKey, keyed := plan.groupResponseKey(group, from, to, configHash)
+		respKey, keyed := plan.groupResponseKey(group, from, to, configHash)
 
 		// A group whose signature survived the last portal change keeps its
 		// simulated response across renders, which is what makes an interactive
@@ -49,7 +49,7 @@ func (r *NetworkRenderer) renderPathFactors(
 		// within-render memo wins where both hold the hop, since it is at least
 		// as complete.
 		if cached.factor == nil && keyed {
-			if stored, ok := r.Cache().Get(responseKey); ok {
+			if stored, ok := r.Cache().get(respKey); ok {
 				// Copy before it is filled in: several renderers may share one
 				// cache, so a stored factor must never be written through.
 				cached = cachedFactor{factor: cloneFactor(stored), needs: factorNeedsOf(stored)}
@@ -74,7 +74,7 @@ func (r *NetworkRenderer) renderPathFactors(
 		plan.storeFactor(key, factor, cached.needs.union(needs))
 
 		if keyed {
-			r.Cache().Put(responseKey, factor)
+			r.Cache().put(respKey, factor)
 		}
 
 		factors = append(factors, factor)
@@ -86,14 +86,14 @@ func (r *NetworkRenderer) renderPathFactors(
 // solveHop renders the factor of one hop, choosing the path type from where the
 // hop sits along the path. A non-nil into is filled in place, so only the
 // missing halves are simulated.
-func (r *NetworkRenderer) solveHop(
-	plan *networkPlan,
+func (r *Network) solveHop(
+	plan *pathPlan,
 	path networkPath,
 	index int,
 	cfg ir.RenderConfig,
-	into *GroupFactor,
+	into *groupFactor,
 	needs factorNeeds,
-) (*GroupFactor, error) {
+) (*groupFactor, error) {
 	group := path.groups[index]
 
 	gsc, err := plan.graph.GroupScene(group)
@@ -129,7 +129,7 @@ func (r *NetworkRenderer) solveHop(
 }
 
 // renderPaths renders every ranked path and sums their early and late fields.
-func (r *NetworkRenderer) renderPaths(plan *networkPlan, cfg ir.RenderConfig) (early, late *ir.Buffer, err error) {
+func (r *Network) renderPaths(plan *pathPlan, cfg ir.RenderConfig) (early, late *ir.Buffer, err error) {
 	bandSpec := r.Config.ISM.BandSpec
 	if bandSpec.BandCount() == 0 {
 		bandSpec = plan.graph.Scene().BandSpec
@@ -185,7 +185,7 @@ func (r *NetworkRenderer) renderPaths(plan *networkPlan, cfg ir.RenderConfig) (e
 
 // renderLatePaths sums the late field of every ranked path without solving the
 // early field at all.
-func (r *NetworkRenderer) renderLatePaths(plan *networkPlan, cfg ir.RenderConfig) (*raytrace.EnergyHistogram, error) {
+func (r *Network) renderLatePaths(plan *pathPlan, cfg ir.RenderConfig) (*raytrace.EnergyHistogram, error) {
 	var histograms []*raytrace.EnergyHistogram
 
 	for pathIndex, path := range plan.paths {
@@ -214,10 +214,10 @@ func (r *NetworkRenderer) renderLatePaths(plan *networkPlan, cfg ir.RenderConfig
 
 // resolvePathEarly folds a path's early factors into one banded response,
 // applying the pressure-domain portal filter at each handoff.
-func (r *NetworkRenderer) resolvePathEarly(
+func (r *Network) resolvePathEarly(
 	sc *scene.Scene,
 	path networkPath,
-	factors []*GroupFactor,
+	factors []*groupFactor,
 	length int,
 ) (*ir.BandedResponse, error) {
 	chain := hybrid.PathChain{ActiveBands: path.activeBands}
@@ -241,7 +241,7 @@ func (r *NetworkRenderer) resolvePathEarly(
 // resolvePathLate folds a path's late factors into one energy histogram,
 // applying the energy-domain portal filter at each handoff. The pressure domain
 // uses sqrt(tau) where the energy domain uses tau.
-func (r *NetworkRenderer) resolvePathLate(sc *scene.Scene, path networkPath, factors []*GroupFactor) (*raytrace.EnergyHistogram, error) {
+func (r *Network) resolvePathLate(sc *scene.Scene, path networkPath, factors []*groupFactor) (*raytrace.EnergyHistogram, error) {
 	total, _, err := r.composePathLate(sc, path, factors)
 
 	return total, err
@@ -257,10 +257,10 @@ func (r *NetworkRenderer) resolvePathLate(sc *scene.Scene, path networkPath, fac
 // spread the arrival times, and — once several paths reach the receiver through
 // different portals — would spatialize every path's energy with one path's
 // directions.
-func (r *NetworkRenderer) composePathLate(
+func (r *Network) composePathLate(
 	sc *scene.Scene,
 	path networkPath,
-	factors []*GroupFactor,
+	factors []*groupFactor,
 ) (total *raytrace.EnergyHistogram, directional []*raytrace.EnergyHistogram, err error) {
 	running := factors[0].LateEnergy
 	if running == nil {
@@ -338,8 +338,8 @@ func composeDirectionalLate(
 }
 
 // hopPorts returns the entry and exit ports of one hop along a path.
-func (r *NetworkRenderer) hopPorts(
-	plan *networkPlan,
+func (r *Network) hopPorts(
+	plan *pathPlan,
 	path networkPath,
 	index int,
 	first, last bool,
@@ -367,8 +367,8 @@ func (r *NetworkRenderer) hopPorts(
 // Both the total and the per-direction histograms are summed across paths, and
 // the arrival probabilities are derived only afterwards, so every path
 // contributes its own directions in proportion to the energy it delivers.
-func (r *NetworkRenderer) sumLateHistograms(
-	plan *networkPlan,
+func (r *Network) sumLateHistograms(
+	plan *pathPlan,
 	cfg ir.RenderConfig,
 ) (*raytrace.EnergyHistogram, []geometry.Vec3, [][]float64, error) {
 	var (

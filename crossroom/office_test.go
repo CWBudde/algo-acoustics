@@ -1,7 +1,8 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,7 +18,7 @@ import (
 func officeFloorRenderScene(t *testing.T, receiverRoom int) *scene.Scene {
 	t.Helper()
 
-	sc, err := scene.LoadSceneFile("examples/scenes/office_floor.json")
+	sc, err := scene.LoadSceneFile(filepath.Join("..", "examples", "scenes", "office_floor.json"))
 	if err != nil {
 		t.Fatalf("load office floor fixture: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestNetworkRendererOfficeFloorLevelDropIsMonotonic(t *testing.T) {
 	// floor is lowered here to keep the furthest room in play. The default
 	// behaviour is pinned separately by
 	// TestNetworkRendererOfficeFloorPrunesTheFurthestRoomAtTheDefaultFloor.
-	network := NewNetworkRenderer(NetworkRendererConfig{
+	network := NewNetwork(NetworkConfig{
 		ISM:         ism.ISMConfig{MaxOrder: 1},
 		BandFloorDB: -90,
 	})
@@ -117,7 +118,7 @@ func TestNetworkRendererOfficeFloorPrunesTheFurthestRoomAtTheDefaultFloor(t *tes
 	sc := officeFloorRenderScene(t, 3)
 	cfg := ir.RenderConfig{SampleRate: sc.SampleRate, DurationSeconds: 1.0, BandSpec: sc.BandSpec}
 
-	network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
+	network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
 
 	_, err := network.SolveEarly(sc, cfg)
 	if err == nil {
@@ -129,7 +130,7 @@ func TestNetworkRendererOfficeFloorPrunesTheFurthestRoomAtTheDefaultFloor(t *tes
 	}
 
 	// Lowering the floor must make the same room reachable again.
-	deep := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 1}, BandFloorDB: -90})
+	deep := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 1}, BandFloorDB: -90})
 
 	events, err := deep.SolveEarly(sc, cfg)
 	if err != nil {
@@ -165,7 +166,7 @@ func TestNetworkRendererOfficeFloorMatchesTheApparentReductionIndex(t *testing.T
 		highBandTolerance  = 3.0
 	)
 
-	network := NewNetworkRenderer(NetworkRendererConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
+	network := NewNetwork(NetworkConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
 
 	source := officeFloorRenderScene(t, 0)
 	cfg := ir.RenderConfig{SampleRate: source.SampleRate, DurationSeconds: 1.0, BandSpec: source.BandSpec}

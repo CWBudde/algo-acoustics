@@ -9,6 +9,7 @@ import (
 
 	algoacoustics "github.com/cwbudde/algo-acoustics"
 	"github.com/cwbudde/algo-acoustics/acoustics"
+	"github.com/cwbudde/algo-acoustics/crossroom"
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/ism"
@@ -21,7 +22,7 @@ import (
 // The filter network can only report this; someone has to say it out loud. A
 // truncated render looks entirely plausible, so leaving it unreported would let
 // a large topology silently lose its flanking paths.
-func warnOnTruncation(truncation algoacoustics.NetworkTruncation) {
+func warnOnTruncation(truncation crossroom.Truncation) {
 	fmt.Fprintln(os.Stderr, "warning: "+truncation.String())
 }
 
@@ -52,10 +53,10 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 		BandSpec:     bandSpec,
 	}
 	if sc != nil && sc.RoomCount() > 1 {
-		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
+		engine, ok := crossroom.NewEngine(sc, crossroom.EngineConfig{
 			ISM:          ismConfig,
 			OnTruncation: warnOnTruncation,
-		}).(algoacoustics.TransmissionEarlyEngine)
+		}).(crossroom.EarlyEngine)
 		if !ok {
 			return nil, errors.New("cross-room engine cannot produce early events")
 		}
@@ -81,10 +82,10 @@ func SolveEarly(sc *scene.Scene, cfg EarlyConfig) ([]ir.Event, error) {
 // RenderLateBuffer traces late-field energy via ray tracing and returns a dense buffer.
 func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
 	if sc != nil && sc.RoomCount() > 1 {
-		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
+		engine, ok := crossroom.NewEngine(sc, crossroom.EngineConfig{
 			Raytrace:     newLateEngine(cfg).Config,
 			OnTruncation: warnOnTruncation,
-		}).(algoacoustics.CrossRoomLateEngine)
+		}).(crossroom.LateEngine)
 		if !ok {
 			return nil, errors.New("cross-room engine cannot render the late field on its own")
 		}
@@ -109,10 +110,10 @@ func RenderLateBuffer(sc *scene.Scene, cfg LateConfig) (*ir.Buffer, error) {
 // through the receiver's HRTF using binaural Poisson synthesis.
 func RenderLateBinaural(sc *scene.Scene, receiver scene.Receiver, cfg LateConfig) (left, right *ir.Buffer, err error) {
 	if sc != nil && sc.RoomCount() > 1 {
-		engine, ok := algoacoustics.NewCrossRoomEngine(sc, algoacoustics.CrossRoomEngineConfig{
+		engine, ok := crossroom.NewEngine(sc, crossroom.EngineConfig{
 			Raytrace:     newLateEngine(cfg).Config,
 			OnTruncation: warnOnTruncation,
-		}).(algoacoustics.CrossRoomLateEngine)
+		}).(crossroom.LateEngine)
 		if !ok {
 			return nil, nil, errors.New("cross-room engine cannot render the late field on its own")
 		}

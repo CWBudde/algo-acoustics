@@ -14,11 +14,6 @@ import (
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-const (
-	defaultDirectionGroupAzimuth   = 12
-	defaultDirectionGroupElevation = 6
-)
-
 // ISMEngine adapts the shipped image-source solver to EventEngine. It supports
 // one or more sources and requires exactly one receiver, matching ISMSolver.
 type ISMEngine struct {
@@ -48,13 +43,10 @@ func (e *ISMEngine) Generate(sc *scene.Scene, _ ir.RenderConfig) ([]ir.Event, er
 // RaytraceEngineConfig configures the shipped dense late-field engine.
 // Launch.MaxTimeSeconds defaults to the render duration and
 // Launch.SpeedOfSound defaults to acoustics.SpeedOfSound.
-type RaytraceEngineConfig struct {
-	Launch                  raytrace.LaunchConfig
-	ReceiverRadius          float64
-	BinDurationSeconds      float64
-	DirectionGroupAzimuth   int
-	DirectionGroupElevation int
-}
+//
+// It is an alias because the cross-room engines configure the same ray tracer
+// and must not depend on this package to say so.
+type RaytraceEngineConfig = raytrace.EngineConfig
 
 // RaytraceEngine adapts the shipped ray tracer to the canonical dense
 // late-field interfaces. It requires exactly one source and one receiver.
@@ -181,23 +173,9 @@ func (e *RaytraceEngine) newTracer(
 	}
 
 	if directional {
-		azimuth, elevation := e.directionGroupCounts()
+		azimuth, elevation := e.Config.DirectionGroupCounts()
 		tracer.DirectivityGroups = raytrace.NewDirectivityGroups(azimuth, elevation)
 	}
 
 	return tracer, nil
-}
-
-func (e *RaytraceEngine) directionGroupCounts() (azimuth, elevation int) {
-	azimuth = e.Config.DirectionGroupAzimuth
-	if azimuth <= 0 {
-		azimuth = defaultDirectionGroupAzimuth
-	}
-
-	elevation = e.Config.DirectionGroupElevation
-	if elevation <= 0 {
-		elevation = defaultDirectionGroupElevation
-	}
-
-	return azimuth, elevation
 }

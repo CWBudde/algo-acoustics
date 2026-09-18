@@ -16,7 +16,7 @@ Call `scene.Validate` before propagation. It aggregates scene errors for:
 
 Scene validity does not imply that every engine supports every cardinality.
 The shipped ISM engine supports one or more sources and exactly one receiver;
-the ray-trace engine and `RenderProgressive` require exactly one source and one
+the ray-trace engine and `preview.RenderProgressive` require exactly one source and one
 receiver. Ray counts, render duration, bounce limits, receiver radius, and
 other engine configuration are checked by their owning pipeline. Progressive
 rendering validates the complete scene/configuration before its first update

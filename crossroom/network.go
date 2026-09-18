@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/ism"
+	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
@@ -19,10 +20,10 @@ const (
 	defaultMaxPaths    = 32
 )
 
-// NetworkRendererConfig configures the multi-room filter network.
-type NetworkRendererConfig struct {
+// NetworkConfig configures the multi-room filter network.
+type NetworkConfig struct {
 	ISM      ism.ISMConfig
-	Raytrace RaytraceEngineConfig
+	Raytrace raytrace.EngineConfig
 	Hybrid   hybrid.HybridConfig
 	// MaxPathHops bounds the portal traversals on a path; zero selects 4.
 	MaxPathHops int
@@ -45,20 +46,20 @@ type NetworkRendererConfig struct {
 	// Seed makes the stochastic synthesis reproducible; zero selects 1.
 	Seed int64
 	// CacheBytes budgets the group-response cache; zero selects
-	// DefaultGroupResponseCacheBytes. WASM callers should pass far less.
+	// DefaultCacheBytes. WASM callers should pass far less.
 	CacheBytes int64
 	// OnTruncation reports every way in which a render fell short of an
 	// exhaustive one. A truncated render still produces plausible output, so a
 	// caller that does not observe this has no other symptom to go by.
-	OnTruncation func(NetworkTruncation)
+	OnTruncation func(Truncation)
 }
 
-// NetworkTruncation records how far a render fell short of exhaustive.
+// Truncation records how far a render fell short of exhaustive.
 //
 // A truncated path search or a capped event expansion leaves the output looking
 // entirely reasonable while quietly omitting flanking paths or reflections,
 // which is why the renderer reports it rather than swallowing it.
-type NetworkTruncation struct {
+type Truncation struct {
 	// PathSearch reports that the group-graph search hit its depth, node, or
 	// prune-floor limit, so paths beyond it were never enumerated.
 	PathSearch bool
@@ -73,12 +74,12 @@ type NetworkTruncation struct {
 }
 
 // Truncated reports whether anything was lost.
-func (t NetworkTruncation) Truncated() bool {
+func (t Truncation) Truncated() bool {
 	return t.PathSearch || t.PathsRendered < t.PathsFound || t.EventsDropped > 0
 }
 
 // String renders the truncation as a single human-readable warning line.
-func (t NetworkTruncation) String() string {
+func (t Truncation) String() string {
 	var reasons []string
 
 	if t.PathSearch {
@@ -100,11 +101,11 @@ func (t NetworkTruncation) String() string {
 	return "the multi-room render is not exhaustive: " + strings.Join(reasons, "; ")
 }
 
-// NetworkRenderer renders multi-room propagation as the filter network of
+// Network renders multi-room propagation as the filter network of
 // docs/raven.md section 5.2, composing each path as a product of separately
 // simulated room-group transfer functions.
 //
-// It supersedes TransmissionRenderer for anything beyond the Phase 21 shape of
+// It supersedes OneHop for anything beyond the Phase 21 shape of
 // two adjacent shoebox rooms joined by one portal pair. That renderer remains
 // the fast path for exactly that shape and is left untouched, so its output is
 // unchanged.
@@ -113,25 +114,25 @@ func (t NetworkTruncation) String() string {
 // Re-emission costs a complete solve per event per hop, which is exponential in
 // the number of hops; convolution costs one simulation per hop regardless of
 // how many events arrived.
-type NetworkRenderer struct {
-	Config NetworkRendererConfig
+type Network struct {
+	Config NetworkConfig
 
 	cacheOnce sync.Once
-	cache     *GroupResponseCache
+	cache     *ResponseCache
 }
 
-// NewNetworkRenderer constructs the multi-room filter-network renderer.
-func NewNetworkRenderer(cfg NetworkRendererConfig) *NetworkRenderer {
-	return &NetworkRenderer{Config: cfg}
+// NewNetwork constructs the multi-room filter-network renderer.
+func NewNetwork(cfg NetworkConfig) *Network {
+	return &Network{Config: cfg}
 }
 
 // Cache returns the renderer's group-response cache, creating it on first use.
 // Simulated room-group responses are stored here so that a portal toggle only
 // re-simulates the groups whose signature actually changed.
-func (r *NetworkRenderer) Cache() *GroupResponseCache {
+func (r *Network) Cache() *ResponseCache {
 	r.cacheOnce.Do(func() {
 		if r.cache == nil {
-			r.cache = NewGroupResponseCache(r.Config.CacheBytes)
+			r.cache = NewResponseCache(r.Config.CacheBytes)
 		}
 	})
 
@@ -139,20 +140,20 @@ func (r *NetworkRenderer) Cache() *GroupResponseCache {
 }
 
 // SetCache installs a cache, which lets several renderers share one budget.
-func (r *NetworkRenderer) SetCache(cache *GroupResponseCache) {
+func (r *Network) SetCache(cache *ResponseCache) {
 	r.cacheOnce.Do(func() {})
 	r.cache = cache
 }
 
-// networkPlan holds the resolved graph, paths, and endpoints of one render.
-type networkPlan struct {
+// pathPlan holds the resolved graph, paths, and endpoints of one render.
+type pathPlan struct {
 	graph    *scene.AcousticSceneGraph
 	tree     *scene.PathSearchTree
 	paths    []networkPath
 	source   scene.Source
 	receiver scene.Receiver
 
-	truncation NetworkTruncation
+	truncation Truncation
 
 	// factors memoises hops by their endpoint identity rather than by path, so
 	// a hop that several paths share is simulated once. Paths through a
@@ -166,17 +167,17 @@ type networkPlan struct {
 }
 
 // groupResponseKey builds the cache key for one hop through a room group.
-func (p *networkPlan) groupResponseKey(
+func (p *pathPlan) groupResponseKey(
 	group scene.GroupID,
 	from, to groupPort,
 	configHash uint64,
-) (GroupResponseKey, bool) {
+) (cacheKey, bool) {
 	signature, ok := p.graph.GroupSignature(group)
 	if !ok {
-		return GroupResponseKey{}, false
+		return cacheKey{}, false
 	}
 
-	return GroupResponseKey{
+	return cacheKey{
 		GroupSignature: signature,
 		EndpointHash:   p.endpointHash,
 		ConfigHash:     configHash,
@@ -205,11 +206,11 @@ type hopKey struct {
 const portalNone = -1
 
 type cachedFactor struct {
-	factor *GroupFactor
+	factor *groupFactor
 	needs  factorNeeds
 }
 
-// factorNeeds selects which fields of a GroupFactor a caller actually uses.
+// factorNeeds selects which fields of a groupFactor a caller actually uses.
 // Tracing the late field costs a full ray trace, so a caller that only wants
 // the early events must be able to say so.
 type factorNeeds struct {
@@ -233,7 +234,7 @@ func (n factorNeeds) empty() bool {
 // factorNeedsOf reports which halves of a factor are already solved. The
 // cross-render cache stores the factor alone, so what it carries has to be read
 // back off the factor itself.
-func factorNeedsOf(factor *GroupFactor) factorNeeds {
+func factorNeedsOf(factor *groupFactor) factorNeeds {
 	if factor == nil {
 		return factorNeeds{}
 	}
@@ -245,7 +246,7 @@ func factorNeedsOf(factor *GroupFactor) factorNeeds {
 // mutates the one another render is holding. Several renderers may share one
 // cache, and the copy shares the already-solved fields rather than duplicating
 // them, since only the unset ones are ever written.
-func cloneFactor(factor *GroupFactor) *GroupFactor {
+func cloneFactor(factor *groupFactor) *groupFactor {
 	if factor == nil {
 		return nil
 	}
@@ -269,7 +270,7 @@ func hopKeyAt(path networkPath, index int) hopKey {
 	return key
 }
 
-func (p *networkPlan) storeFactor(key hopKey, factor *GroupFactor, needs factorNeeds) {
+func (p *pathPlan) storeFactor(key hopKey, factor *groupFactor, needs factorNeeds) {
 	if p.factors == nil {
 		p.factors = make(map[hopKey]cachedFactor)
 	}
@@ -291,7 +292,7 @@ type networkPath struct {
 // SolveEarly returns the early events arriving at the receiver, summed across
 // paths. It exists so the renderer can stand in for the Phase 21 engine where
 // callers consume events directly.
-func (r *NetworkRenderer) SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) ([]ir.Event, error) {
+func (r *Network) SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) ([]ir.Event, error) {
 	plan, err := r.prepare(sc)
 	if err != nil {
 		return nil, err
@@ -308,7 +309,7 @@ func (r *NetworkRenderer) SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) ([]ir
 }
 
 // RenderMono renders the summed multi-room hybrid response.
-func (r *NetworkRenderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
+func (r *Network) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
 	plan, err := r.prepare(sc)
 	if err != nil {
 		return nil, err
@@ -339,7 +340,7 @@ func (r *NetworkRenderer) RenderMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.
 // It traces the late field alone. Solving the early field here would be pure
 // waste, and doubly so for the CLI hybrid path, which asks for the early field
 // separately.
-func (r *NetworkRenderer) RenderLateMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
+func (r *Network) RenderLateMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error) {
 	plan, err := r.prepare(sc)
 	if err != nil {
 		return nil, err
@@ -356,7 +357,7 @@ func (r *NetworkRenderer) RenderLateMono(sc *scene.Scene, cfg ir.RenderConfig) (
 }
 
 // RenderBinaural renders the summed multi-room hybrid BRIR.
-func (r *NetworkRenderer) RenderBinaural(
+func (r *Network) RenderBinaural(
 	sc *scene.Scene,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
@@ -409,7 +410,7 @@ func (r *NetworkRenderer) RenderBinaural(
 }
 
 // RenderLateBinaural renders the summed directional late field.
-func (r *NetworkRenderer) RenderLateBinaural(
+func (r *Network) RenderLateBinaural(
 	sc *scene.Scene,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
@@ -433,8 +434,8 @@ func (r *NetworkRenderer) RenderLateBinaural(
 	return left, right, nil
 }
 
-func (r *NetworkRenderer) renderLateBinauralFromPlan(
-	plan *networkPlan,
+func (r *Network) renderLateBinauralFromPlan(
+	plan *pathPlan,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
 ) (left, right *ir.Buffer, err error) {
@@ -480,7 +481,7 @@ func (r *NetworkRenderer) renderLateBinauralFromPlan(
 // solveEarlyEvents composes the sparse early events of an already-prepared plan,
 // so a binaural render reuses its own plan instead of preparing a second one and
 // re-simulating every hop.
-func (r *NetworkRenderer) solveEarlyEvents(plan *networkPlan, cfg ir.RenderConfig) ([]ir.Event, error) {
+func (r *Network) solveEarlyEvents(plan *pathPlan, cfg ir.RenderConfig) ([]ir.Event, error) {
 	var events []ir.Event
 
 	bandCount := plan.graph.Scene().BandSpec.BandCount()
@@ -509,7 +510,7 @@ func (r *NetworkRenderer) solveEarlyEvents(plan *networkPlan, cfg ir.RenderConfi
 }
 
 // reportTruncation hands the accumulated truncation to the configured observer.
-func (r *NetworkRenderer) reportTruncation(plan *networkPlan) {
+func (r *Network) reportTruncation(plan *pathPlan) {
 	if r.Config.OnTruncation == nil || !plan.truncation.Truncated() {
 		return
 	}
@@ -518,7 +519,7 @@ func (r *NetworkRenderer) reportTruncation(plan *networkPlan) {
 }
 
 // prepare builds the scene graph, searches the paths, and ranks them.
-func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
+func (r *Network) prepare(sc *scene.Scene) (*pathPlan, error) {
 	if r == nil {
 		return nil, errors.New("network renderer is nil")
 	}
@@ -564,7 +565,7 @@ func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 		return nil, fmt.Errorf("search propagation paths: %w", err)
 	}
 
-	plan := &networkPlan{
+	plan := &pathPlan{
 		graph:    graph,
 		tree:     tree,
 		source:   sc.Sources[0],
@@ -579,7 +580,7 @@ func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 	if len(plan.paths) == 0 {
 		return nil, fmt.Errorf(
 			"no propagation path from the source reaches the receiver above the %.0f dB floor; "+
-				"lower NetworkRendererConfig.BandFloorDB or raise MaxPathHops (currently %d) to include quieter paths",
+				"lower NetworkConfig.BandFloorDB or raise MaxPathHops (currently %d) to include quieter paths",
 			r.bandFloorDB(), r.maxPathHops(),
 		)
 	}
@@ -588,7 +589,7 @@ func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 	// at the depth, node, or prune-floor limit. Rendering that tree as if it
 	// were exhaustive under-renders a large topology with no other symptom, so
 	// the state is carried through to OnTruncation.
-	plan.truncation = NetworkTruncation{
+	plan.truncation = Truncation{
 		PathSearch:    tree.Truncated,
 		PathsFound:    found,
 		PathsRendered: len(plan.paths),
@@ -600,7 +601,7 @@ func (r *NetworkRenderer) prepare(sc *scene.Scene) (*networkPlan, error) {
 // rankPaths converts the search leaves into renderable paths, strongest first,
 // and truncates to MaxPaths. It also returns how many paths reached the
 // receiver before that cap applied.
-func (r *NetworkRenderer) rankPaths(tree *scene.PathSearchTree, receiverGroup scene.GroupID) ([]networkPath, int) {
+func (r *Network) rankPaths(tree *scene.PathSearchTree, receiverGroup scene.GroupID) ([]networkPath, int) {
 	var paths []networkPath
 
 	for _, leaf := range tree.Leaves {
@@ -636,7 +637,7 @@ func (r *NetworkRenderer) rankPaths(tree *scene.PathSearchTree, receiverGroup sc
 	return paths, found
 }
 
-func (r *NetworkRenderer) maxPathHops() int {
+func (r *Network) maxPathHops() int {
 	if r.Config.MaxPathHops > 0 {
 		return r.Config.MaxPathHops
 	}
@@ -644,7 +645,7 @@ func (r *NetworkRenderer) maxPathHops() int {
 	return defaultMaxPathHops
 }
 
-func (r *NetworkRenderer) maxPaths() int {
+func (r *Network) maxPaths() int {
 	if r.Config.MaxPaths > 0 {
 		return r.Config.MaxPaths
 	}
@@ -652,7 +653,7 @@ func (r *NetworkRenderer) maxPaths() int {
 	return defaultMaxPaths
 }
 
-func (r *NetworkRenderer) maxComposedEventsPerPath() int {
+func (r *Network) maxComposedEventsPerPath() int {
 	if r.Config.MaxComposedEventsPerPath != 0 {
 		return r.Config.MaxComposedEventsPerPath
 	}
@@ -660,7 +661,7 @@ func (r *NetworkRenderer) maxComposedEventsPerPath() int {
 	return defaultMaxComposedEventsPerPath
 }
 
-func (r *NetworkRenderer) bandFloorDB() float64 {
+func (r *Network) bandFloorDB() float64 {
 	if r.Config.BandFloorDB != 0 {
 		return r.Config.BandFloorDB
 	}

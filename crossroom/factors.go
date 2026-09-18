@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"errors"
@@ -34,7 +34,7 @@ type groupPort struct {
 	Polygon  []geometry.Vec3
 }
 
-// GroupFactor is one factor of the H_PP product of docs/raven.md section 5.2:
+// groupFactor is one factor of the H_PP product of docs/raven.md section 5.2:
 // the transfer function of a single room group between two ports.
 //
 // Early carries the pressure-domain image-source response and LateEnergy the
@@ -45,7 +45,7 @@ type groupPort struct {
 // DGHistograms holds one energy histogram per directivity group rather than
 // ready-made probabilities, because the arrival probabilities are only
 // meaningful once the upstream hops and every other path have been folded in.
-type GroupFactor struct {
+type groupFactor struct {
 	Early        *ir.BandedResponse
 	LateEnergy   *raytrace.EnergyHistogram
 	Events       []ir.Event
@@ -70,39 +70,39 @@ type GroupFactor struct {
 
 // solvePS2P renders the first hop: the real source to the exit portal of its
 // own group.
-func (r *NetworkRenderer) solvePS2P(
+func (r *Network) solvePS2P(
 	gsc *scene.Scene,
 	source scene.Source,
 	exit groupPort,
 	cfg ir.RenderConfig,
-	into *GroupFactor,
+	into *groupFactor,
 	needs factorNeeds,
-) (*GroupFactor, error) {
+) (*groupFactor, error) {
 	entry := groupPort{Kind: portKindSource, Position: source.Position}
 
 	return r.solveFactor(gsc, entry, exit, cfg, &source, nil, into, needs)
 }
 
 // solveSS2P renders an intermediate hop: an entry portal to an exit portal.
-func (r *NetworkRenderer) solveSS2P(
+func (r *Network) solveSS2P(
 	gsc *scene.Scene,
 	entry, exit groupPort,
 	cfg ir.RenderConfig,
-	into *GroupFactor,
+	into *groupFactor,
 	needs factorNeeds,
-) (*GroupFactor, error) {
+) (*groupFactor, error) {
 	return r.solveFactor(gsc, entry, exit, cfg, nil, nil, into, needs)
 }
 
 // solveSS2R renders the terminal hop: an entry portal to the real receiver.
-func (r *NetworkRenderer) solveSS2R(
+func (r *Network) solveSS2R(
 	gsc *scene.Scene,
 	entry groupPort,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
-	into *GroupFactor,
+	into *groupFactor,
 	needs factorNeeds,
-) (*GroupFactor, error) {
+) (*groupFactor, error) {
 	exit := groupPort{Kind: portKindReceiver, Position: receiver.Position}
 
 	return r.solveFactor(gsc, entry, exit, cfg, nil, &receiver, into, needs)
@@ -110,14 +110,14 @@ func (r *NetworkRenderer) solveSS2R(
 
 // solvePS2R renders the degenerate zero-hop case where source and receiver
 // share a group.
-func (r *NetworkRenderer) solvePS2R(
+func (r *Network) solvePS2R(
 	gsc *scene.Scene,
 	source scene.Source,
 	receiver scene.Receiver,
 	cfg ir.RenderConfig,
-	into *GroupFactor,
+	into *groupFactor,
 	needs factorNeeds,
-) (*GroupFactor, error) {
+) (*groupFactor, error) {
 	entry := groupPort{Kind: portKindSource, Position: source.Position}
 	exit := groupPort{Kind: portKindReceiver, Position: receiver.Position}
 
@@ -134,22 +134,22 @@ func (r *NetworkRenderer) solvePS2R(
 // needs names only the halves still wanted, and into is the partially solved
 // factor to fill, so a hop already carrying its early field never solves it
 // twice.
-func (r *NetworkRenderer) solveFactor(
+func (r *Network) solveFactor(
 	gsc *scene.Scene,
 	entry, exit groupPort,
 	cfg ir.RenderConfig,
 	source *scene.Source,
 	receiver *scene.Receiver,
-	into *GroupFactor,
+	into *groupFactor,
 	needs factorNeeds,
-) (*GroupFactor, error) {
+) (*groupFactor, error) {
 	if r == nil {
 		return nil, errors.New("network renderer is nil")
 	}
 
 	factor := into
 	if factor == nil {
-		factor = &GroupFactor{}
+		factor = &groupFactor{}
 	}
 
 	if needs.early {
@@ -174,7 +174,7 @@ func (r *NetworkRenderer) solveFactor(
 	return factor, nil
 }
 
-func (r *NetworkRenderer) solveFactorEarly(
+func (r *Network) solveFactorEarly(
 	gsc *scene.Scene,
 	entry, exit groupPort,
 	cfg ir.RenderConfig,
@@ -215,8 +215,8 @@ func (r *NetworkRenderer) solveFactorEarly(
 	return early, events, nil
 }
 
-func (r *NetworkRenderer) traceFactorLate(
-	factor *GroupFactor,
+func (r *Network) traceFactorLate(
+	factor *groupFactor,
 	gsc *scene.Scene,
 	entry, exit groupPort,
 	cfg ir.RenderConfig,
@@ -265,8 +265,8 @@ func (r *NetworkRenderer) traceFactorLate(
 	return nil
 }
 
-func (r *NetworkRenderer) traceFactorLateToReceiver(
-	factor *GroupFactor,
+func (r *Network) traceFactorLateToReceiver(
+	factor *groupFactor,
 	sub *scene.Scene,
 	entry groupPort,
 	launch raytrace.LaunchConfig,
@@ -282,16 +282,7 @@ func (r *NetworkRenderer) traceFactorLateToReceiver(
 	}
 
 	if receiver.HRTF != nil {
-		azimuth := r.Config.Raytrace.DirectionGroupAzimuth
-		if azimuth <= 0 {
-			azimuth = defaultDirectionGroupAzimuth
-		}
-
-		elevation := r.Config.Raytrace.DirectionGroupElevation
-		if elevation <= 0 {
-			elevation = defaultDirectionGroupElevation
-		}
-
+		azimuth, elevation := r.Config.Raytrace.DirectionGroupCounts()
 		tracer.DirectivityGroups = raytrace.NewDirectivityGroups(azimuth, elevation)
 	}
 
@@ -388,7 +379,7 @@ func networkLocalizedScene(sc *scene.Scene) *scene.Scene {
 }
 
 // networkRandom returns the renderer's deterministic random source.
-func (r *NetworkRenderer) networkRandom() *rand.Rand {
+func (r *Network) networkRandom() *rand.Rand {
 	seed := r.Config.Seed
 	if seed == 0 {
 		seed = 1

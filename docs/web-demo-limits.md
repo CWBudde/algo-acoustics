@@ -101,8 +101,8 @@ statistical tier lands at about 200 ms, the preview at about 480 ms, and the
 full result at about 4.4 s.
 
 The statistical tier reuses the library's own Tier 1 computation through
-`algoacoustics.ComputeStatisticalMetrics`, so the demo and
-`RenderProgressive` cannot drift apart on what "statistical" means. It reports
+`preview.ComputeStatisticalMetrics` (`internal/preview`), so the demo and
+`preview.RenderProgressive` cannot drift apart on what "statistical" means. It reports
 nothing for a mesh room, whose volume the Sabine and Eyring estimators cannot
 derive; the chip then simply stays empty rather than showing a fabricated number.
 
@@ -111,7 +111,7 @@ the WAV download, or the auralization — those stay bound to the render that
 finishes. A tier that fails is not fatal, because it is an optimisation of what
 the user sees while the accurate render is still ahead.
 
-The demo does not call `RenderProgressive` itself. That function covers a single
+The demo does not call `preview.RenderProgressive` itself. That function covers a single
 mono hybrid render, whereas the demo must also serve early-only, late-only, and
 connected-room requests — and its final tier has to stay identical to what the
 non-progressive path produced, which a differently-configured ray tracer would

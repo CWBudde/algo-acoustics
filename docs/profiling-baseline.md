@@ -196,14 +196,14 @@ only in the warm case, and that qualifier matters:
   behaviour shows up as a number and not just a slower run. These count room
   groups, not cache outcomes: a group that is new to the plan can still be a
   cache hit when the same configuration was rendered a toggle ago, which is why
-  `GroupResponseCache.Stats` reports hits and misses separately.
+  `crossroom.ResponseCache.Stats` reports hits and misses separately.
 - **Cold is not the target.** A cold four-room render is around 2 s on its own,
   so quoting the target without saying "warm" would be meaningless. The cold
   benchmark builds a fresh renderer each iteration precisely so it cannot
   quietly inherit the warm cache.
 - **WASM is not covered.** Single-threaded WASM runs several times slower and
   the browser demo already needs a multi-second budget per endpoint.
-  `NetworkRendererConfig.DynamicRays` exists to drop the interactive ray count
+  `crossroom.NetworkConfig.DynamicRays` exists to drop the interactive ray count
   there; the target above is native-only.
 
 The cache is keyed on a room group's signature rather than its identifier,

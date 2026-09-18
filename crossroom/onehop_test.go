@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
@@ -8,11 +8,9 @@ import (
 	"github.com/cwbudde/algo-acoustics/acoustics"
 	"github.com/cwbudde/algo-acoustics/geometry"
 	"github.com/cwbudde/algo-acoustics/hrtf"
-	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/ism"
 	"github.com/cwbudde/algo-acoustics/metrics"
-	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
@@ -21,7 +19,7 @@ func TestTransmissionRendererEarlyUsesPressureTransmission(t *testing.T) {
 
 	closed := transmissionTestScene(0.25)
 	open := transmissionTestScene(1)
-	renderer := NewTransmissionRenderer(TransmissionRendererConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
+	renderer := NewOneHop(OneHopConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
 	cfg := transmissionTestRenderConfig(closed)
 
 	closedEvents, err := renderer.SolveEarly(closed, cfg)
@@ -55,7 +53,7 @@ func TestTransmissionRendererEarlyIsTranslationInvariant(t *testing.T) {
 
 	base := transmissionTestScene(0.25)
 	shifted := shiftedTransmissionScene(base, geometry.Vec3{X: 10, Y: -3, Z: 2})
-	renderer := NewTransmissionRenderer(TransmissionRendererConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
+	renderer := NewOneHop(OneHopConfig{ISM: ism.ISMConfig{MaxOrder: 1}})
 
 	baseEvents, err := renderer.SolveEarly(base, transmissionTestRenderConfig(base))
 	if err != nil {
@@ -146,87 +144,12 @@ func TestTransmissionRendererValidatesOriginalScene(t *testing.T) {
 	sc := transmissionTestScene(0.25)
 	reverseVec3s(sc.Portals[0].Polygon)
 
-	renderer := NewTransmissionRenderer(TransmissionRendererConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
+	renderer := NewOneHop(OneHopConfig{ISM: ism.ISMConfig{MaxOrder: 0}})
 
 	_, err := renderer.SolveEarly(sc, transmissionTestRenderConfig(sc))
 	if err == nil || !strings.Contains(err.Error(), "validate transmission scene") {
 		t.Fatalf("SolveEarly() error = %v, want scene-validation error", err)
 	}
-}
-
-func TestRendererRoutesMultiRoomMonoAndBinaural(t *testing.T) {
-	t.Parallel()
-
-	sc := transmissionTestScene(0.5)
-	renderCfg := transmissionTestRenderConfig(sc)
-	transmission := NewTransmissionRenderer(TransmissionRendererConfig{
-		ISM: ism.ISMConfig{MaxOrder: 0},
-		Raytrace: RaytraceEngineConfig{
-			Launch: raytrace.LaunchConfig{
-				NumRays:        256,
-				MaxBounces:     2,
-				MaxTimeSeconds: renderCfg.DurationSeconds,
-				SpeedOfSound:   acoustics.SpeedOfSound,
-			},
-			ReceiverRadius:     0.3,
-			BinDurationSeconds: 0.005,
-		},
-		Hybrid: hybrid.HybridConfig{
-			CrossoverMode:        hybrid.TimeBased,
-			CrossoverTimeSeconds: 0.03,
-			SmoothenCrossover:    true,
-		},
-	})
-	renderer := Renderer{Transmission: transmission}
-
-	mono, err := renderer.RenderMono(sc, renderCfg)
-	if err != nil {
-		t.Fatalf("RenderMono() error = %v", err)
-	}
-
-	if !hasNonZeroSample(mono) {
-		t.Fatal("RenderMono() returned silence")
-	}
-
-	left, right, err := renderer.RenderStereo(sc, renderCfg)
-	if err != nil {
-		t.Fatalf("RenderStereo() error = %v", err)
-	}
-
-	if !hasNonZeroSample(left) || !hasNonZeroSample(right) {
-		t.Fatal("RenderStereo() returned a silent channel")
-	}
-}
-
-func TestRendererRejectsNilCrossRoomBuffers(t *testing.T) {
-	t.Parallel()
-
-	sc := transmissionTestScene(0.5)
-	renderer := Renderer{Transmission: nilCrossRoomEngine{}}
-
-	_, err := renderer.RenderMono(sc, transmissionTestRenderConfig(sc))
-	if err == nil || !strings.Contains(err.Error(), "nil mono buffer") {
-		t.Fatalf("RenderMono() error = %v, want nil-buffer error", err)
-	}
-
-	_, _, err = renderer.RenderStereo(sc, transmissionTestRenderConfig(sc))
-	if err == nil || !strings.Contains(err.Error(), "nil binaural buffer") {
-		t.Fatalf("RenderStereo() error = %v, want nil-buffer error", err)
-	}
-}
-
-type nilCrossRoomEngine struct{}
-
-func (nilCrossRoomEngine) RenderMono(*scene.Scene, ir.RenderConfig) (*ir.Buffer, error) {
-	return nil, nil //nolint:nilnil // Deliberately violates the engine contract to verify Renderer validation.
-}
-
-func (nilCrossRoomEngine) RenderBinaural(
-	*scene.Scene,
-	scene.Receiver,
-	ir.RenderConfig,
-) (*ir.Buffer, *ir.Buffer, error) {
-	return nil, nil, nil
 }
 
 func TestTransmissionValidationReductionIndexAcrossBands(t *testing.T) {
@@ -262,7 +185,7 @@ func TestTransmissionValidationReductionIndexAcrossBands(t *testing.T) {
 		t.Fatalf("partition area = %v, want 16", area)
 	}
 
-	renderer := NewTransmissionRenderer(TransmissionRendererConfig{
+	renderer := NewOneHop(OneHopConfig{
 		ISM: ism.ISMConfig{MaxOrder: 0, BandSpec: bandSpec},
 	})
 	cfg := ir.RenderConfig{SampleRate: closed.SampleRate, DurationSeconds: 0.1, BandSpec: bandSpec}
@@ -411,16 +334,6 @@ func thirdOctaveBandSpec(centers []float64) acoustics.BandSpec {
 		LowerEdges:  lower,
 		UpperEdges:  upper,
 	}
-}
-
-func hasNonZeroSample(samples []float64) bool {
-	for _, sample := range samples {
-		if sample != 0 {
-			return true
-		}
-	}
-
-	return false
 }
 
 func shiftedTransmissionScene(sc *scene.Scene, offset geometry.Vec3) *scene.Scene {

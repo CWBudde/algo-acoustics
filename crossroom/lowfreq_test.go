@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
@@ -20,9 +20,9 @@ func TestLowFreqSceneForMultiRoomLocalizesTheGroup(t *testing.T) {
 
 	sc := transmissionTestScene(0.25)
 
-	lowFreq, err := LowFreqSceneForMultiRoom(sc)
+	lowFreq, err := LowFreqScene(sc)
 	if err != nil {
-		t.Fatalf("LowFreqSceneForMultiRoom: %v", err)
+		t.Fatalf("LowFreqScene: %v", err)
 	}
 
 	shoebox := lowFreq.Scene.Room.Shoebox
@@ -69,9 +69,9 @@ func TestLowFreqSceneForMultiRoomCarriesPathTransmission(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			lowFreq, err := LowFreqSceneForMultiRoom(transmissionTestScene(test.tau))
+			lowFreq, err := LowFreqScene(transmissionTestScene(test.tau))
 			if err != nil {
-				t.Fatalf("LowFreqSceneForMultiRoom: %v", err)
+				t.Fatalf("LowFreqScene: %v", err)
 			}
 
 			want := math.Sqrt(test.tau)
@@ -90,9 +90,9 @@ func TestLowFreqSceneForMultiRoomExcitesThePropagatingPortal(t *testing.T) {
 
 	sc := deadEndPortalScene()
 
-	lowFreq, err := LowFreqSceneForMultiRoom(sc)
+	lowFreq, err := LowFreqScene(sc)
 	if err != nil {
-		t.Fatalf("LowFreqSceneForMultiRoom: %v", err)
+		t.Fatalf("LowFreqScene: %v", err)
 	}
 
 	// Portal 0 is the dead end and has the lower index; portal 1 carries the

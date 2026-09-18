@@ -1,21 +1,21 @@
-package algoacoustics
+package crossroom
 
 import (
 	"container/list"
 	"sync"
 )
 
-// DefaultGroupResponseCacheBytes is the default byte budget for cached group
+// DefaultCacheBytes is the default byte budget for cached group
 // responses. WASM callers should pass a far smaller budget; see
 // docs/wasm-memory-budget.md.
-const DefaultGroupResponseCacheBytes int64 = 256 << 20
+const DefaultCacheBytes int64 = 256 << 20
 
-// GroupResponseKey identifies one cached room-group transfer function.
+// cacheKey identifies one cached room-group transfer function.
 //
 // It is keyed on the group's signature rather than its GroupID because opening
 // a portal renumbers the groups: an ID-keyed entry would miss on every group in
 // the building, including the ones that did not change.
-type GroupResponseKey struct {
+type cacheKey struct {
 	GroupSignature uint64
 	// EndpointHash covers the source and receiver placement and the band spec.
 	// It deliberately is NOT the whole-scene geometry hash: that changes on
@@ -37,39 +37,54 @@ type CacheStats struct {
 	Bytes     int64
 }
 
-// GroupResponseCache is a byte-budgeted LRU over simulated room-group
+// ResponseCache is a byte-budgeted LRU over simulated room-group
 // responses. It is safe for concurrent use.
-type GroupResponseCache struct {
+type ResponseCache struct {
 	mu       sync.Mutex
 	maxBytes int64
 	bytes    int64
 	order    *list.List
-	entries  map[GroupResponseKey]*list.Element
+	entries  map[cacheKey]*list.Element
 	stats    CacheStats
 }
 
 type cacheEntry struct {
-	key    GroupResponseKey
-	factor *GroupFactor
+	key    cacheKey
+	factor *groupFactor
 	bytes  int64
 }
 
-// NewGroupResponseCache creates a cache with a byte budget. A budget of zero or
-// less selects DefaultGroupResponseCacheBytes.
-func NewGroupResponseCache(maxBytes int64) *GroupResponseCache {
+// NewResponseCache creates a cache with a byte budget. A budget of zero or
+// less selects DefaultCacheBytes.
+func NewResponseCache(maxBytes int64) *ResponseCache {
 	if maxBytes <= 0 {
-		maxBytes = DefaultGroupResponseCacheBytes
+		maxBytes = DefaultCacheBytes
 	}
 
-	return &GroupResponseCache{
+	return &ResponseCache{
 		maxBytes: maxBytes,
 		order:    list.New(),
-		entries:  map[GroupResponseKey]*list.Element{},
+		entries:  map[cacheKey]*list.Element{},
 	}
 }
 
-// Get returns a cached factor and marks it most recently used.
-func (c *GroupResponseCache) Get(key GroupResponseKey) (*GroupFactor, bool) {
+// Stats returns a snapshot of the cache counters.
+func (c *ResponseCache) Stats() CacheStats {
+	if c == nil {
+		return CacheStats{}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	stats := c.stats
+	stats.Bytes = c.bytes
+
+	return stats
+}
+
+// get returns a cached factor and marks it most recently used.
+func (c *ResponseCache) get(key cacheKey) (*groupFactor, bool) {
 	if c == nil {
 		return nil, false
 	}
@@ -92,8 +107,8 @@ func (c *GroupResponseCache) Get(key GroupResponseKey) (*GroupFactor, bool) {
 	return entry.factor, true
 }
 
-// Put stores a factor, evicting least recently used entries to stay in budget.
-func (c *GroupResponseCache) Put(key GroupResponseKey, factor *GroupFactor) {
+// put stores a factor, evicting least recently used entries to stay in budget.
+func (c *ResponseCache) put(key cacheKey, factor *groupFactor) {
 	if c == nil || factor == nil {
 		return
 	}
@@ -122,9 +137,9 @@ func (c *GroupResponseCache) Put(key GroupResponseKey, factor *GroupFactor) {
 	c.evictLocked()
 }
 
-// InvalidateSignature drops every entry belonging to a room group and returns
+// invalidateSignature drops every entry belonging to a room group and returns
 // how many were removed.
-func (c *GroupResponseCache) InvalidateSignature(signature uint64) int {
+func (c *ResponseCache) invalidateSignature(signature uint64) int {
 	if c == nil {
 		return 0
 	}
@@ -150,22 +165,7 @@ func (c *GroupResponseCache) InvalidateSignature(signature uint64) int {
 	return removed
 }
 
-// Stats returns a snapshot of the cache counters.
-func (c *GroupResponseCache) Stats() CacheStats {
-	if c == nil {
-		return CacheStats{}
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	stats := c.stats
-	stats.Bytes = c.bytes
-
-	return stats
-}
-
-func (c *GroupResponseCache) evictLocked() {
+func (c *ResponseCache) evictLocked() {
 	for c.bytes > c.maxBytes {
 		oldest := c.order.Back()
 		if oldest == nil {
@@ -177,7 +177,7 @@ func (c *GroupResponseCache) evictLocked() {
 	}
 }
 
-func (c *GroupResponseCache) removeLocked(element *list.Element) {
+func (c *ResponseCache) removeLocked(element *list.Element) {
 	entry, _ := element.Value.(*cacheEntry)
 	c.order.Remove(element)
 	delete(c.entries, entry.key)
@@ -186,7 +186,7 @@ func (c *GroupResponseCache) removeLocked(element *list.Element) {
 
 // groupFactorBytes estimates a factor's footprint from its sample storage,
 // which dominates everything else it holds.
-func groupFactorBytes(factor *GroupFactor) int64 {
+func groupFactorBytes(factor *groupFactor) int64 {
 	const bytesPerSample = 8
 
 	total := int64(0)

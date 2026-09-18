@@ -30,8 +30,12 @@ into the receiver's head frame before HRTF lookup. A configured
 skips it because the transfer function is monaural and cannot preserve
 ear-specific spatial information.
 
-`RenderProgressive` validates before publishing an update, requires exactly one
+Progressive rendering lives in `internal/preview`, not in the root package: it
+serves the WASM demo and any future editor UI rather than forming part of the
+library's rendering contract, so it is deliberately not on the public API.
+
+`preview.RenderProgressive` validates before publishing an update, requires exactly one
 source and one receiver, and runs statistical, preview, refined-batch, then
 final tiers. The scene is authoritative for sample rate and band specification:
-those two fields overwrite `ProgressiveConfig.Render` so every tier has the
+those two fields overwrite `preview.ProgressiveConfig.Render` so every tier has the
 same format.

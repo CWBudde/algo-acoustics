@@ -1,4 +1,4 @@
-package algoacoustics
+package preview
 
 import (
 	"math"

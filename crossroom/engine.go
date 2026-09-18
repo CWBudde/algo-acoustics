@@ -1,55 +1,66 @@
-package algoacoustics
+package crossroom
 
 import (
 	"github.com/cwbudde/algo-acoustics/hybrid"
 	"github.com/cwbudde/algo-acoustics/ir"
 	"github.com/cwbudde/algo-acoustics/ism"
+	"github.com/cwbudde/algo-acoustics/raytrace"
 	"github.com/cwbudde/algo-acoustics/scene"
 )
 
-// TransmissionEarlyEngine is the optional ability to emit the sparse early
+// Engine renders a source and receiver separated by one or more
+// portals. Its method set is identical to the root package's
+// BinauralLateBufferEngine, which it is declared separately from so that this
+// package stays free of a dependency on the renderer that consumes it; Go
+// satisfies both structurally.
+type Engine interface {
+	RenderMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error)
+	RenderBinaural(sc *scene.Scene, receiver scene.Receiver, cfg ir.RenderConfig) (left, right *ir.Buffer, err error)
+}
+
+// EarlyEngine is the optional ability to emit the sparse early
 // events of a cross-room render, which the CLI and pipeline use for event
 // dumps. Both cross-room engines implement it.
-type TransmissionEarlyEngine interface {
+type EarlyEngine interface {
 	SolveEarly(sc *scene.Scene, cfg ir.RenderConfig) ([]ir.Event, error)
 }
 
-// CrossRoomLateEngine exposes the late field on its own, without the early
-// field folded in. CrossRoomEngine.RenderMono and RenderBinaural return the
+// LateEngine exposes the late field on its own, without the early
+// field folded in. Engine.RenderMono and RenderBinaural return the
 // complete hybrid response, so callers that assemble the crossover themselves
 // need these instead. Both cross-room engines implement it.
-type CrossRoomLateEngine interface {
+type LateEngine interface {
 	RenderLateMono(sc *scene.Scene, cfg ir.RenderConfig) (*ir.Buffer, error)
 	RenderLateBinaural(sc *scene.Scene, receiver scene.Receiver, cfg ir.RenderConfig) (left, right *ir.Buffer, err error)
 }
 
-// CrossRoomEngineConfig gathers the settings shared by both cross-room engines.
-type CrossRoomEngineConfig struct {
+// EngineConfig gathers the settings shared by both cross-room engines.
+type EngineConfig struct {
 	ISM      ism.ISMConfig
-	Raytrace RaytraceEngineConfig
+	Raytrace raytrace.EngineConfig
 	Hybrid   hybrid.HybridConfig
 	// OnTruncation reports a filter-network render that is not exhaustive. The
 	// Phase 21 one-hop renderer never truncates, so it ignores this.
-	OnTruncation func(NetworkTruncation)
+	OnTruncation func(Truncation)
 }
 
-// NewCrossRoomEngine picks the cross-room engine that suits a scene.
+// NewEngine picks the cross-room engine that suits a scene.
 //
-// The Phase 21 TransmissionRenderer is chosen for exactly the shape it was
+// The Phase 21 OneHop is chosen for exactly the shape it was
 // built for — one source and one receiver in two directly adjacent shoebox
 // rooms, joined by portals between that same pair — so its output stays
 // bit-identical wherever it already applied. Everything else, portal chains
 // above all, goes to the filter network.
-func NewCrossRoomEngine(sc *scene.Scene, cfg CrossRoomEngineConfig) CrossRoomEngine {
-	if sceneMatchesOneHopTransmission(sc) {
-		return NewTransmissionRenderer(TransmissionRendererConfig{
+func NewEngine(sc *scene.Scene, cfg EngineConfig) Engine {
+	if matchesOneHop(sc) {
+		return NewOneHop(OneHopConfig{
 			ISM:      cfg.ISM,
 			Raytrace: cfg.Raytrace,
 			Hybrid:   cfg.Hybrid,
 		})
 	}
 
-	return NewNetworkRenderer(NetworkRendererConfig{
+	return NewNetwork(NetworkConfig{
 		ISM:          cfg.ISM,
 		Raytrace:     cfg.Raytrace,
 		Hybrid:       cfg.Hybrid,
@@ -57,15 +68,15 @@ func NewCrossRoomEngine(sc *scene.Scene, cfg CrossRoomEngineConfig) CrossRoomEng
 	})
 }
 
-// sceneMatchesOneHopTransmission reports whether the Phase 21 renderer can
+// matchesOneHop reports whether the Phase 21 renderer can
 // handle a scene: one source and one receiver, in two different shoebox rooms
 // that a portal joins directly.
 //
-// The room count must be exactly two. TransmissionRenderer collects only the
+// The room count must be exactly two. OneHop collects only the
 // portals joining the source and receiver rooms, so a third room would have its
 // flanking paths dropped without a trace even when a direct portal also exists.
 // Anything above two rooms therefore belongs to the filter network.
-func sceneMatchesOneHopTransmission(sc *scene.Scene) bool {
+func matchesOneHop(sc *scene.Scene) bool {
 	sourceRoom, receiverRoom, ok := oneHopRoomPair(sc)
 	if !ok {
 		return false

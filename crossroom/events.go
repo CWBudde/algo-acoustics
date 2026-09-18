@@ -1,4 +1,4 @@
-package algoacoustics
+package crossroom
 
 import (
 	"math"
@@ -11,7 +11,7 @@ import (
 
 const (
 	// defaultMaxComposedEventsPerPath caps the sparse event expansion of one
-	// path when NetworkRendererConfig leaves it unset.
+	// path when NetworkConfig leaves it unset.
 	defaultMaxComposedEventsPerPath = 4096
 	// composedEventFloorDB drops composed events far below the strongest one.
 	composedEventFloorDB = -80.0
@@ -41,7 +41,7 @@ const (
 func composePathEvents(
 	sc *scene.Scene,
 	path networkPath,
-	factors []*GroupFactor,
+	factors []*groupFactor,
 	bandCount int,
 	maxEvents int,
 ) (events []ir.Event, dropped int) {
