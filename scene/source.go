@@ -15,7 +15,7 @@ const (
 
 // Source is an emitting point in the scene.
 //
-//nolint:recvcheck,tagliatelle // Mutable JSON receiver; camel-case tags preserve the public scene schema.
+//nolint:tagliatelle // Camel-case tags preserve the public scene schema.
 type Source struct {
 	Position    geometry.Vec3       `json:"position"`
 	Orientation geometry.Quaternion `json:"orientation"`

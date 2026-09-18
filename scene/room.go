@@ -20,7 +20,7 @@ const (
 
 // Shoebox stores axis-aligned room dimensions and wall-material references.
 //
-//nolint:recvcheck,tagliatelle // Mutable JSON receiver; wallMaterials is part of the established schema.
+//nolint:tagliatelle // wallMaterials is part of the established public scene schema.
 type Shoebox struct {
 	Width         float64       `json:"width"`
 	Depth         float64       `json:"depth"`
